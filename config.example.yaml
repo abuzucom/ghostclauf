@@ -11,7 +11,7 @@ bot:
   login: your_bot_login
 
 chat:
-  # Prefix that marks a chat command, e.g. "!pong".
+  # Prefix that marks a chat command, e.g. "!ping".
   commandPrefix: "!"
 
 plugins:
@@ -25,7 +25,7 @@ plugins:
   # Only plugins whose `name` appears here are initialized. Everything else is
   # discovered but left dormant.
   enabled:
-    - pong
+    - ping
     - wentlive
 
   # Per-plugin configuration blocks, keyed by plugin name.
