@@ -1,0 +1,59 @@
+import { createContext } from '../src/core/context.js';
+import { CommandRegistry } from '../src/core/commands.js';
+import { EventBus } from '../src/core/eventBus.js';
+import { createLogger } from '../src/core/logger.js';
+import type { BotContext, ChatMessageEvent, PluginConfig, Role } from '../src/core/types.js';
+
+/** Silent logger for tests. */
+export const testLogger = createLogger('silent');
+
+/** Build a normalized chat message with the given text and roles. */
+export function makeMessage(
+  text: string,
+  roles: Role[] = ['everyone'],
+  extra: Partial<ChatMessageEvent> = {},
+): ChatMessageEvent {
+  return {
+    messageId: 'msg-1',
+    text,
+    chatterId: '100',
+    chatterName: 'viewer',
+    chatterDisplayName: 'Viewer',
+    badges: {},
+    roles: new Set(roles),
+    broadcasterId: '1',
+    broadcasterName: 'streamer',
+    ...extra,
+  };
+}
+
+/** A registry + bus + spy sender + a context, wired like the real app. */
+export function makeHarness(pluginName: string, config: PluginConfig = {}): {
+  registry: CommandRegistry;
+  bus: EventBus;
+  say: ReturnType<typeof spySender>;
+  ctx: BotContext;
+} {
+  const registry = new CommandRegistry('!', testLogger);
+  const bus = new EventBus(testLogger);
+  const say = spySender();
+  const ctx = createContext({
+    pluginName,
+    config,
+    logger: testLogger,
+    bus,
+    registry,
+    sender: say,
+  });
+  return { registry, bus, say, ctx };
+}
+
+/** Wait for queued microtasks/timers so async event handlers can run. */
+export function flush(): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, 10));
+}
+
+import { vi } from 'vitest';
+function spySender() {
+  return vi.fn<(text: string, replyToId?: string) => Promise<void>>().mockResolvedValue(undefined);
+}

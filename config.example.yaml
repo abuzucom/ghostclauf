@@ -1,0 +1,37 @@
+# ── Ghostclauf configuration (non-secret) ────────────────────────────────────
+# Copy to config.yaml and edit. Secrets live in .env, never here.
+
+# The channel the bot operates in.
+broadcaster:
+  # Twitch login (lowercase username) of the streamer whose channel to join.
+  login: your_streamer_login
+
+# The account the bot posts as. This is the account you authorize via `npm run auth`.
+bot:
+  login: your_bot_login
+
+chat:
+  # Prefix that marks a chat command, e.g. "!pong".
+  commandPrefix: "!"
+
+plugins:
+  # Directories scanned for plugins, in order. Built-in plugins ship under the
+  # app itself; add extra dirs here (mounted as a Docker volume) to drop in your
+  # own without rebuilding the image. Paths are relative to the working dir.
+  directories:
+    - "./dist/plugins"   # built-in plugins (compiled)
+    - "/data/plugins"    # external drop-in plugins (optional volume)
+
+  # Only plugins whose `name` appears here are initialized. Everything else is
+  # discovered but left dormant.
+  enabled:
+    - pong
+    - wentlive
+
+  # Per-plugin configuration blocks, keyed by plugin name.
+  config:
+    wentlive:
+      # {streamer} and {timestamp} are substituted at send time.
+      template: "{streamer} has gone live at {timestamp}"
+      # UTC timestamp format: "iso" (2026-07-12T18:04:05Z) or "utc" (Sun, 12 Jul 2026 18:04:05 GMT).
+      timestampFormat: "iso"

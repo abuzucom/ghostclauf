@@ -1,0 +1,21 @@
+services:
+  ghostclauf:
+    build: .
+    image: ghostclauf:latest
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      # Token store lives on the named volume so it survives restarts.
+      TOKEN_STORE_PATH: /data/tokens.json
+    ports:
+      # Only needed while running the one-time auth flow (see README).
+      - "3000:3000"
+    volumes:
+      - ./config.yaml:/app/config.yaml:ro
+      - ghostclauf-data:/data
+      # Optional: drop in external plugins without rebuilding the image.
+      # Point plugins.directories at /data/plugins in config.yaml (default).
+      # - ./plugins:/data/plugins:ro
+
+volumes:
+  ghostclauf-data:
