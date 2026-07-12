@@ -1,0 +1,110 @@
+// Public contract shared by the core and every plugin.
+//
+// Plugins depend ONLY on the types in this file — never on twurple or any other
+// transport-specific package. The transport layer (see core/twitch.ts) is
+// responsible for translating raw platform events into the normalized shapes
+// below, which keeps the extensibility layer portable to future platforms.
+
+import type { Logger as PinoLogger } from 'pino';
+
+/** Structured logger handed to plugins (a pino logger under the hood). */
+export type Logger = PinoLogger;
+
+/** Roles a chatter can hold. `everyone` is always present. */
+export type Role = 'everyone' | 'subscriber' | 'vip' | 'moderator' | 'broadcaster';
+
+/** A normalized chat message, transport-agnostic. */
+export interface ChatMessageEvent {
+  /** Platform message id (used for replies). */
+  messageId: string;
+  /** Raw message text. */
+  text: string;
+  /** Chatter's user id. */
+  chatterId: string;
+  /** Chatter's login (lowercase username). */
+  chatterName: string;
+  /** Chatter's display name. */
+  chatterDisplayName: string;
+  /** Raw badge map (badge name -> version). */
+  badges: Record<string, string>;
+  /** Roles resolved from the badges. */
+  roles: ReadonlySet<Role>;
+  /** Channel owner's user id. */
+  broadcasterId: string;
+  /** Channel owner's login. */
+  broadcasterName: string;
+}
+
+/** A normalized "stream went live" event. */
+export interface StreamOnlineEvent {
+  broadcasterId: string;
+  broadcasterName: string;
+  broadcasterDisplayName: string;
+  /** When the stream started (UTC instant). */
+  startedAt: Date;
+}
+
+/** A chat message that matched a registered command, with parsed args. */
+export interface ChatCommandEvent extends ChatMessageEvent {
+  /** The matched trigger (lowercased, without the prefix). */
+  command: string;
+  /** Whitespace-separated tokens after the trigger. */
+  args: string[];
+  /** Everything after the trigger, trimmed. */
+  argString: string;
+}
+
+/** Events plugins can subscribe to via `ctx.on(...)`. */
+export interface BotEvents {
+  chatMessage: ChatMessageEvent;
+  streamOnline: StreamOnlineEvent;
+}
+
+export type CommandHandler = (
+  event: ChatCommandEvent,
+  ctx: BotContext,
+) => void | Promise<void>;
+
+/** A command binding — the eggdrop "bind pub" equivalent. */
+export interface CommandDefinition {
+  /** Trigger word, without the command prefix (e.g. "pong"). */
+  trigger: string;
+  /** Roles permitted to invoke the command. Empty = nobody; include `everyone` for all. */
+  allow: Role[];
+  /** Optional human-readable description (for help/introspection). */
+  description?: string;
+  handler: CommandHandler;
+}
+
+/** Per-plugin configuration block from config.yaml (`plugins.config.<name>`). */
+export type PluginConfig = Record<string, unknown>;
+
+/** Sends a message to the bot's channel; optionally as a reply to `replyToId`. */
+export type MessageSender = (text: string, replyToId?: string) => Promise<void>;
+
+/** The facade handed to each plugin's `init`. The only surface plugins touch. */
+export interface BotContext {
+  /** This plugin's config block (may be empty). */
+  readonly config: PluginConfig;
+  /** Logger scoped to this plugin. */
+  readonly logger: Logger;
+  /** Post a message to the channel (optionally replying to a message id). */
+  say(text: string, replyToId?: string): Promise<void>;
+  /** Register a chat command. */
+  command(def: CommandDefinition): void;
+  /** Subscribe to a bot event. */
+  on<E extends keyof BotEvents>(
+    event: E,
+    handler: (payload: BotEvents[E]) => void | Promise<void>,
+  ): void;
+}
+
+/** A plugin module's default export. */
+export interface Plugin {
+  /** Unique plugin name; must appear in `plugins.enabled` to run. */
+  name: string;
+  /** Semantic version string (informational). */
+  version: string;
+  /** Called once at startup to register bindings. */
+  init(ctx: BotContext): void | Promise<void>;
+}
