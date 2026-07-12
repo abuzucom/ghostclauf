@@ -49,7 +49,7 @@ src/core/context.ts        builds the BotContext handed to each plugin
 src/core/pluginManager.ts  discover / import / validate / init plugins
 src/core/auth.ts           RefreshingAuthProvider + token persistence
 src/core/twitch.ts         EventSub WS + Helix sender (the only @twurple code)
-src/plugins/pong/          !pong -> ping!
+src/plugins/ping/          !ping -> pong!
 src/plugins/wentlive/      stream.online -> announcement
 src/tools/authFlow.ts      one-time OAuth to mint the bot's initial token
 ```

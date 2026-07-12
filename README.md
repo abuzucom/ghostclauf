@@ -10,12 +10,12 @@ The design borrows the *spirit* of [eggdrop](https://github.com/eggheads/eggdrop
 
 ## Features (v1)
 
-- **`!pong` → `ping!`** — replies `ping!` when the **broadcaster, a moderator, a
-  VIP, or a subscriber** types `!pong`. Non-privileged viewers are ignored.
+- **`!ping` → `pong!`** — replies `pong!` when the **broadcaster, a moderator, a
+  VIP, or a subscriber** types `!ping`. Non-privileged viewers are ignored.
 - **Going-live announcement** — when the stream goes live, posts
   `<streamer> has gone live at <UTC timestamp>` (template configurable).
 
-Both are shipped as plugins (`src/plugins/pong`, `src/plugins/wentlive`) and are
+Both are shipped as plugins (`src/plugins/ping`, `src/plugins/wentlive`) and are
 the reference examples for writing your own.
 
 ## How it talks to Twitch
@@ -27,7 +27,7 @@ WebSocket** that carries *both* required events:
 
 | Requirement            | EventSub subscription   |
 | ---------------------- | ----------------------- |
-| `!pong` command        | `channel.chat.message`  |
+| `!ping` command        | `channel.chat.message`  |
 | Going-live announcement| `stream.online`         |
 
 All Twitch specifics live in [`src/core/twitch.ts`](src/core/twitch.ts) (built on
@@ -50,7 +50,7 @@ src/
     auth.ts             RefreshingAuthProvider + token persistence
     twitch.ts           EventSub WS + Helix sender (the only twurple code)
   plugins/
-    pong/               !pong -> ping!
+    ping/               !ping -> pong!
     wentlive/           stream.online -> announcement
   tools/
     authFlow.ts         one-time OAuth to mint the bot's initial token
