@@ -1,0 +1,4 @@
+broadcaster:
+  login: minimal_streamer
+bot:
+  login: minimal_bot
