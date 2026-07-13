@@ -54,6 +54,19 @@ export function flush(): Promise<void> {
 }
 
 import { vi } from 'vitest';
-function spySender() {
+
+export function spySender() {
   return vi.fn<(text: string, replyToId?: string) => Promise<void>>().mockResolvedValue(undefined);
+}
+
+/** A fresh silent logger with spies on each level, for asserting log calls. */
+export function makeSpyLogger() {
+  const logger = createLogger('silent');
+  return {
+    logger,
+    error: vi.spyOn(logger, 'error'),
+    warn: vi.spyOn(logger, 'warn'),
+    debug: vi.spyOn(logger, 'debug'),
+    info: vi.spyOn(logger, 'info'),
+  };
 }
