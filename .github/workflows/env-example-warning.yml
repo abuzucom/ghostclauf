@@ -1,0 +1,56 @@
+name: Environment example change warning
+
+on:
+  push:
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  env-example-warning:
+    name: Warn on .env.example changes
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository history
+        uses: actions/checkout@v4.3.1
+        with:
+          fetch-depth: 0
+
+      - name: Warn if .env.example changed
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BEFORE_SHA: ${{ github.event.before }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          CURRENT_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          zero_sha=0000000000000000000000000000000000000000
+
+          if [[ "$EVENT_NAME" == "pull_request" ]]; then
+            changed=false
+            if ! git diff --quiet "$BASE_SHA...$HEAD_SHA" -- .env.example; then
+              changed=true
+            fi
+          elif [[ "$BEFORE_SHA" == "$zero_sha" ]]; then
+            changed=false
+            if [[ -n "$(git diff-tree --no-commit-id --name-only -r --root "$CURRENT_SHA" -- .env.example)" ]]; then
+              changed=true
+            fi
+          else
+            changed=false
+            if ! git diff --quiet "$BEFORE_SHA" "$CURRENT_SHA" -- .env.example; then
+              changed=true
+            fi
+          fi
+
+          if [[ "$changed" == true ]]; then
+            echo "::warning file=.env.example::.env.example changed in this pushed range. Verify it contains placeholders only and no secrets."
+            echo "Review the .env.example changes manually; this warning does not print the file contents."
+          else
+            echo ".env.example was not changed in this pushed range."
+          fi
