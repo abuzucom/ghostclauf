@@ -2,6 +2,7 @@
 // The target account is selected with `--bot` or `--broadcaster <login>`.
 
 import 'dotenv/config';
+import { randomBytes, timingSafeEqual } from 'node:crypto';
 import { createServer } from 'node:http';
 import { exchangeCode } from '@twurple/auth';
 import { loadFileConfig, loadSecrets } from '../core/config.js';
@@ -15,9 +16,11 @@ async function main(): Promise<void> {
   const port = Number(redirect.port || '80');
 
   const authorizeUrl = new URL('https://id.twitch.tv/oauth2/authorize');
+  const state = randomBytes(32).toString('hex');
   authorizeUrl.searchParams.set('client_id', secrets.clientId);
   authorizeUrl.searchParams.set('redirect_uri', secrets.redirectUri);
   authorizeUrl.searchParams.set('response_type', 'code');
+  authorizeUrl.searchParams.set('state', state);
   if (target.scopes.length) authorizeUrl.searchParams.set('scope', target.scopes.join(' '));
   // `force_verify` ensures you can pick the bot account even if already logged in.
   authorizeUrl.searchParams.set('force_verify', 'true');
@@ -27,6 +30,16 @@ async function main(): Promise<void> {
       const url = new URL(req.url ?? '/', secrets.redirectUri);
       if (url.pathname !== redirect.pathname) {
         res.writeHead(404).end('Not found');
+        return;
+      }
+
+      const callbackState = url.searchParams.get('state');
+      if (!matchesOAuthState(callbackState, state)) {
+        res
+          .writeHead(400, { 'content-type': 'text/plain; charset=utf-8' })
+          .end('Authorization failed. Invalid OAuth state.');
+        server.close();
+        rejectDone(new Error('authorization failed: invalid OAuth state'));
         return;
       }
 
@@ -70,6 +83,15 @@ async function main(): Promise<void> {
       console.log(`Waiting for the redirect to ${secrets.redirectUri} ...`);
     });
   });
+}
+
+function matchesOAuthState(actual: string | null, expected: string): boolean {
+  if (!actual) return false;
+  const actualBytes = Buffer.from(actual, 'utf8');
+  const expectedBytes = Buffer.from(expected, 'utf8');
+  return (
+    actualBytes.length === expectedBytes.length && timingSafeEqual(actualBytes, expectedBytes)
+  );
 }
 
 interface AuthTarget {

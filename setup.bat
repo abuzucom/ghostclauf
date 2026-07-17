@@ -1,5 +1,5 @@
 @echo off
-setlocal EnableExtensions
+setlocal EnableExtensions EnableDelayedExpansion
 
 cd /d "%~dp0"
 title ghostclauf setup
@@ -78,14 +78,14 @@ echo.
 set "BROADCASTER_ONE_LOGIN="
 set /P "BROADCASTER_ONE_LOGIN=Enter the first configured broadcaster login: "
 if not defined BROADCASTER_ONE_LOGIN goto :missing_broadcaster_login
-call npm run auth -- --broadcaster "%BROADCASTER_ONE_LOGIN%"
+call npm run auth -- --broadcaster "!BROADCASTER_ONE_LOGIN!"
 if errorlevel 1 goto :failed
 
 echo.
 set "BROADCASTER_TWO_LOGIN="
 set /P "BROADCASTER_TWO_LOGIN=Enter the second configured broadcaster login: "
 if not defined BROADCASTER_TWO_LOGIN goto :missing_broadcaster_login
-call npm run auth -- --broadcaster "%BROADCASTER_TWO_LOGIN%"
+call npm run auth -- --broadcaster "!BROADCASTER_TWO_LOGIN!"
 if errorlevel 1 goto :failed
 
 :complete
