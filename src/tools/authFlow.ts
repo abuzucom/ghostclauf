@@ -33,7 +33,9 @@ async function main(): Promise<void> {
       const error = url.searchParams.get('error');
       const code = url.searchParams.get('code');
       if (error) {
-        res.writeHead(400).end(`Authorization failed: ${error}`);
+        res
+          .writeHead(400, { 'content-type': 'text/plain; charset=utf-8' })
+          .end('Authorization failed. Check the terminal.');
         server.close();
         rejectDone(new Error(`authorization denied: ${error}`));
         return;
@@ -60,7 +62,7 @@ async function main(): Promise<void> {
         });
     });
 
-    server.listen(port, () => {
+    server.listen(port, '127.0.0.1', () => {
       console.log('\nGhostclauf — one-time bot authorization');
       console.log('1. Make sure you are logged into Twitch as the BOT account.');
       console.log('2. Open this URL in your browser:\n');
