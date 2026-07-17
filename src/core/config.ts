@@ -3,28 +3,66 @@ import { parse as parseYaml } from 'yaml';
 import { z } from 'zod';
 
 // ── File config (config.yaml) — non-secret ──────────────────────────────────
-const FileConfigSchema = z.object({
-  broadcaster: z.object({
-    login: z.string().min(1),
-  }),
-  bot: z.object({
-    login: z.string().min(1),
-  }),
-  chat: z
-    .object({
-      commandPrefix: z.string().min(1).default('!'),
-    })
-    .default({ commandPrefix: '!' }),
-  plugins: z
-    .object({
-      directories: z.array(z.string()).default(['./dist/plugins']),
-      enabled: z.array(z.string()).default([]),
-      config: z.record(z.record(z.unknown())).default({}),
-    })
-    .default({ directories: ['./dist/plugins'], enabled: [], config: {} }),
+const BroadcasterSchema = z.object({
+  login: z.string().min(1),
+  tokenStorePath: z.string().min(1).default('./data/broadcaster-tokens.json'),
 });
 
-export type FileConfig = z.infer<typeof FileConfigSchema>;
+const RawFileConfigSchema = z
+  .object({
+    // `broadcaster` remains accepted as a single-channel compatibility shape.
+    broadcaster: BroadcasterSchema.optional(),
+    broadcasters: z.array(BroadcasterSchema).min(1).optional(),
+    bot: z.object({
+      login: z.string().min(1),
+    }),
+    chat: z
+      .object({
+        commandPrefix: z.string().min(1).default('!'),
+      })
+      .default({ commandPrefix: '!' }),
+    plugins: z
+      .object({
+        directories: z.array(z.string()).default(['./dist/plugins']),
+        enabled: z.array(z.string()).default([]),
+        config: z.record(z.record(z.unknown())).default({}),
+      })
+      .default({ directories: ['./dist/plugins'], enabled: [], config: {} }),
+  })
+  .superRefine((config, ctx) => {
+    if (!config.broadcaster && !config.broadcasters) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['broadcaster'],
+        message: 'at least one broadcaster is required',
+      });
+    }
+    if (config.broadcaster && config.broadcasters) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['broadcasters'],
+        message: 'use broadcaster or broadcasters, not both',
+      });
+    }
+  });
+
+export interface BroadcasterConfig {
+  login: string;
+  tokenStorePath: string;
+}
+
+export interface FileConfig {
+  /** First configured broadcaster, retained for single-channel consumers. */
+  broadcaster: BroadcasterConfig;
+  broadcasters: BroadcasterConfig[];
+  bot: { login: string };
+  chat: { commandPrefix: string };
+  plugins: {
+    directories: string[];
+    enabled: string[];
+    config: Record<string, Record<string, unknown>>;
+  };
+}
 
 // ── Secrets (environment) ───────────────────────────────────────────────────
 const SecretsSchema = z.object({
@@ -57,11 +95,20 @@ export function loadFileConfig(path: string = process.env.CONFIG_PATH ?? './conf
         `(or set CONFIG_PATH).`,
     );
   }
-  const parsed = FileConfigSchema.safeParse(parseYaml(raw) ?? {});
+  const parsed = RawFileConfigSchema.safeParse(parseYaml(raw) ?? {});
   if (!parsed.success) {
     throw new Error(`Invalid config "${path}":\n${formatIssues(parsed.error)}`);
   }
-  return parsed.data;
+  const broadcasters = parsed.data.broadcasters ?? [parsed.data.broadcaster!];
+  const firstBroadcaster = broadcasters[0];
+  if (!firstBroadcaster) {
+    throw new Error(`Invalid config "${path}": at least one broadcaster is required`);
+  }
+  return {
+    ...parsed.data,
+    broadcaster: firstBroadcaster,
+    broadcasters,
+  };
 }
 
 /** Load and validate secrets from the environment. */

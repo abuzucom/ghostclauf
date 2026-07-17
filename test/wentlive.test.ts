@@ -33,7 +33,11 @@ describe('wentlive plugin', () => {
     await wentlive.init(ctx);
     bus.emit('streamOnline', onlineEvent('SomeStreamer'));
     await flush();
-    expect(say).toHaveBeenCalledWith('SomeStreamer has gone live at 2026-07-12T18:04:05.000Z');
+    expect(say).toHaveBeenCalledWith(
+      'SomeStreamer has gone live at 2026-07-12T18:04:05.000Z',
+      undefined,
+      '1',
+    );
   });
 
   it('respects a configured template and UTC format', async () => {
@@ -44,6 +48,6 @@ describe('wentlive plugin', () => {
     await wentlive.init(ctx);
     bus.emit('streamOnline', onlineEvent('Foo'));
     await flush();
-    expect(say).toHaveBeenCalledWith(`Foo @ ${STARTED_AT.toUTCString()}`);
+    expect(say).toHaveBeenCalledWith(`Foo @ ${STARTED_AT.toUTCString()}`, undefined, '1');
   });
 });

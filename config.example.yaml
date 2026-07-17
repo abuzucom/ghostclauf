@@ -1,10 +1,12 @@
 # ── Ghostclauf configuration (non-secret) ────────────────────────────────────
 # Copy to config.yaml and edit. Secrets live in .env, never here.
 
-# The channel the bot operates in.
-broadcaster:
-  # Twitch login (lowercase username) of the streamer whose channel to join.
-  login: your_streamer_login
+# The channels the bot operates in. Each broadcaster needs its own OAuth token.
+broadcasters:
+  - login: your_first_streamer_login
+    tokenStorePath: ./data/first-broadcaster-tokens.json
+  - login: your_second_streamer_login
+    tokenStorePath: ./data/second-broadcaster-tokens.json
 
 # The account the bot posts as. This is the account you authorize via `npm run auth`.
 bot:

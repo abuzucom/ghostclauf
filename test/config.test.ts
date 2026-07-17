@@ -43,6 +43,16 @@ describe('loadFileConfig', () => {
       config: {},
     });
   });
+
+  it('normalizes multiple broadcasters and preserves the first-channel alias', () => {
+    const config = loadFileConfig(join(fixturesRoot, 'multi.yaml'));
+
+    expect(config.broadcasters).toEqual([
+      { login: 'first_channel', tokenStorePath: './data/first-channel-tokens.json' },
+      { login: 'second_channel', tokenStorePath: './data/second-channel-tokens.json' },
+    ]);
+    expect(config.broadcaster).toEqual(config.broadcasters[0]);
+  });
 });
 
 describe('loadSecrets', () => {

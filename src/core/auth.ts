@@ -2,15 +2,15 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname } from 'node:path';
 import { RefreshingAuthProvider } from '@twurple/auth';
 import type { AccessToken } from '@twurple/auth';
-import type { Secrets } from './config.js';
+import type { BroadcasterConfig, Secrets } from './config.js';
 import type { Logger } from './types.js';
 
 /** Scopes the bot account must grant. See README for broadcaster-side setup. */
 export const BOT_SCOPES = ['user:read:chat', 'user:write:chat', 'user:bot'];
 
 /**
- * Build a RefreshingAuthProvider for the bot account from a persisted token,
- * auto-persisting refreshed tokens back to disk.
+ * Build a RefreshingAuthProvider for the bot and broadcaster accounts from
+ * persisted tokens, auto-persisting refreshed tokens back to disk.
  *
  * Returns the provider plus the bot's resolved user id (needed to subscribe to
  * chat and to send messages). Throws with guidance if no token exists yet.
@@ -18,34 +18,82 @@ export const BOT_SCOPES = ['user:read:chat', 'user:write:chat', 'user:bot'];
 export async function createAuthProvider(
   secrets: Secrets,
   logger: Logger,
-): Promise<{ authProvider: RefreshingAuthProvider; botUserId: string }> {
-  const initialToken = await readTokenStore(secrets.tokenStorePath);
-
+  broadcasters: readonly BroadcasterConfig[] = [],
+): Promise<{
+  authProvider: RefreshingAuthProvider;
+  botUserId: string;
+  broadcasterUserIds: string[];
+}> {
+  const botToken = await readTokenStore(secrets.tokenStorePath);
   const authProvider = new RefreshingAuthProvider({
     clientId: secrets.clientId,
     clientSecret: secrets.clientSecret,
   });
 
+  const userIdsByTokenPath = new Map<string, string>();
+  const tokenPathsByUserId = new Map<string, string>();
+  let pendingTokenPath: string | undefined;
   authProvider.onRefresh(async (userId, newToken) => {
-    await writeTokenStore(secrets.tokenStorePath, newToken);
+    const tokenPath = tokenPathsByUserId.get(userId) ?? pendingTokenPath;
+    if (!tokenPath) {
+      logger.warn({ userId }, 'token refreshed but its token store path is unknown');
+      return;
+    }
+    await writeTokenStore(tokenPath, newToken);
     logger.debug({ userId }, 'access token refreshed and persisted');
   });
   authProvider.onRefreshFailure((userId, error) => {
     logger.error({ userId, err: error }, 'token refresh failed; re-run `npm run auth`');
   });
 
-  // `chat` intent marks this user as the sender/reader for chat operations.
-  const botUserId = await authProvider.addUserForToken(initialToken, ['chat']);
-  return { authProvider, botUserId };
+  const addToken = async (
+    tokenPath: string,
+    intents?: string[],
+    loadedToken?: AccessToken,
+    authCommand = 'npm run auth -- --bot',
+  ): Promise<string> => {
+    const existingUserId = userIdsByTokenPath.get(tokenPath);
+    if (existingUserId) return existingUserId;
+
+    const initialToken = loadedToken ?? (await readTokenStore(tokenPath, authCommand));
+    pendingTokenPath = tokenPath;
+    try {
+      const userId = await authProvider.addUserForToken(initialToken, intents);
+      userIdsByTokenPath.set(tokenPath, userId);
+      tokenPathsByUserId.set(userId, tokenPath);
+      return userId;
+    } finally {
+      pendingTokenPath = undefined;
+    }
+  };
+
+  // `chat` intent marks the bot user as the sender/reader for chat operations.
+  const botUserId = await addToken(secrets.tokenStorePath, ['chat'], botToken);
+  const broadcasterUserIds: string[] = [];
+  for (const broadcaster of broadcasters) {
+    broadcasterUserIds.push(
+      await addToken(
+        broadcaster.tokenStorePath,
+        undefined,
+        undefined,
+        `npm run auth -- --broadcaster ${broadcaster.login}`,
+      ),
+    );
+  }
+
+  return { authProvider, botUserId, broadcasterUserIds };
 }
 
-export async function readTokenStore(path: string): Promise<AccessToken> {
+export async function readTokenStore(
+  path: string,
+  authCommand = 'npm run auth -- --bot',
+): Promise<AccessToken> {
   let raw: string;
   try {
     raw = await readFile(path, 'utf8');
   } catch {
     throw new Error(
-      `No token store at "${path}". Run \`npm run auth\` once to authorize the bot account.`,
+      `No token store at "${path}". Run \`${authCommand}\` once to authorize this account.`,
     );
   }
   return JSON.parse(raw) as AccessToken;

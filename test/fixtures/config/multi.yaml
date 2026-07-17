@@ -1,0 +1,7 @@
+broadcasters:
+  - login: first_channel
+    tokenStorePath: ./data/first-channel-tokens.json
+  - login: second_channel
+    tokenStorePath: ./data/second-channel-tokens.json
+bot:
+  login: bot_account

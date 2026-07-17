@@ -22,7 +22,11 @@ export function createContext(deps: ContextDeps): BotContext {
   const ctx: BotContext = {
     config,
     logger,
-    say: (text, replyToId) => (replyToId === undefined ? sender(text) : sender(text, replyToId)),
+    say: (text, replyToId, broadcasterId) => {
+      if (broadcasterId !== undefined) return sender(text, replyToId, broadcasterId);
+      if (replyToId !== undefined) return sender(text, replyToId);
+      return sender(text);
+    },
     command: (def) => registry.register(pluginName, def, ctx),
     on: (event, handler) => bus.on(event, handler),
   };

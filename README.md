@@ -57,7 +57,7 @@ src/
 ```
 
 **Plugins never import twurple.** They receive a `BotContext` and use only:
-`ctx.command({...})`, `ctx.on(event, handler)`, `ctx.say(text, replyToId?)`,
+`ctx.command({...})`, `ctx.on(event, handler)`, `ctx.say(text, replyToId?, broadcasterId?)`,
 `ctx.config`, and `ctx.logger`.
 
 ## Prerequisites
@@ -65,43 +65,53 @@ src/
 1. A **Twitch application** — register at
    <https://dev.twitch.tv/console/apps>. Note the **Client ID** and
    **Client Secret**, and add `http://localhost:3000/callback` as a redirect URI.
-2. A **bot account** (a separate Twitch account the bot posts as).
-3. In the broadcaster's channel, make the bot a **moderator**, *or* have the
+2. Two **broadcaster accounts** whose channels the bot will monitor.
+3. A **bot account** (a separate Twitch account the bot posts as).
+4. In each broadcaster's channel, make the bot a **moderator**, *or* have the
    broadcaster grant the `channel:bot` scope — either lets the bot post.
 
 The bot account authorizes these scopes: `user:read:chat`, `user:write:chat`,
-`user:bot`. (`stream.online` needs no extra scope.)
+`user:bot`. Each broadcaster also authorizes a user token for its EventSub
+WebSocket. (`stream.online` needs no extra scope.)
 
 ## Setup
 
 ```bash
 cp .env.example .env            # fill in TWITCH_CLIENT_ID / TWITCH_CLIENT_SECRET
-cp config.example.yaml config.yaml   # set broadcaster.login and bot.login
+cp config.example.yaml config.yaml   # set both broadcasters and bot.login
 npm install
 npm run build
+npm run auth -- --bot
+npm run auth -- --broadcaster first_streamer_login
+npm run auth -- --broadcaster second_streamer_login
 ```
 
 ### Windows one-click setup
 
 1. Double-click `setup.bat` in the project folder.
 2. Edit `.env` and `config.yaml` with your Twitch application and account details.
-3. Double-click `setup.bat` again and accept the one-time bot authorization prompt.
-4. Open the authorization URL, approve it while logged in as the bot account, then close the browser tab.
-5. Double-click `run.bat` to start the bot.
+3. Double-click `setup.bat` again and start the OAuth setup when prompted.
+4. Approve the bot authorization while logged in as the bot account.
+5. Approve each broadcaster authorization while logged into that broadcaster account.
+6. Double-click `run.bat` to start the bot.
 
 The setup script does not overwrite existing `.env` or `config.yaml` files. The
 run script starts the already-built bot and keeps its window open if the bot
 stops.
 
-**Authorize the bot (one time).** Log into Twitch as the **bot account**, then:
+**Authorize accounts.** Log into Twitch as the account being authorized, then run
+the matching command:
 
 ```bash
-npm run auth
+npm run auth -- --bot
+npm run auth -- --broadcaster first_streamer_login
+npm run auth -- --broadcaster second_streamer_login
 ```
 
 Open the printed URL, approve, and the token (access + refresh) is written to
-`TOKEN_STORE_PATH` (default `./data/tokens.json`). Thereafter it refreshes
-automatically.
+the configured token store. The bot token uses `TOKEN_STORE_PATH`; each
+broadcaster token uses its `tokenStorePath` in `config.yaml`. Thereafter tokens
+refresh automatically.
 
 ## Run
 
@@ -115,8 +125,10 @@ npm start                       # or: npm run dev  (watch mode)
 **Docker:**
 
 ```bash
-# 1) one-time auth (writes the token into the named volume)
-docker compose run --rm --service-ports ghostclauf node dist/tools/authFlow.js
+# 1) authorize the bot and both broadcasters (each command is one time)
+docker compose run --rm --service-ports ghostclauf node dist/tools/authFlow.js --bot
+docker compose run --rm --service-ports ghostclauf node dist/tools/authFlow.js --broadcaster first_streamer_login
+docker compose run --rm --service-ports ghostclauf node dist/tools/authFlow.js --broadcaster second_streamer_login
 # 2) run
 docker compose up -d
 ```
@@ -125,6 +137,8 @@ docker compose up -d
 
 Secrets live in `.env`; everything else in `config.yaml`. See
 [`config.example.yaml`](config.example.yaml) for the annotated reference.
+The modern configuration uses `broadcasters` with one `tokenStorePath` per
+channel. The legacy single `broadcaster` block is still accepted.
 Key `wentlive` options:
 
 ```yaml
@@ -150,7 +164,11 @@ const plugin: Plugin = {
     ctx.command({
       trigger: 'hello',
       allow: ['everyone'],          // or ['broadcaster','moderator','vip','subscriber']
-      handler: (event, ctx) => ctx.say(`hi @${event.chatterDisplayName}!`, event.messageId),
+      handler: (event, ctx) => ctx.say(
+        `hi @${event.chatterDisplayName}!`,
+        event.messageId,
+        event.broadcasterId,
+      ),
     });
 
     ctx.on('streamOnline', (e) => ctx.logger.info({ e }, 'we are live'));

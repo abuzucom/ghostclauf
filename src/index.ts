@@ -12,8 +12,19 @@ async function main(): Promise<void> {
   const logger = createLogger();
   const { file, secrets } = loadConfig();
 
-  // Auth: load the bot's persisted token and resolve its user id.
-  const { authProvider, botUserId } = await createAuthProvider(secrets, logger);
+  // Auth: load the bot and broadcaster tokens and resolve their user ids.
+  const { authProvider, botUserId, broadcasterUserIds } = await createAuthProvider(
+    secrets,
+    logger,
+    file.broadcasters,
+  );
+  const broadcasterTargets = file.broadcasters.map((broadcaster, index) => ({
+    login: broadcaster.login,
+    userId: broadcasterUserIds[index],
+  }));
+  if (broadcasterTargets.some(({ userId }) => userId === undefined)) {
+    throw new Error('missing resolved user ID for a configured broadcaster');
+  }
 
   // Core services.
   const registry = new CommandRegistry(file.chat.commandPrefix, logger);
@@ -24,7 +35,8 @@ async function main(): Promise<void> {
   let sender: MessageSender = async () => {
     throw new Error('message sender not ready yet');
   };
-  const senderRef: MessageSender = (text, replyToId) => sender(text, replyToId);
+  const senderRef: MessageSender = (text, replyToId, broadcasterId) =>
+    sender(text, replyToId, broadcasterId);
 
   // Discover and initialize plugins (they register commands / event listeners).
   const plugins = new PluginManager({ file, logger, registry, bus, sender: senderRef });
@@ -34,7 +46,11 @@ async function main(): Promise<void> {
   const transport = await createTwitchTransport({
     authProvider,
     botUserId,
-    broadcasterLogin: file.broadcaster.login,
+    botLogin: file.bot.login,
+    broadcasters: broadcasterTargets.map((target) => ({
+      login: target.login,
+      userId: target.userId!,
+    })),
     logger,
     handlers: {
       onChatMessage: (event) => {
@@ -50,7 +66,11 @@ async function main(): Promise<void> {
 
   await transport.start();
   logger.info(
-    { broadcaster: file.broadcaster.login, bot: file.bot.login, plugins: plugins.active },
+    {
+      broadcasters: file.broadcasters.map(({ login }) => login),
+      bot: file.bot.login,
+      plugins: plugins.active,
+    },
     'ghostclauf is online',
   );
 
