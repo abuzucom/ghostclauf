@@ -13,6 +13,8 @@ services:
     volumes:
       - ./config.yaml:/app/config.yaml:ro
       - ghostclauf-data:/data
+      # Broadcaster token paths in config.yaml are relative to /app locally.
+      - ghostclauf-data:/app/data
       # Optional: drop in external plugins without rebuilding the image.
       # Point plugins.directories at /data/plugins in config.yaml (default).
       # - ./plugins:/data/plugins:ro

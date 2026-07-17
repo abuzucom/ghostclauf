@@ -15,6 +15,12 @@ describe('createContext', () => {
     expect(say).toHaveBeenCalledWith('hi', 'msg-42');
   });
 
+  it('say(text, replyToId, broadcasterId) targets a specific channel', async () => {
+    const { ctx, say } = makeHarness('p');
+    await ctx.say('hi', 'msg-42', 'channel-42');
+    expect(say).toHaveBeenCalledWith('hi', 'msg-42', 'channel-42');
+  });
+
   it('command(def) registers under the plugin name, passing the context itself', () => {
     const { ctx, registry } = makeHarness('my-plugin');
     const registerSpy = vi.spyOn(registry, 'register');

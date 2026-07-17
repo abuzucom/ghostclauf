@@ -19,7 +19,7 @@ describe('ping plugin', () => {
     for (const role of ['broadcaster', 'moderator', 'vip', 'subscriber'] as Role[]) {
       const { registry, say } = setup();
       await registry.handle(makeMessage('!ping', ['everyone', role]));
-      expect(say).toHaveBeenCalledWith('pong!', 'msg-1');
+      expect(say).toHaveBeenCalledWith('pong!', 'msg-1', '1');
     }
   });
 

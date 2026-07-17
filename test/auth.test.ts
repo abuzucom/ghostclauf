@@ -7,13 +7,16 @@ import { createAuthProvider, readTokenStore, writeTokenStore } from '../src/core
 import type { Secrets } from '../src/core/config.js';
 import { makeSpyLogger } from './helpers.js';
 
-const { constructorSpy } = vi.hoisted(() => ({ constructorSpy: vi.fn() }));
+const { constructorSpy, addUserForTokenSpy } = vi.hoisted(() => ({
+  constructorSpy: vi.fn(),
+  addUserForTokenSpy: vi.fn(),
+}));
 
 vi.mock('@twurple/auth', () => {
   class MockRefreshingAuthProvider {
     onRefresh = vi.fn();
     onRefreshFailure = vi.fn();
-    addUserForToken = vi.fn().mockResolvedValue('bot-user-id');
+    addUserForToken = addUserForTokenSpy;
     constructor(config: unknown) {
       constructorSpy(config);
     }
@@ -86,6 +89,7 @@ describe('createAuthProvider', () => {
       redirectUri: 'http://localhost:3000/callback',
     };
     constructorSpy.mockClear();
+    addUserForTokenSpy.mockReset().mockResolvedValue('bot-user-id');
   });
 
   afterEach(async () => {
@@ -141,5 +145,23 @@ describe('createAuthProvider', () => {
       expect.objectContaining({ userId: 'bot-user-id', err: refreshError }),
       'token refresh failed; re-run `npm run auth`',
     );
+  });
+
+  it('loads broadcaster token stores in addition to the bot token', async () => {
+    await writeTokenStore(tokenStorePath, sampleToken);
+    const broadcasterTokenPath = join(dir, 'broadcaster-tokens.json');
+    await writeTokenStore(broadcasterTokenPath, sampleToken);
+    const spy = makeSpyLogger();
+    addUserForTokenSpy
+      .mockResolvedValueOnce('bot-user-id')
+      .mockResolvedValueOnce('broadcaster-user-id');
+
+    const { authProvider, broadcasterUserIds } = await createAuthProvider(
+      secrets,
+      spy.logger,
+      [{ login: 'streamer', tokenStorePath: broadcasterTokenPath }],
+    );
+    expect(asMocked(authProvider).addUserForToken).toHaveBeenCalledTimes(2);
+    expect(broadcasterUserIds).toEqual(['broadcaster-user-id']);
   });
 });

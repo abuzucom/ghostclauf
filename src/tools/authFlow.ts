@@ -1,16 +1,16 @@
-// One-time OAuth authorization-code flow to mint the bot account's initial
-// token. Run with `npm run auth`, log in as the BOT account in the browser, and
-// the resulting token (access + refresh) is written to TOKEN_STORE_PATH. After
-// that the app refreshes it automatically.
+// One-time OAuth authorization-code flow to mint a bot or broadcaster token.
+// The target account is selected with `--bot` or `--broadcaster <login>`.
 
 import 'dotenv/config';
 import { createServer } from 'node:http';
 import { exchangeCode } from '@twurple/auth';
-import { loadSecrets } from '../core/config.js';
+import { loadFileConfig, loadSecrets } from '../core/config.js';
 import { BOT_SCOPES, writeTokenStore } from '../core/auth.js';
 
 async function main(): Promise<void> {
+  const file = loadFileConfig();
   const secrets = loadSecrets();
+  const target = resolveAuthTarget(file, secrets, process.argv.slice(2));
   const redirect = new URL(secrets.redirectUri);
   const port = Number(redirect.port || '80');
 
@@ -18,7 +18,7 @@ async function main(): Promise<void> {
   authorizeUrl.searchParams.set('client_id', secrets.clientId);
   authorizeUrl.searchParams.set('redirect_uri', secrets.redirectUri);
   authorizeUrl.searchParams.set('response_type', 'code');
-  authorizeUrl.searchParams.set('scope', BOT_SCOPES.join(' '));
+  if (target.scopes.length) authorizeUrl.searchParams.set('scope', target.scopes.join(' '));
   // `force_verify` ensures you can pick the bot account even if already logged in.
   authorizeUrl.searchParams.set('force_verify', 'true');
 
@@ -47,12 +47,12 @@ async function main(): Promise<void> {
 
       exchangeCode(secrets.clientId, secrets.clientSecret, code, secrets.redirectUri)
         .then(async (token) => {
-          await writeTokenStore(secrets.tokenStorePath, token);
+          await writeTokenStore(target.tokenStorePath, token);
           res.writeHead(200, { 'content-type': 'text/plain' }).end(
             'Ghostclauf authorized. Token saved — you can close this tab.',
           );
           server.close();
-          console.log(`\n✓ Token written to ${secrets.tokenStorePath}`);
+          console.log(`\n✓ Token written to ${target.tokenStorePath}`);
           resolveDone();
         })
         .catch((err: unknown) => {
@@ -63,13 +63,63 @@ async function main(): Promise<void> {
     });
 
     server.listen(port, '127.0.0.1', () => {
-      console.log('\nGhostclauf — one-time bot authorization');
-      console.log('1. Make sure you are logged into Twitch as the BOT account.');
+      console.log(`\nGhostclauf — one-time ${target.label} authorization`);
+      console.log(`1. Make sure you are logged into Twitch as ${target.label} (${target.login}).`);
       console.log('2. Open this URL in your browser:\n');
       console.log(`   ${authorizeUrl.toString()}\n`);
       console.log(`Waiting for the redirect to ${secrets.redirectUri} ...`);
     });
   });
+}
+
+interface AuthTarget {
+  label: 'bot' | 'broadcaster';
+  login: string;
+  tokenStorePath: string;
+  scopes: string[];
+}
+
+function resolveAuthTarget(
+  file: ReturnType<typeof loadFileConfig>,
+  secrets: ReturnType<typeof loadSecrets>,
+  args: string[],
+): AuthTarget {
+  const mode = args[0] ?? '--bot';
+  if (mode === '--bot') {
+    return {
+      label: 'bot',
+      login: file.bot.login,
+      tokenStorePath: secrets.tokenStorePath,
+      scopes: BOT_SCOPES,
+    };
+  }
+
+  const broadcasterLogin = mode === '--broadcaster'
+    ? args[1]
+    : mode.startsWith('--broadcaster=')
+      ? mode.slice('--broadcaster='.length)
+      : undefined;
+  if (!broadcasterLogin) {
+    throw new Error(
+      'Usage: npm run auth -- --bot | npm run auth -- --broadcaster <configured-login>',
+    );
+  }
+
+  const broadcaster = file.broadcasters.find(
+    (candidate) => candidate.login.toLowerCase() === broadcasterLogin.toLowerCase(),
+  );
+  if (!broadcaster) {
+    throw new Error(
+      `Broadcaster "${broadcasterLogin}" is not configured. ` +
+        `Choose one of: ${file.broadcasters.map(({ login }) => login).join(', ')}`,
+    );
+  }
+  return {
+    label: 'broadcaster',
+    login: broadcaster.login,
+    tokenStorePath: broadcaster.tokenStorePath,
+    scopes: [],
+  };
 }
 
 main().catch((err: unknown) => {

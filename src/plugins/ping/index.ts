@@ -14,7 +14,7 @@ const plugin: Plugin = {
       allow: ['broadcaster', 'moderator', 'vip', 'subscriber'],
       description: 'Replies "pong!" to broadcaster/mods/VIPs/subscribers.',
       handler: async (event, ctx) => {
-        await ctx.say('pong!', event.messageId);
+        await ctx.say('pong!', event.messageId, event.broadcasterId);
       },
     });
   },

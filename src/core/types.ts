@@ -79,8 +79,12 @@ export interface CommandDefinition {
 /** Per-plugin configuration block from config.yaml (`plugins.config.<name>`). */
 export type PluginConfig = Record<string, unknown>;
 
-/** Sends a message to the bot's channel; optionally as a reply to `replyToId`. */
-export type MessageSender = (text: string, replyToId?: string) => Promise<void>;
+/** Sends a message to a channel; optionally as a reply to `replyToId`. */
+export type MessageSender = (
+  text: string,
+  replyToId?: string,
+  broadcasterId?: string,
+) => Promise<void>;
 
 /** The facade handed to each plugin's `init`. The only surface plugins touch. */
 export interface BotContext {
@@ -88,8 +92,8 @@ export interface BotContext {
   readonly config: PluginConfig;
   /** Logger scoped to this plugin. */
   readonly logger: Logger;
-  /** Post a message to the channel (optionally replying to a message id). */
-  say(text: string, replyToId?: string): Promise<void>;
+  /** Post a message to a channel (optionally replying to a message id). */
+  say(text: string, replyToId?: string, broadcasterId?: string): Promise<void>;
   /** Register a chat command. */
   command(def: CommandDefinition): void;
   /** Subscribe to a bot event. */

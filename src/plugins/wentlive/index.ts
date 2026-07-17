@@ -46,7 +46,7 @@ const plugin: Plugin = {
         format,
       );
       ctx.logger.info({ message }, 'stream went live, announcing');
-      await ctx.say(message);
+      await ctx.say(message, undefined, event.broadcasterId);
     });
   },
 };
