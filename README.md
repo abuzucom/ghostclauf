@@ -81,6 +81,18 @@ npm install
 npm run build
 ```
 
+### Windows one-click setup
+
+1. Double-click `setup.bat` in the project folder.
+2. Edit `.env` and `config.yaml` with your Twitch application and account details.
+3. Double-click `setup.bat` again and accept the one-time bot authorization prompt.
+4. Open the authorization URL, approve it while logged in as the bot account, then close the browser tab.
+5. Double-click `run.bat` to start the bot.
+
+The setup script does not overwrite existing `.env` or `config.yaml` files. The
+run script starts the already-built bot and keeps its window open if the bot
+stops.
+
 **Authorize the bot (one time).** Log into Twitch as the **bot account**, then:
 
 ```bash
