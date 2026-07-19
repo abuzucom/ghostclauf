@@ -1,7 +1,9 @@
 // Reports which configured accounts (bot, broadcasters) still have
-// config.example.yaml placeholder logins, or have no token store yet, so
-// run.bat can fix config.yaml and authorize automatically instead of
-// crashing at runtime with "broadcaster ... not found on Twitch".
+// config.example.yaml placeholder logins, have no token store yet, or - for
+// the bot - have a token missing a required scope, so run.bat can fix
+// config.yaml and (re-)authorize automatically instead of crashing at
+// runtime with "broadcaster ... not found on Twitch" or a scope error from
+// the Helix API.
 //
 // Output: one line per issue, machine-parsed by run.bat -
 //   PLACEHOLDER LOGIN
@@ -10,16 +12,20 @@
 // PLACEHOLDER LOGIN is reported at most once and takes priority: run.bat
 // resolves it (via configureAccounts) before re-checking for missing tokens,
 // since a placeholder login means the token check below can't be trusted yet.
+// MISSING BOT also covers "bot token exists but is missing a required scope"
+// - the fix is the same either way: re-run `npm run auth -- --bot`, which
+// overwrites the existing token store on success.
 // A thrown error (invalid .env / config.yaml) exits non-zero with the message
 // on stderr, distinct from "config is fine, just needs logins or tokens".
 
 import 'dotenv/config';
 import { existsSync } from 'node:fs';
+import { BOT_SCOPES, readTokenStore } from '../core/auth.js';
 import { loadFileConfig, loadSecrets } from '../core/config.js';
 
 const PLACEHOLDER_LOGIN = /^your[_-].*login$/i;
 
-function main(): void {
+async function main(): Promise<void> {
   const file = loadFileConfig();
   const secrets = loadSecrets();
 
@@ -31,7 +37,7 @@ function main(): void {
     return;
   }
 
-  if (!existsSync(secrets.tokenStorePath)) {
+  if (await botTokenNeedsReauth(secrets.tokenStorePath)) {
     console.log('MISSING BOT');
   }
   for (const broadcaster of file.broadcasters) {
@@ -41,4 +47,17 @@ function main(): void {
   }
 }
 
-main();
+async function botTokenNeedsReauth(tokenStorePath: string): Promise<boolean> {
+  if (!existsSync(tokenStorePath)) return true;
+  try {
+    const token = await readTokenStore(tokenStorePath);
+    return !BOT_SCOPES.every((scope) => token.scope.includes(scope));
+  } catch {
+    return true;
+  }
+}
+
+main().catch((err: unknown) => {
+  console.error(err instanceof Error ? err.message : err);
+  process.exit(1);
+});
