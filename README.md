@@ -90,14 +90,14 @@ npm run auth -- --broadcaster second_streamer_login
 
 1. Double-click `setup.bat` in the project folder.
 2. Edit `.env` and `config.yaml` with your Twitch application and account details.
-3. Double-click `setup.bat` again and start the OAuth setup when prompted.
-4. Approve the bot authorization while logged in as the bot account.
-5. Approve each broadcaster authorization while logged into that broadcaster account.
-6. Double-click `run.bat` to start the bot.
+3. Double-click `run.bat` to start the bot.
 
-The setup script does not overwrite existing `.env` or `config.yaml` files. The
-run script starts the already-built bot and keeps its window open if the bot
-stops.
+The setup script does not overwrite existing `.env` or `config.yaml` files, and
+does not require completing OAuth up front. `run.bat` checks which configured
+accounts (bot, each broadcaster) still need authorization, opens the OAuth
+flow for each one automatically, then starts the bot — no manual `npm run
+auth` commands. Once every account is authorized, later runs skip straight to
+starting the bot, and it keeps its window open if the bot stops.
 
 **Authorize accounts.** Log into Twitch as the account being authorized, then run
 the matching command:
