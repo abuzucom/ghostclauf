@@ -107,6 +107,10 @@ first time it runs:
   authorized, later runs skip straight to starting the bot, and it keeps its
   window open if the bot stops.
 
+Every run of `run.bat` also rebuilds (`npm run build`) before starting, so
+`git pull`-ing an update and double-clicking `run.bat` is enough - you never
+need to manually rebuild before it picks up new code.
+
 **Authorize accounts.** Log into Twitch as the account being authorized, then run
 the matching command:
 
