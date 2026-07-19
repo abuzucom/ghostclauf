@@ -48,49 +48,22 @@ findstr /C:"your-app-client-id" ".env" >nul 2>&1
 if not errorlevel 1 set "NEEDS_CONFIG=1"
 findstr /C:"your-app-client-secret" ".env" >nul 2>&1
 if not errorlevel 1 set "NEEDS_CONFIG=1"
-findstr /C:"your_streamer_login" "config.yaml" >nul 2>&1
-if not errorlevel 1 set "NEEDS_CONFIG=1"
-findstr /C:"your_first_streamer_login" "config.yaml" >nul 2>&1
-if not errorlevel 1 set "NEEDS_CONFIG=1"
-findstr /C:"your_second_streamer_login" "config.yaml" >nul 2>&1
-if not errorlevel 1 set "NEEDS_CONFIG=1"
-findstr /C:"your_bot_login" "config.yaml" >nul 2>&1
-if not errorlevel 1 set "NEEDS_CONFIG=1"
 
 if defined NEEDS_CONFIG (
     echo.
     echo Setup is almost complete.
-    echo Edit .env and config.yaml with your Twitch application and account details.
-    echo Run setup.bat again after saving them to start bot authorization.
+    echo Edit .env with your Twitch application's Client ID and Client Secret
+    echo ^(register one at https://dev.twitch.tv/console/apps^).
+    echo Run setup.bat again after saving it.
     goto :complete
 )
-
-echo.
-choice /C YN /N /M "Start OAuth setup for the bot and both broadcasters now? [Y/N] "
-if errorlevel 2 goto :complete
-
-echo.
-echo Authorize the bot account first.
-call npm run auth -- --bot
-if errorlevel 1 goto :failed
-
-echo.
-set "BROADCASTER_ONE_LOGIN="
-set /P "BROADCASTER_ONE_LOGIN=Enter the first configured broadcaster login: "
-if not defined BROADCASTER_ONE_LOGIN goto :missing_broadcaster_login
-call npm run auth -- --broadcaster "!BROADCASTER_ONE_LOGIN!"
-if errorlevel 1 goto :failed
-
-echo.
-set "BROADCASTER_TWO_LOGIN="
-set /P "BROADCASTER_TWO_LOGIN=Enter the second configured broadcaster login: "
-if not defined BROADCASTER_TWO_LOGIN goto :missing_broadcaster_login
-call npm run auth -- --broadcaster "!BROADCASTER_TWO_LOGIN!"
-if errorlevel 1 goto :failed
 
 :complete
 echo.
 echo Setup complete. Double-click run.bat to start ghostclauf.
+echo The first time it runs, run.bat will ask for your bot and broadcaster
+echo Twitch logins, save them to config.yaml, and walk you through
+echo authorizing each account. After that, it just starts the bot.
 echo.
 pause
 exit /b 0
@@ -109,10 +82,6 @@ goto :failed
 
 :missing_project
 echo This file must be in the ghostclauf project folder.
-goto :failed
-
-:missing_broadcaster_login
-echo Both configured broadcaster logins are required for OAuth setup.
 goto :failed
 
 :failed

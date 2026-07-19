@@ -23,11 +23,27 @@ if not exist ".env" goto :missing_setup
 if not exist "config.yaml" goto :missing_setup
 if not exist "dist\index.js" goto :missing_setup
 if not exist "dist\tools\checkTokens.js" goto :missing_setup
+if not exist "dist\tools\configureAccounts.js" goto :missing_setup
 if not exist "node_modules" goto :missing_setup
 
 set "TOKEN_CHECK_FILE=%TEMP%\ghostclauf-token-check-%RANDOM%.txt"
 node dist\tools\checkTokens.js >"%TOKEN_CHECK_FILE%" 2>&1
 if errorlevel 1 goto :bad_config
+
+findstr /B /C:"PLACEHOLDER LOGIN" "%TOKEN_CHECK_FILE%" >nul
+if not errorlevel 1 (
+    echo.
+    echo config.yaml still has placeholder Twitch logins from config.example.yaml.
+    echo Enter the real ones now - this is saved to config.yaml so you won't be asked again.
+    echo.
+    node dist\tools\configureAccounts.js
+    if errorlevel 1 (
+        del "%TOKEN_CHECK_FILE%" >nul 2>&1
+        goto :failed
+    )
+    node dist\tools\checkTokens.js >"%TOKEN_CHECK_FILE%" 2>&1
+    if errorlevel 1 goto :bad_config
+)
 
 for /f "usebackq delims=" %%L in ("%TOKEN_CHECK_FILE%") do call :authorize_if_missing "%%L"
 del "%TOKEN_CHECK_FILE%" >nul 2>&1
