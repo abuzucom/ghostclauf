@@ -100,8 +100,9 @@ first time it runs:
 - If `config.yaml` still has the `config.example.yaml` placeholder logins,
   `run.bat` prompts for the real bot and broadcaster Twitch logins and saves
   them into `config.yaml` (comments and formatting preserved).
-- It then checks which of those accounts still need authorization and opens
-  the OAuth flow for each one automatically.
+- It then checks which of those accounts still need authorization - including
+  the bot token existing but missing a required scope (e.g. `user:write:chat`)
+  - and opens the OAuth flow for each one automatically.
 - No manual `npm run auth` commands. Once every account is configured and
   authorized, later runs skip straight to starting the bot, and it keeps its
   window open if the bot stops.
