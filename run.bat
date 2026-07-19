@@ -21,10 +21,16 @@ if errorlevel 1 goto :old_node
 
 if not exist ".env" goto :missing_setup
 if not exist "config.yaml" goto :missing_setup
-if not exist "dist\index.js" goto :missing_setup
-if not exist "dist\tools\checkTokens.js" goto :missing_setup
-if not exist "dist\tools\configureAccounts.js" goto :missing_setup
 if not exist "node_modules" goto :missing_setup
+
+echo Building ghostclauf...
+call npm run build
+if errorlevel 1 goto :build_failed
+echo.
+
+if not exist "dist\index.js" goto :build_failed
+if not exist "dist\tools\checkTokens.js" goto :build_failed
+if not exist "dist\tools\configureAccounts.js" goto :build_failed
 
 set "TOKEN_CHECK_FILE=%TEMP%\ghostclauf-token-check-%RANDOM%.txt"
 node dist\tools\checkTokens.js >"%TOKEN_CHECK_FILE%" 2>&1
@@ -94,6 +100,13 @@ exit /b 0
 :missing_setup
 echo Setup is incomplete. Double-click setup.bat first.
 echo.
+pause
+exit /b 1
+
+:build_failed
+echo.
+echo Build failed - ghostclauf's compiled code is out of date or broken.
+echo Fix the error above, then double-click run.bat again.
 pause
 exit /b 1
 
