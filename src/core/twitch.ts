@@ -120,10 +120,15 @@ export async function createTwitchTransport(
     if (!broadcasterIds.includes(broadcasterId)) {
       throw new Error(`cannot send to unconfigured broadcaster "${broadcasterId}"`);
     }
-    await api.chat.sendChatMessage(
-      broadcasterId,
-      text,
-      replyToId ? { replyParentMessageId: replyToId } : undefined,
+    // Scope the send to the bot user. Without this, twurple defaults the
+    // sender to the broadcaster, whose token is minted without user:write:chat
+    // (see authFlow resolveAuthTarget), so the Helix call throws a scope error.
+    await api.asUser(botUserId, (ctx) =>
+      ctx.chat.sendChatMessage(
+        broadcasterId,
+        text,
+        replyToId ? { replyParentMessageId: replyToId } : undefined,
+      ),
     );
   };
 
