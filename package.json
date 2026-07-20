@@ -1,6 +1,6 @@
 {
   "name": "ghostclauf",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Lightweight, extensible chat bot. First deployment: Twitch.",
   "type": "module",
   "engines": {
@@ -23,11 +23,13 @@
     "@twurple/auth": "^7.2.0",
     "@twurple/eventsub-ws": "^7.2.0",
     "dotenv": "^16.4.5",
+    "luxon": "3.7.2",
     "pino": "^9.5.0",
     "yaml": "^2.6.0",
     "zod": "^3.23.8"
   },
   "devDependencies": {
+    "@types/luxon": "3.7.2",
     "@types/node": "^22.9.0",
     "pino-pretty": "^13.0.0",
     "tsx": "^4.19.2",

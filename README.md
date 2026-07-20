@@ -14,9 +14,39 @@ The design borrows the *spirit* of [eggdrop](https://github.com/eggheads/eggdrop
   VIP, or a subscriber** types `!ping`. Non-privileged viewers are ignored.
 - **Going-live announcement** — when the stream goes live, posts
   `<streamer> has gone live at <UTC timestamp>` (template configurable).
+- **Attendance / watch streaks** — viewers `!checkin` while live to build a
+  streak of consecutive stream days attended (see below).
 
-Both are shipped as plugins (`src/plugins/ping`, `src/plugins/wentlive`) and are
-the reference examples for writing your own.
+The first two are shipped as plugins (`src/plugins/ping`, `src/plugins/wentlive`)
+and are the reference examples for writing your own; `src/plugins/streak` is the
+larger worked example.
+
+## Attendance / watch streaks (`streak` plugin)
+
+Tracks regular viewers with a chat check-in. A streak counts **consecutive
+stream days** a viewer checked in: only calendar days on which the stream was
+live count, so off-days are skipped rather than breaking a streak; missing a
+check-in on a day the stream *was* live resets the streak to 1.
+
+A day is marked "live" by the `stream.online` event. If the bot starts *after*
+the stream already went live (so it missed that event), a broadcaster or
+moderator can run `!streakopen` to open check-in for the day. Set
+`requireStreamDay: false` to instead count any day a viewer checks in.
+
+Commands (trigger words configurable):
+
+| Command | Who | Effect |
+| ------- | --- | ------ |
+| `!checkin` | everyone | Record attendance for today and extend the streak. |
+| `!streak` | everyone | Show your streak; `!streak @user` looks up another viewer. |
+| `!streakreset @user` | broadcaster / mod | Reset a viewer's streak to 0. |
+| `!streakset @user <n>` | broadcaster / mod | Set a viewer's streak to a value. |
+| `!streakopen` | broadcaster / mod | Mark today a stream day if `stream.online` was missed. |
+
+State persists to `dataPath` (default `./data/streaks.json`). Day boundaries use
+the configured `timezone` (IANA name, default `UTC`). A channel-point redeem is
+planned; when added it will reuse the same check-in path. See
+[`config.example.yaml`](config.example.yaml) for all options.
 
 ## How it talks to Twitch
 
