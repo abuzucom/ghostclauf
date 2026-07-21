@@ -26,8 +26,12 @@ function isStreakData(value: unknown): value is StreakData {
 
 export class StreakStore {
   private data: StreakData = emptyData();
-  /** Serializes disk writes so concurrent persists never interleave. */
+  /** Serializes disk writes so they can never overlap. */
   private saveChain: Promise<void> = Promise.resolve();
+  /** The scheduled-but-not-yet-started write; concurrent callers share it. */
+  private pendingWrite: Promise<void> | null = null;
+  /** Makes each temp filename unique so writes can never share one. */
+  private writeSeq = 0;
 
   constructor(
     private readonly dataPath: string,
@@ -167,18 +171,32 @@ export class StreakStore {
     await this.persist();
   }
 
-  /** Snapshot current state and queue an atomic write behind any in-flight one. */
+  /**
+   * Write current state to disk. Every write is chained on `saveChain`, so
+   * two writes can never overlap. Coalescing: while a write is scheduled but
+   * not yet started, all callers share it, so a burst of N mutations costs at
+   * most two full-file writes instead of N. State is snapshotted when a write
+   * starts, so an awaited persist always covers the caller's mutation.
+   */
   private persist(): Promise<void> {
-    const json = JSON.stringify(this.data, null, 2);
-    const write = this.saveChain.then(() => this.writeAtomic(json));
-    // Keep the chain alive even if a write fails; surface the error to this caller.
+    if (this.pendingWrite) return this.pendingWrite;
+    const write = this.saveChain.then(() => {
+      this.pendingWrite = null;
+      return this.writeAtomic(JSON.stringify(this.data, null, 2));
+    });
+    this.pendingWrite = write;
+    // Keep the chain alive even if a write fails; the error still surfaces
+    // to every caller awaiting `write`.
     this.saveChain = write.catch(() => {});
     return write;
   }
 
   private async writeAtomic(json: string): Promise<void> {
     await mkdir(dirname(this.dataPath), { recursive: true });
-    const tempPath = `${this.dataPath}.tmp`;
+    // Unique per write, so even a scheduling bug cannot interleave two
+    // writes in one temp file.
+    this.writeSeq += 1;
+    const tempPath = `${this.dataPath}.${this.writeSeq}.tmp`;
     await writeFile(tempPath, json, 'utf8');
     await rename(tempPath, this.dataPath);
   }

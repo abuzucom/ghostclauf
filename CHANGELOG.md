@@ -5,6 +5,24 @@ All notable changes to this project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.0] - 2026-07-21
+
+### Added
+
+- `streak` plugin: per-chatter `!checkin` cooldown (`checkinCooldownSeconds`,
+  default 10). Repeat attempts inside the window are silently ignored so chat
+  floods cannot hammer the persistence layer. Set `0` to disable.
+
+### Changed
+
+- `streak` plugin: `!streakset` is now broadcaster only (previously
+  broadcaster or moderator), matching `!streakreset`.
+- `streak` plugin: disk persistence now coalesces concurrent writes (at most
+  one in flight and one queued), so a burst of check-ins costs at most two
+  full-file writes instead of one per check-in. Writes stay strictly
+  serialized on a single chain and each uses a unique temp filename, so
+  overlapping writes can never corrupt the data file.
+
 ## [0.3.1] - 2026-07-21
 
 ### Changed

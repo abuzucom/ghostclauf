@@ -24,6 +24,7 @@ interface ResolvedConfig {
   requireStreamDay: boolean;
   shareAcrossChannels: boolean;
   streamSessionHours: number;
+  checkinCooldownSeconds: number;
   triggers: StreakTriggers;
   messages: StreakMessages;
 }
@@ -36,6 +37,26 @@ const STREAK_VALUE_PATTERN = /^\d{1,6}$/;
 const SHARED_SCOPE_KEY = 'shared';
 const MIN_SESSION_HOURS = 1;
 const MAX_SESSION_HOURS = 72;
+const DEFAULT_CHECKIN_COOLDOWN_SECONDS = 10;
+const MAX_CHECKIN_COOLDOWN_SECONDS = 3600;
+/** Bound on the in-memory cooldown map before expired entries are pruned. */
+const COOLDOWN_ENTRY_LIMIT = 10_000;
+const MS_PER_SECOND = 1000;
+
+/** Validate an optional integer config value within [min, max], else fall back. */
+function resolveBoundedInt(
+  configured: number | undefined,
+  min: number,
+  max: number,
+  fallback: number,
+  name: string,
+  logger: Logger,
+): number {
+  if (configured === undefined) return fallback;
+  if (Number.isInteger(configured) && configured >= min && configured <= max) return configured;
+  logger.warn({ configured }, `invalid streak ${name}; falling back to default`);
+  return fallback;
+}
 
 function resolveConfig(raw: StreakConfig, logger: Logger): ResolvedConfig {
   const configuredTz = raw.timezone ?? DEFAULT_TIMEZONE;
@@ -43,21 +64,27 @@ function resolveConfig(raw: StreakConfig, logger: Logger): ResolvedConfig {
   if (timezone !== configuredTz) {
     logger.warn({ configuredTz }, 'invalid streak timezone; falling back to UTC');
   }
-  const configuredSessionHours = raw.streamSessionHours ?? DEFAULT_STREAM_SESSION_HOURS;
-  const validSessionHours =
-    Number.isInteger(configuredSessionHours) &&
-    configuredSessionHours >= MIN_SESSION_HOURS &&
-    configuredSessionHours <= MAX_SESSION_HOURS;
-  const streamSessionHours = validSessionHours ? configuredSessionHours : DEFAULT_STREAM_SESSION_HOURS;
-  if (!validSessionHours) {
-    logger.warn({ configuredSessionHours }, 'invalid streak streamSessionHours; falling back to default');
-  }
   return {
     dataPath: raw.dataPath ?? DEFAULT_DATA_PATH,
     timezone,
     requireStreamDay: raw.requireStreamDay ?? true,
     shareAcrossChannels: raw.shareAcrossChannels ?? true,
-    streamSessionHours,
+    streamSessionHours: resolveBoundedInt(
+      raw.streamSessionHours,
+      MIN_SESSION_HOURS,
+      MAX_SESSION_HOURS,
+      DEFAULT_STREAM_SESSION_HOURS,
+      'streamSessionHours',
+      logger,
+    ),
+    checkinCooldownSeconds: resolveBoundedInt(
+      raw.checkinCooldownSeconds,
+      0,
+      MAX_CHECKIN_COOLDOWN_SECONDS,
+      DEFAULT_CHECKIN_COOLDOWN_SECONDS,
+      'checkinCooldownSeconds',
+      logger,
+    ),
     triggers: { ...DEFAULT_TRIGGERS, ...raw.triggers },
     messages: { ...DEFAULT_MESSAGES, ...raw.messages },
   };
@@ -100,10 +127,44 @@ async function ensureOpen(
   return true;
 }
 
+/** Drop expired cooldown entries so the map stays bounded under chatter churn. */
+function pruneExpiredCooldowns(lastHandledAtMs: Map<string, number>, cutoffMs: number): void {
+  for (const [key, at] of [...lastHandledAtMs]) {
+    if (at < cutoffMs) lastHandledAtMs.delete(key);
+  }
+}
+
+/**
+ * True if this chatter checked in within the cooldown window; otherwise
+ * records the attempt. Throttled invocations are dropped silently so the bot
+ * does not amplify a chat flood.
+ */
+function shouldThrottleCheckin(
+  lastHandledAtMs: Map<string, number>,
+  key: string,
+  nowMs: number,
+  cooldownMs: number,
+): boolean {
+  if (cooldownMs <= 0) return false;
+  const last = lastHandledAtMs.get(key);
+  if (last !== undefined && nowMs - last < cooldownMs) return true;
+  if (lastHandledAtMs.size >= COOLDOWN_ENTRY_LIMIT) {
+    pruneExpiredCooldowns(lastHandledAtMs, nowMs - cooldownMs);
+  }
+  lastHandledAtMs.set(key, nowMs);
+  return false;
+}
+
 function checkinHandler(store: StreakStore, cfg: ResolvedConfig, now: () => Date): CommandHandler {
+  const lastHandledAtMs = new Map<string, number>();
+  const cooldownMs = cfg.checkinCooldownSeconds * MS_PER_SECOND;
   return async (event, ctx) => {
     const scope = scopeKey(cfg, event.broadcasterId);
     const nowInstant = now();
+    const cooldownKey = `${scope}:${event.chatterId}`;
+    if (shouldThrottleCheckin(lastHandledAtMs, cooldownKey, nowInstant.getTime(), cooldownMs)) {
+      return;
+    }
     const activeStart = store.activeStreamStartedAt(scope);
     const today = resolveCheckinDay(nowInstant, activeStart, cfg.timezone, cfg.streamSessionHours);
     const open = await ensureOpen(store, cfg, scope, today, nowInstant);
@@ -255,8 +316,8 @@ export function createStreakPlugin(now: () => Date = () => new Date()): Plugin {
       });
       ctx.command({
         trigger: cfg.triggers.set,
-        allow: ['broadcaster', 'moderator'],
-        description: "Set a viewer's streak to a specific value.",
+        allow: ['broadcaster'],
+        description: "Set a viewer's streak to a specific value. Broadcaster only.",
         handler: setHandler(store, cfg),
       });
       ctx.command({

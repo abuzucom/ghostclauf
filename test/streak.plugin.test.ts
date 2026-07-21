@@ -108,6 +108,74 @@ describe('streak plugin', () => {
     expect(say.mock.calls[0][0]).toContain('your streak is 0');
   });
 
+  it('silently ignores repeat check-ins within the cooldown window', async () => {
+    let current = new Date('2026-07-20T20:00:00.000Z');
+    const plugin = createStreakPlugin(() => current);
+    const { ctx, bus, say, registry } = harness();
+    await plugin.init(ctx);
+    bus.emit('streamOnline', onlineNow('1', current));
+    await flush();
+
+    await registry.handle(makeMessage('!checkin', ['everyone']));
+    expect(say).toHaveBeenCalledTimes(1);
+
+    // Within the default 10s cooldown: no reply, no store call.
+    current = new Date(current.getTime() + 5_000);
+    await registry.handle(makeMessage('!checkin', ['everyone']));
+    expect(say).toHaveBeenCalledTimes(1);
+
+    // A different chatter is not throttled by the first one's cooldown.
+    await registry.handle(
+      makeMessage('!checkin', ['everyone'], {
+        chatterId: '200',
+        chatterName: 'other',
+        chatterDisplayName: 'Other',
+      }),
+    );
+    expect(say).toHaveBeenCalledTimes(2);
+
+    // Past the cooldown the original chatter gets a reply again.
+    current = new Date(current.getTime() + 11_000);
+    await registry.handle(makeMessage('!checkin', ['everyone']));
+    expect(say).toHaveBeenCalledTimes(3);
+    expect(say.mock.calls[2][0]).toContain('already checked in');
+  });
+
+  it('disables the check-in cooldown when checkinCooldownSeconds is 0', async () => {
+    const now = new Date('2026-07-20T20:00:00.000Z');
+    const plugin = createStreakPlugin(() => now);
+    const { ctx, bus, say, registry } = harness({ checkinCooldownSeconds: 0 });
+    await plugin.init(ctx);
+    bus.emit('streamOnline', onlineNow('1', now));
+    await flush();
+
+    await registry.handle(makeMessage('!checkin', ['everyone']));
+    await registry.handle(makeMessage('!checkin', ['everyone']));
+    expect(say).toHaveBeenCalledTimes(2);
+    expect(say.mock.calls[1][0]).toContain('already checked in');
+  });
+
+  it('lets only the broadcaster set a streak, not moderators or plain viewers', async () => {
+    const now = new Date('2026-07-20T20:00:00.000Z');
+    const plugin = createStreakPlugin(() => now);
+    const { ctx, bus, say, registry } = harness();
+    await plugin.init(ctx);
+    bus.emit('streamOnline', onlineNow('1', now));
+    await flush();
+    await registry.handle(makeMessage('!checkin', ['everyone']));
+    say.mockClear();
+
+    await registry.handle(makeMessage('!streakset @viewer 5', ['everyone']));
+    expect(say).not.toHaveBeenCalled();
+
+    await registry.handle(makeMessage('!streakset @viewer 5', ['everyone', 'moderator']));
+    expect(say).not.toHaveBeenCalled();
+
+    await registry.handle(makeMessage('!streakset @viewer 5', ['everyone', 'broadcaster']));
+    expect(say).toHaveBeenCalledTimes(1);
+    expect(say.mock.calls[0][0]).toContain('Set');
+  });
+
   it('counts a post-midnight check-in toward the overnight stream that started it', async () => {
     const startedAt = new Date('2026-07-20T23:00:00.000Z'); // 11PM
     const checkinNow = new Date('2026-07-21T01:00:00.000Z'); // 1AM, 2 hours later
@@ -145,17 +213,19 @@ describe('streak plugin', () => {
   });
 
   it('shares a streak across channels by default', async () => {
-    const now = new Date('2026-07-20T20:00:00.000Z');
-    const plugin = createStreakPlugin(() => now);
+    let current = new Date('2026-07-20T20:00:00.000Z');
+    const plugin = createStreakPlugin(() => current);
     const { ctx, bus, say, registry } = harness();
     await plugin.init(ctx);
-    bus.emit('streamOnline', onlineNow('1', now));
+    bus.emit('streamOnline', onlineNow('1', current));
     await flush();
 
     await registry.handle(makeMessage('!checkin', ['everyone'], { broadcasterId: '1' }));
     expect(say.mock.calls[0][0]).toContain('Streak started');
 
     say.mockClear();
+    // Past the cooldown so the same chatter's second check-in is handled.
+    current = new Date(current.getTime() + 11_000);
     // Channel '2' never went live, but the shared pool is already open via channel '1'.
     await registry.handle(makeMessage('!checkin', ['everyone'], { broadcasterId: '2' }));
     expect(say.mock.calls[0][0]).toContain('already checked in');
