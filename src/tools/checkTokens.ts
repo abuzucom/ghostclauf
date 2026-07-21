@@ -1,20 +1,17 @@
 // Reports which configured accounts (bot, broadcasters) still have
-// config.example.yaml placeholder logins, have no token store yet, or have
-// a token missing a required scope, so run.bat can fix
-// config.yaml and (re-)authorize automatically instead of crashing at
-// runtime with "broadcaster ... not found on Twitch" or a scope error from
-// the Helix API.
+// config.example.yaml placeholder logins, have no token store yet, or have a
+// token missing a required scope - so run.bat can fix config.yaml and
+// (re-)authorize automatically instead of crashing at runtime.
 //
-// Output: one line per issue, machine-parsed by run.bat -
+// Output: one line per issue, machine-parsed by run.bat:
 //   PLACEHOLDER LOGIN
 //   MISSING BOT
 //   MISSING BROADCASTER <login>
 // PLACEHOLDER LOGIN is reported at most once and takes priority: run.bat
-// resolves it (via configureAccounts) before re-checking for missing tokens,
-// since a placeholder login means the token check below can't be trusted yet.
-// MISSING BOT also covers "bot token exists but is missing a required scope"
-// - the fix is the same either way: re-run `npm run auth -- --bot`, which
-// overwrites the existing token store on success.
+// resolves it (via configureAccounts) before re-checking for missing tokens.
+// MISSING BOT covers "bot token exists but is missing a required scope" - the
+// fix is the same: re-run `npm run auth -- --bot`, which overwrites the store.
+// MISSING BROADCASTER covers "token absent OR missing a required scope".
 // A thrown error (invalid .env / config.yaml) exits non-zero with the message
 // on stderr, distinct from "config is fine, just needs logins or tokens".
 
@@ -41,7 +38,7 @@ async function main(): Promise<void> {
     console.log('MISSING BOT');
   }
   for (const broadcaster of file.broadcasters) {
-    if (await tokenNeedsReauth(broadcaster.tokenStorePath, BROADCASTER_SCOPES)) {
+    if (await broadcasterTokenNeedsReauth(broadcaster.tokenStorePath)) {
       console.log(`MISSING BROADCASTER ${broadcaster.login}`);
     }
   }
@@ -60,6 +57,17 @@ async function tokenNeedsReauth(
   try {
     const token = await readTokenStore(tokenStorePath);
     return !requiredScopes.every((scope) => token.scope.includes(scope));
+  } catch {
+    return true;
+  }
+}
+
+/** True if the broadcaster token is absent or missing any required scope. */
+async function broadcasterTokenNeedsReauth(tokenStorePath: string): Promise<boolean> {
+  if (!existsSync(tokenStorePath)) return true;
+  try {
+    const token = await readTokenStore(tokenStorePath);
+    return !BROADCASTER_SCOPES.every((scope) => token.scope.includes(scope));
   } catch {
     return true;
   }

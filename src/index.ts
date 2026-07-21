@@ -6,7 +6,7 @@ import { EventBus } from './core/eventBus.js';
 import { createLogger } from './core/logger.js';
 import { PluginManager } from './core/pluginManager.js';
 import { createTwitchTransport } from './core/twitch.js';
-import type { HelixLookup, MessageSender } from './core/types.js';
+import type { HelixClient, MessageSender } from './core/types.js';
 
 async function main(): Promise<void> {
   const logger = createLogger();
@@ -30,26 +30,35 @@ async function main(): Promise<void> {
   const registry = new CommandRegistry(file.chat.commandPrefix, logger);
   const bus = new EventBus(logger);
 
-  // The message sender comes from the transport, which is built after plugins.
-  // Plugins only invoke it at runtime, so a late-bound reference is safe.
+  // The message sender and Helix client come from the transport, which is built
+  // after plugins. Plugins only invoke them at runtime, so late-bound references
+  // are safe - same pattern already used for the sender.
   let sender: MessageSender = async () => {
     throw new Error('message sender not ready yet');
   };
   const senderRef: MessageSender = (text, replyToId, broadcasterId) =>
     sender(text, replyToId, broadcasterId);
 
-  // Same late-bind for Helix lookups; plugins only call them at runtime.
-  let helix: HelixLookup = {
-    getUserByLogin: async () => {
-      throw new Error('helix lookup not ready yet');
+  let helixImpl: HelixClient | undefined;
+  const helixRef: HelixClient = {
+    getFollowAge: (...args) => {
+      if (!helixImpl) throw new Error('helix client not ready yet');
+      if (!helixImpl.getFollowAge) throw new Error('legacy followage lookup is not available');
+      return helixImpl.getFollowAge(...args);
     },
-    getFollowage: async () => {
-      throw new Error('helix lookup not ready yet');
+    getFollowage: (...args) => {
+      if (!helixImpl) throw new Error('helix client not ready yet');
+      if (!helixImpl.getFollowage) throw new Error('followage lookup is not available');
+      return helixImpl.getFollowage(...args);
     },
-  };
-  const helixRef: HelixLookup = {
-    getUserByLogin: (login) => helix.getUserByLogin(login),
-    getFollowage: (broadcasterId, userId) => helix.getFollowage(broadcasterId, userId),
+    getUserByLogin: (...args) => {
+      if (!helixImpl) throw new Error('helix client not ready yet');
+      return helixImpl.getUserByLogin(...args);
+    },
+    sendShoutout: (...args) => {
+      if (!helixImpl) throw new Error('helix client not ready yet');
+      return helixImpl.sendShoutout(...args);
+    },
   };
 
   // Discover and initialize plugins (they register commands / event listeners).
@@ -84,7 +93,7 @@ async function main(): Promise<void> {
     },
   });
   sender = transport.sender;
-  helix = transport.helix;
+  helixImpl = transport.helix;
 
   await transport.start();
   logger.info(

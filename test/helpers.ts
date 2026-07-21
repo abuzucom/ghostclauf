@@ -5,6 +5,7 @@ import { createLogger } from '../src/core/logger.js';
 import type {
   BotContext,
   ChatMessageEvent,
+  HelixClient,
   HelixLookup,
   PluginConfig,
   Role,
@@ -33,15 +34,14 @@ export function makeMessage(
   };
 }
 
-/** Helix stub that fails loudly unless a test injects its own fake. */
-export function stubHelix(): HelixLookup {
+export function stubHelix(
+  override: Partial<HelixClient> | HelixLookup = {},
+): HelixClient {
   return {
-    getUserByLogin: async () => {
-      throw new Error('helix not stubbed in this test');
-    },
-    getFollowage: async () => {
-      throw new Error('helix not stubbed in this test');
-    },
+    getFollowAge: vi.fn().mockResolvedValue(null),
+    getUserByLogin: vi.fn().mockResolvedValue(null),
+    sendShoutout: vi.fn().mockResolvedValue(undefined),
+    ...override,
   };
 }
 
@@ -49,16 +49,18 @@ export function stubHelix(): HelixLookup {
 export function makeHarness(
   pluginName: string,
   config: PluginConfig = {},
-  helix: HelixLookup = stubHelix(),
+  helixOverride: Partial<HelixClient> | HelixClient | HelixLookup = {},
 ): {
   registry: CommandRegistry;
   bus: EventBus;
   say: ReturnType<typeof spySender>;
   ctx: BotContext;
+  helix: HelixClient;
 } {
   const registry = new CommandRegistry('!', testLogger);
   const bus = new EventBus(testLogger);
   const say = spySender();
+  const helix = stubHelix(helixOverride);
   const ctx = createContext({
     pluginName,
     config,
@@ -68,7 +70,7 @@ export function makeHarness(
     sender: say,
     helix,
   });
-  return { registry, bus, say, ctx };
+  return { registry, bus, say, ctx, helix };
 }
 
 /** Wait for queued microtasks/timers so async event handlers can run. */

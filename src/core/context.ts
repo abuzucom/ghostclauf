@@ -1,12 +1,6 @@
 import type { CommandRegistry } from './commands.js';
 import type { EventBus } from './eventBus.js';
-import type {
-  BotContext,
-  HelixLookup,
-  Logger,
-  MessageSender,
-  PluginConfig,
-} from './types.js';
+import type { BotContext, HelixClient, Logger, MessageSender, PluginConfig } from './types.js';
 
 export interface ContextDeps {
   pluginName: string;
@@ -15,7 +9,7 @@ export interface ContextDeps {
   bus: EventBus;
   registry: CommandRegistry;
   sender: MessageSender;
-  helix: HelixLookup;
+  helix: HelixClient;
 }
 
 /**

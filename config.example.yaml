@@ -30,7 +30,9 @@ plugins:
     - ping
     - wentlive
     - streak
+    - lurk
     - followage
+    - shoutout
 
   # Per-plugin configuration blocks, keyed by plugin name.
   config:
@@ -76,3 +78,20 @@ plugins:
       # Optional: override reply templates. Tokens: {user} {streak} {longest} {day}.
       # messages:
       #   extended: "@{user} checked in! Streak: {streak} days (best {longest})."
+    lurk:
+      messages:
+        lurk: "Thanks for the lurk, @{user}! We see you."
+        already_lurking: "@{user} is already lurking — we definitely see you."
+        unlurk: "Welcome back, @{user}!"
+        unlurk_unknown: "Welcome, @{user}!"
+    followage:
+      messages:
+        following: "@{user} has been following for {duration}."
+        not_following: "@{user} is not following this channel."
+        lookup_following: "@{target} has been following for {duration}."
+        lookup_not_following: "@{target} is not following this channel."
+        lookup_not_found: "Could not find user @{target}."
+    shoutout:
+      template: "Go check out @{display} at twitch.tv/{channel}! They were last seen playing {game}."
+      fallbackGame: "something awesome"
+      sendNativeShoutout: true

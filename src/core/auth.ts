@@ -8,8 +8,13 @@ import type { Logger } from './types.js';
 
 /** Scopes the bot account must grant. See README for broadcaster-side setup. */
 export const BOT_SCOPES = ['user:read:chat', 'user:write:chat', 'user:bot'];
-/** Scopes each broadcaster account must grant (follower lookups). */
-export const BROADCASTER_SCOPES = ['moderator:read:followers'];
+
+/** Scopes each broadcaster account must grant. */
+export const BROADCASTER_SCOPES = [
+  'moderator:read:followers',
+  'moderator:manage:shoutouts',
+];
+
 const TOKEN_STORE_MODE = 0o600;
 
 /**

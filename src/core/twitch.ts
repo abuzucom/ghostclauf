@@ -5,7 +5,8 @@ import { ChatRateLimiter } from './chatRateLimiter.js';
 import { resolveRoles } from './permissions.js';
 import type {
   ChatMessageEvent,
-  HelixLookup,
+  HelixClient,
+  HelixUser,
   Logger,
   MessageSender,
   StreamOnlineEvent,
@@ -34,7 +35,7 @@ export interface TwitchTransport {
   broadcasterId: string;
   broadcasterIds: string[];
   sender: MessageSender;
-  helix: HelixLookup;
+  helix: HelixClient;
   start(): Promise<void>;
   stop(): Promise<void>;
 }
@@ -249,22 +250,42 @@ export async function createTwitchTransport(
     }
   };
 
-  const helix: HelixLookup = {
-    getUserByLogin: async (login) => {
-      const user = await api.users.getUserByName(login);
-      return user ? { id: user.id, displayName: user.displayName } : null;
+  const helix: HelixClient = {
+    async getFollowAge(userId, broadcasterId) {
+      // Requires moderator:read:followers on the broadcaster token.
+      const result = await api.asUser(broadcasterId, (ctx) =>
+        ctx.channels.getChannelFollowers(broadcasterId, userId),
+      );
+      const follower = result?.data[0];
+      if (!follower) return null;
+      return { followedAt: follower.followDate };
     },
-    getFollowage: async (broadcasterId, userId) => {
+
+    async getFollowage(broadcasterId, userId) {
       if (!broadcasterIds.includes(broadcasterId)) {
         throw new Error(`cannot query unconfigured broadcaster "${broadcasterId}"`);
       }
-      // Run under the broadcaster token: Get Channel Followers requires the
-      // broadcaster (or a channel moderator) with moderator:read:followers.
-      const result = await api.asUser(broadcasterId, (userApi) =>
-        userApi.channels.getChannelFollowers(broadcasterId, userId),
+      return helix.getFollowAge!(userId, broadcasterId);
+    },
+
+    async getUserByLogin(login) {
+      const user = await api.users.getUserByName(login);
+      if (!user) return null;
+      const channelInfo = await api.channels.getChannelInfoById(user.id);
+      const helixUser: HelixUser = {
+        id: user.id,
+        login: user.name,
+        displayName: user.displayName,
+        lastGame: channelInfo?.gameName || null,
+      };
+      return helixUser;
+    },
+
+    async sendShoutout(fromBroadcasterId, toBroadcasterId, moderatorId) {
+      // Requires moderator:manage:shoutouts on the broadcaster token.
+      await api.asUser(moderatorId, (ctx) =>
+        ctx.chat.shoutoutUser(fromBroadcasterId, toBroadcasterId),
       );
-      const follower = result.data[0];
-      return follower ? { followedAt: follower.followDate } : null;
     },
   };
 

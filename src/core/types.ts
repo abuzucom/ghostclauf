@@ -90,10 +90,13 @@ export type MessageSender = (
   broadcasterId?: string,
 ) => Promise<void>;
 
-/** A platform user resolved by login. */
+/** A Twitch user summary returned by the Helix facade. */
 export interface HelixUser {
   id: string;
+  login: string;
   displayName: string;
+  /** Last played category name. Null if the channel has no category set. */
+  lastGame?: string | null;
 }
 
 /** Follow relationship details for a user in a channel. */
@@ -103,11 +106,38 @@ export interface FollowInfo {
 }
 
 /**
+ * Narrow Helix API facade exposed to plugins via BotContext.
+ * The real implementation lives in core/twitch.ts; tests inject a stub.
+ */
+export interface HelixClient {
+  /** Resolve a login to a user, or null when it does not exist. */
+  getUserByLogin(login: string): Promise<HelixUser | null>;
+  /** Null if userId is not following broadcasterId. */
+  getFollowAge?(
+    userId: string,
+    broadcasterId: string,
+  ): Promise<FollowInfo | null>;
+  /** Null if userId is not following broadcasterId. */
+  getFollowage?(
+    broadcasterId: string,
+    userId: string,
+  ): Promise<FollowInfo | null>;
+  /**
+   * Issue Twitch's native shoutout.
+   * Requires moderator:manage:shoutouts scope on the broadcaster token.
+   */
+  sendShoutout(
+    fromBroadcasterId: string,
+    toBroadcasterId: string,
+    moderatorId: string,
+  ): Promise<void>;
+}
+
+/**
  * Narrow, transport-agnostic lookup surface backed by the platform API.
  * Kept minimal on purpose: plugins never see the underlying client.
  */
 export interface HelixLookup {
-  /** Resolve a login to a user, or null when it does not exist. */
   getUserByLogin(login: string): Promise<HelixUser | null>;
   /**
    * When `userId` follows `broadcasterId`, or null when not following.
@@ -122,8 +152,8 @@ export interface BotContext {
   readonly config: PluginConfig;
   /** Logger scoped to this plugin. */
   readonly logger: Logger;
-  /** Platform user/follow lookups. */
-  readonly helix: HelixLookup;
+  /** Narrow Helix API client for plugins that need Twitch data lookups. */
+  readonly helix: HelixClient;
   /** Post a message to a channel (optionally replying to a message id). */
   say(text: string, replyToId?: string, broadcasterId?: string): Promise<void>;
   /** Register a chat command. */
