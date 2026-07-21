@@ -1,4 +1,4 @@
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { chmod, mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname } from 'node:path';
 import { RefreshingAuthProvider } from '@twurple/auth';
 import type { AccessToken } from '@twurple/auth';
@@ -7,6 +7,7 @@ import type { Logger } from './types.js';
 
 /** Scopes the bot account must grant. See README for broadcaster-side setup. */
 export const BOT_SCOPES = ['user:read:chat', 'user:write:chat', 'user:bot'];
+const TOKEN_STORE_MODE = 0o600;
 
 /**
  * Build a RefreshingAuthProvider for the bot and broadcaster accounts from
@@ -101,5 +102,9 @@ export async function readTokenStore(
 
 export async function writeTokenStore(path: string, token: AccessToken): Promise<void> {
   await mkdir(dirname(path), { recursive: true });
-  await writeFile(path, JSON.stringify(token, null, 2), 'utf8');
+  await writeFile(path, JSON.stringify(token, null, 2), {
+    encoding: 'utf8',
+    mode: TOKEN_STORE_MODE,
+  });
+  await chmod(path, TOKEN_STORE_MODE);
 }
