@@ -17,6 +17,7 @@ export class ChatRateLimiter {
   private readonly sentAt: number[] = [];
   private active = false;
   private wakeTimer: ReturnType<typeof setTimeout> | undefined;
+  private wakeAt: number | undefined;
   private closed = false;
 
   enqueue<T>(broadcasterId: string, task: () => Promise<T>): Promise<T> {
@@ -41,6 +42,7 @@ export class ChatRateLimiter {
     this.closed = true;
     if (this.wakeTimer !== undefined) clearTimeout(this.wakeTimer);
     this.wakeTimer = undefined;
+    this.wakeAt = undefined;
     const error = new Error('chat rate limiter is stopped');
     for (const item of this.queue.splice(0)) item.reject(error);
   }
@@ -71,6 +73,7 @@ export class ChatRateLimiter {
 
     if (this.wakeTimer !== undefined) clearTimeout(this.wakeTimer);
     this.wakeTimer = undefined;
+    this.wakeAt = undefined;
     const [item] = this.queue.splice(readyIndex, 1);
     if (!item) return;
     this.lastSentAt.set(item.broadcasterId, now);
@@ -90,10 +93,15 @@ export class ChatRateLimiter {
   }
 
   private scheduleWake(timestamp: number): void {
-    if (this.wakeTimer !== undefined) return;
+    if (this.wakeTimer !== undefined && this.wakeAt !== undefined && this.wakeAt <= timestamp) {
+      return;
+    }
+    if (this.wakeTimer !== undefined) clearTimeout(this.wakeTimer);
     const delay = Math.max(0, timestamp - Date.now());
+    this.wakeAt = timestamp;
     this.wakeTimer = setTimeout(() => {
       this.wakeTimer = undefined;
+      this.wakeAt = undefined;
       this.pump();
     }, delay);
   }

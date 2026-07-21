@@ -111,6 +111,34 @@ describe('twitch transport sender', () => {
     warn.mockRestore();
   });
 
+  it('routes a 503 retry through the chat rate limiter', async () => {
+    vi.useFakeTimers();
+    try {
+      const serviceUnavailable = Object.assign(new Error('unavailable'), { statusCode: 503 });
+      sendChatMessageSpy
+        .mockRejectedValueOnce(serviceUnavailable)
+        .mockResolvedValueOnce({ isSent: true, id: 'sent-2' });
+      const transport = await createTwitchTransport({
+        authProvider: dummyAuthProvider,
+        botUserId: 'bot-id',
+        broadcasters: [{ login: 'streamer' }],
+        logger: testLogger,
+        handlers: { onChatMessage: vi.fn(), onStreamOnline: vi.fn() },
+      });
+
+      const sending = transport.sender('retry');
+      await vi.advanceTimersByTimeAsync(0);
+      expect(sendChatMessageSpy).toHaveBeenCalledTimes(1);
+      await vi.advanceTimersByTimeAsync(999);
+      expect(sendChatMessageSpy).toHaveBeenCalledTimes(1);
+      await vi.advanceTimersByTimeAsync(1);
+      await sending;
+      expect(sendChatMessageSpy).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('rejects messages longer than Twitch allows', async () => {
     sendChatMessageSpy.mockClear();
     const transport = await createTwitchTransport({

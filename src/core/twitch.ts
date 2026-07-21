@@ -208,17 +208,15 @@ export async function createTwitchTransport(
     if (characterCount > 500) {
       throw new Error(`Twitch chat messages cannot exceed 500 characters (got ${characterCount})`);
     }
-    await rateLimiter.enqueue(broadcasterId, async () => {
-      try {
+    const sendChatMessage = () =>
+      rateLimiter.enqueue(broadcasterId, async () => {
         // Scope the send to the bot user. Without this, twurple defaults the
         // sender to the broadcaster, whose token lacks user:write:chat.
-        const result = await sendChatMessageWithRetry(() =>
-          api.asUser(botUserId, (ctx) =>
-            ctx.chat.sendChatMessage(
-              broadcasterId,
-              text,
-              replyToId ? { replyParentMessageId: replyToId } : undefined,
-            ),
+        const result = await api.asUser(botUserId, (ctx) =>
+          ctx.chat.sendChatMessage(
+            broadcasterId,
+            text,
+            replyToId ? { replyParentMessageId: replyToId } : undefined,
           ),
         );
         if (!result.isSent) {
@@ -231,19 +229,22 @@ export async function createTwitchTransport(
             'Twitch dropped chat message',
           );
         }
-      } catch (error) {
-        logger.error(
-          {
-            broadcasterId,
-            statusCode: getStatusCode(error),
-            failureType: classifySendFailure(error),
-            err: error,
-          },
-          'Twitch chat send failed',
-        );
-        throw error;
-      }
-    });
+        return result;
+      });
+    try {
+      await sendChatMessageWithRetry(sendChatMessage);
+    } catch (error) {
+      logger.error(
+        {
+          broadcasterId,
+          statusCode: getStatusCode(error),
+          failureType: classifySendFailure(error),
+          err: error,
+        },
+        'Twitch chat send failed',
+      );
+      throw error;
+    }
   };
 
   return {

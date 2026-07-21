@@ -51,6 +51,7 @@ export async function createAuthProvider(
 
   const addToken = async (
     tokenPath: string,
+    account: 'bot' | 'broadcaster',
     intents?: string[],
     loadedToken?: AccessToken,
     authCommand = 'npm run auth -- --bot',
@@ -59,8 +60,6 @@ export async function createAuthProvider(
     if (existingUserId) return existingUserId;
 
     const initialToken = loadedToken ?? (await readTokenStore(tokenPath, authCommand));
-    const account = authCommand.includes('--bot') ? 'bot' : 'broadcaster';
-    validateToken(initialToken, account, [], authCommand);
     pendingTokenPath = tokenPath;
     try {
       let userId: string;
@@ -82,12 +81,13 @@ export async function createAuthProvider(
   };
 
   // `chat` intent marks the bot user as the sender/reader for chat operations.
-  const botUserId = await addToken(secrets.tokenStorePath, ['chat'], botToken);
+  const botUserId = await addToken(secrets.tokenStorePath, 'bot', ['chat'], botToken);
   const broadcasterUserIds: string[] = [];
   for (const broadcaster of broadcasters) {
     broadcasterUserIds.push(
       await addToken(
         broadcaster.tokenStorePath,
+        'broadcaster',
         undefined,
         undefined,
         `npm run auth -- --broadcaster ${broadcaster.login}`,
