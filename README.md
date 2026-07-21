@@ -39,7 +39,7 @@ Commands (trigger words configurable):
 | ------- | --- | ------ |
 | `!checkin` | everyone | Record attendance for today and extend the streak. |
 | `!streak` | everyone | Show your streak; `!streak @user` looks up another viewer. |
-| `!streakreset @user` | broadcaster / mod | Reset a viewer's streak to 0. |
+| `!streakreset @user` | broadcaster only | Reset a viewer's streak to 0. |
 | `!streakset @user <n>` | broadcaster / mod | Set a viewer's streak to a value. |
 | `!streakopen` | broadcaster / mod | Mark today a stream day if `stream.online` was missed. |
 

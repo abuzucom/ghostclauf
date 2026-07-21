@@ -81,7 +81,7 @@ describe('streak plugin', () => {
     expect(say.mock.calls[say.mock.calls.length - 1][0]).toContain('your streak is 1');
   });
 
-  it('lets a broadcaster reset a streak but denies a plain viewer', async () => {
+  it('lets only the broadcaster reset a streak, not moderators or plain viewers', async () => {
     const { ctx, bus, say, registry } = harness();
     await streak.init(ctx);
     bus.emit('streamOnline', onlineNow('1'));
@@ -91,6 +91,10 @@ describe('streak plugin', () => {
 
     // Plain viewer cannot reset - the permission gate blocks the handler.
     await registry.handle(makeMessage('!streakreset @viewer', ['everyone']));
+    expect(say).not.toHaveBeenCalled();
+
+    // Moderators cannot reset either - broadcaster only.
+    await registry.handle(makeMessage('!streakreset @viewer', ['everyone', 'moderator']));
     expect(say).not.toHaveBeenCalled();
 
     // Broadcaster can.
