@@ -23,6 +23,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   serialized on a single chain and each uses a unique temp filename, so
   overlapping writes can never corrupt the data file.
 
+## [0.3.1] - 2026-07-21
+
+### Changed
+
+- Upgrade dev dependency `vitest` from 2.1.9 to 3.2.7, clearing all
+  `npm audit` advisories in the vitest/vite/esbuild chain (dev-only;
+  production audit was already clean).
+- Pin GitHub Actions in CI workflows to full commit SHAs instead of
+  mutable tags.
+
 ## [0.3.0] - 2026-07-21
 
 ### Added
