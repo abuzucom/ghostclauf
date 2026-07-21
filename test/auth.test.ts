@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { chmod, mkdtemp, readFile, rm, stat } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { AccessToken } from '@twurple/auth';
@@ -67,6 +67,40 @@ describe('readTokenStore / writeTokenStore', () => {
     const raw = await readFile(path, 'utf8');
     expect(raw).toBe(JSON.stringify(sampleToken, null, 2));
   });
+
+  it.runIf(process.platform !== 'win32')('creates token stores as owner-only files', async () => {
+    const path = join(dir, 'tokens.json');
+    await writeTokenStore(path, sampleToken);
+    expect((await stat(path)).mode & 0o777).toBe(0o600);
+  });
+
+  it.runIf(process.platform !== 'win32')(
+    'repairs permissions on existing token stores',
+    async () => {
+      const path = join(dir, 'tokens.json');
+      await writeTokenStore(path, sampleToken);
+      await chmod(path, 0o644);
+
+      await writeTokenStore(path, sampleToken);
+
+      expect((await stat(path)).mode & 0o777).toBe(0o600);
+    },
+  );
+
+  it.runIf(process.platform !== 'win32')(
+    'tightens permissions before overwriting an existing token store',
+    async () => {
+      const path = join(dir, 'tokens.json');
+      await writeTokenStore(path, sampleToken);
+      await chmod(path, 0o444);
+
+      const refreshedToken: AccessToken = { ...sampleToken, accessToken: 'refreshed-456' };
+      await writeTokenStore(path, refreshedToken);
+
+      await expect(readTokenStore(path)).resolves.toEqual(refreshedToken);
+      expect((await stat(path)).mode & 0o777).toBe(0o600);
+    },
+  );
 
   it('throws guidance to run npm run auth when the file is missing', async () => {
     const path = join(dir, 'missing.json');

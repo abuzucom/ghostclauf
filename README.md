@@ -163,7 +163,10 @@ npm run auth -- --broadcaster second_streamer_login
 Open the printed URL, approve, and the token (access + refresh) is written to
 the configured token store. The bot token uses `TOKEN_STORE_PATH`; each
 broadcaster token uses its `tokenStorePath` in `config.yaml`. Thereafter tokens
-refresh automatically.
+refresh automatically. On POSIX systems, token files are written with owner-only
+permissions (`0o600`); existing token files are tightened when they are written.
+For Docker bind mounts or shared volumes, configure host filesystem ownership
+and ACLs to restrict access as well.
 
 ## Run
 
