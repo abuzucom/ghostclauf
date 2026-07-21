@@ -69,6 +69,10 @@ multi-channel aware: the command answers for the broadcaster of the chat it
 was typed in, so the same viewer can get different answers in different
 configured channels.
 
+Each chatter is rate-limited (`cooldownSeconds`, default 10); repeats inside
+the window are silently ignored so chat floods cannot burn the shared Helix
+API budget. Set `0` to disable.
+
 The lookup uses the Helix *Get Channel Followers* endpoint, which requires the
 **broadcaster's** token to carry the `moderator:read:followers` scope. Tokens
 authorized before this plugin existed do not have it — re-run

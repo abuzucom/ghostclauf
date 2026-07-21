@@ -3,7 +3,9 @@
 // broadcaster is taken from the invoking chat's event, so each channel
 // answers for its own follower list.
 
-import type { ChatCommandEvent, Plugin } from '../../core/types.js';
+import type { ChatCommandEvent, Logger, Plugin } from '../../core/types.js';
+import { CooldownGate } from '../../core/cooldown.js';
+import { parseLogin } from '../../core/logins.js';
 import {
   formatFollowDuration,
   LOOKUP_FAILED_MESSAGE,
@@ -14,14 +16,23 @@ import {
   USAGE_MESSAGE,
 } from './followage.js';
 
-/** Twitch logins are 1-25 chars of letters, digits, and underscores. */
-const LOGIN_PATTERN = /^[a-z0-9_]{1,25}$/;
+const DEFAULT_COOLDOWN_SECONDS = 10;
+const MAX_COOLDOWN_SECONDS = 3600;
+const MS_PER_SECOND = 1000;
 
-/** Parse an optional "@login" argument into a validated lowercase login. */
-function parseLogin(token: string | undefined): string | null {
-  if (!token) return null;
-  const login = token.replace(/^@/, '').toLowerCase();
-  return LOGIN_PATTERN.test(login) ? login : null;
+/** Resolve the per-chatter cooldown, bounding invalid config to the default. */
+function resolveCooldownSeconds(configured: unknown, logger: Logger): number {
+  if (configured === undefined) return DEFAULT_COOLDOWN_SECONDS;
+  if (
+    typeof configured === 'number' &&
+    Number.isInteger(configured) &&
+    configured >= 0 &&
+    configured <= MAX_COOLDOWN_SECONDS
+  ) {
+    return configured;
+  }
+  logger.warn({ configured }, 'invalid followage cooldownSeconds; falling back to default');
+  return DEFAULT_COOLDOWN_SECONDS;
 }
 
 interface Target {
@@ -54,19 +65,27 @@ async function resolveTarget(
 }
 
 /**
- * Build the followage plugin. `now` is injectable so duration formatting is
- * deterministically testable; production use relies on the real clock.
+ * Build the followage plugin. `now` is injectable so duration formatting and
+ * cooldown timing are deterministically testable; production use relies on
+ * the real clock.
  */
 export function createFollowagePlugin(now: () => Date = () => new Date()): Plugin {
   return {
     name: 'followage',
     version: '1.0.0',
     init(ctx) {
+      const cooldownSeconds = resolveCooldownSeconds(ctx.config.cooldownSeconds, ctx.logger);
+      // Throttled repeats are dropped silently so a chat flood cannot burn
+      // the shared Helix rate budget or be amplified with a reply per spam.
+      const cooldown = new CooldownGate(cooldownSeconds * MS_PER_SECOND);
+
       ctx.command({
         trigger: 'followage',
         allow: ['everyone'],
         description: "Show how long you (or @user) have followed this channel.",
         handler: async (event) => {
+          const cooldownKey = `${event.broadcasterId}:${event.chatterId}`;
+          if (cooldown.shouldThrottle(cooldownKey, now().getTime())) return;
           try {
             const target = await resolveTarget(event, ctx);
             if (!target) return;

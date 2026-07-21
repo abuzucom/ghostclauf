@@ -142,6 +142,45 @@ describe('followage plugin', () => {
     expect(helix.getFollowage).not.toHaveBeenCalled();
   });
 
+  it('silently drops repeat invocations inside the cooldown window', async () => {
+    const helix = fakeHelix();
+    let now = NOW;
+    const h = makeHarness('followage', {}, helix);
+    const plugin = createFollowagePlugin(() => now);
+    await plugin.init(h.ctx);
+
+    await h.registry.handle(makeMessage('!followage'));
+    await h.registry.handle(makeMessage('!followage'));
+    expect(h.say).toHaveBeenCalledTimes(1);
+    expect(helix.getFollowage).toHaveBeenCalledTimes(1);
+
+    now = new Date(NOW.getTime() + 10_000);
+    await h.registry.handle(makeMessage('!followage'));
+    expect(h.say).toHaveBeenCalledTimes(2);
+  });
+
+  it('cooldowns are per chatter and per channel', async () => {
+    const helix = fakeHelix();
+    const { ctx, registry, say, plugin } = setup(helix);
+    await plugin.init(ctx);
+
+    await registry.handle(makeMessage('!followage'));
+    await registry.handle(makeMessage('!followage', ['everyone'], { chatterId: '300' }));
+    await registry.handle(makeMessage('!followage', ['everyone'], { broadcasterId: '2' }));
+    expect(say).toHaveBeenCalledTimes(3);
+  });
+
+  it('disables the cooldown when configured to zero', async () => {
+    const helix = fakeHelix();
+    const h = makeHarness('followage', { cooldownSeconds: 0 }, helix);
+    const plugin = createFollowagePlugin(() => NOW);
+    await plugin.init(h.ctx);
+
+    await h.registry.handle(makeMessage('!followage'));
+    await h.registry.handle(makeMessage('!followage'));
+    expect(h.say).toHaveBeenCalledTimes(2);
+  });
+
   it('logs and replies gracefully when the Helix lookup fails', async () => {
     const helix = fakeHelix({
       getFollowage: vi.fn(async () => {

@@ -34,6 +34,11 @@ plugins:
 
   # Per-plugin configuration blocks, keyed by plugin name.
   config:
+    followage:
+      # Seconds a chatter must wait between handled !followage lookups;
+      # repeats inside the window are silently ignored (protects the shared
+      # Helix API rate budget from chat floods). Set 0 to disable.
+      cooldownSeconds: 10
     wentlive:
       # {streamer} and {timestamp} are substituted at send time.
       template: "{streamer} has gone live at {timestamp}"

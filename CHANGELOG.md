@@ -13,24 +13,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   caller (or `!followage @user`, another viewer) has followed the channel
   the command was typed in. Multi-channel aware: each configured channel
   answers for its own broadcaster.
+- `followage` plugin: per-chatter `!followage` cooldown (`cooldownSeconds`,
+  default 10). Repeats inside the window are silently ignored so chat floods
+  cannot burn the shared Helix API rate budget. Set `0` to disable.
 - `BotContext.helix`: a narrow, transport-agnostic lookup surface for plugins
   (`getUserByLogin`, `getFollowage`); twurple stays confined to
   `src/core/twitch.ts`.
-
-### Changed
-
-- Broadcaster authorization (`npm run auth -- --broadcaster <login>`) now
-  requests the `moderator:read:followers` scope, needed by the follower
-  lookup. Existing broadcaster tokens must be re-authorized once.
-
-### Fixed
-
-- Token stores are now shape-validated on read; a corrupted or malformed
-  store fails fast with guidance to re-run `npm run auth` instead of
-  surfacing confusing twurple errors later.
-
-### Added
-
+- Shared `CooldownGate` and login-parsing helpers in `src/core`; the streak
+  and followage plugins now use them instead of per-plugin copies.
 - Twitch chat sends now use a shared per-channel and per-account rate limiter,
   enforce Twitch's 500-character message limit, and log messages dropped by
   Twitch with their drop reason.
@@ -40,6 +30,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `stream.online` events without repeating going-live announcements.
 - OAuth token stores now receive startup scope, format, and validation checks
   with reauthorization guidance.
+
+### Changed
+
+- Broadcaster authorization (`npm run auth -- --broadcaster <login>`) now
+  requests the `moderator:read:followers` scope, needed by the follower
+  lookup. Existing broadcaster tokens must be re-authorized once; the
+  `checkTokens` auto-repair flow now detects the missing scope and prompts
+  the re-auth.
+
+### Fixed
+
+- Token stores are now shape-validated on read; a corrupted or malformed
+  store fails fast with guidance to re-run `npm run auth` instead of
+  surfacing confusing twurple errors later.
 
 ## [0.4.0] - 2026-07-21
 

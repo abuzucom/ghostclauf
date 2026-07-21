@@ -1,6 +1,6 @@
 // Reports which configured accounts (bot, broadcasters) still have
-// config.example.yaml placeholder logins, have no token store yet, or - for
-// the bot - have a token missing a required scope, so run.bat can fix
+// config.example.yaml placeholder logins, have no token store yet, or have
+// a token missing a required scope, so run.bat can fix
 // config.yaml and (re-)authorize automatically instead of crashing at
 // runtime with "broadcaster ... not found on Twitch" or a scope error from
 // the Helix API.
@@ -20,7 +20,7 @@
 
 import 'dotenv/config';
 import { existsSync } from 'node:fs';
-import { BOT_SCOPES, readTokenStore } from '../core/auth.js';
+import { BOT_SCOPES, BROADCASTER_SCOPES, readTokenStore } from '../core/auth.js';
 import { loadFileConfig, loadSecrets } from '../core/config.js';
 
 const PLACEHOLDER_LOGIN = /^your[_-].*login$/i;
@@ -41,17 +41,25 @@ async function main(): Promise<void> {
     console.log('MISSING BOT');
   }
   for (const broadcaster of file.broadcasters) {
-    if (!existsSync(broadcaster.tokenStorePath)) {
+    if (await tokenNeedsReauth(broadcaster.tokenStorePath, BROADCASTER_SCOPES)) {
       console.log(`MISSING BROADCASTER ${broadcaster.login}`);
     }
   }
 }
 
 async function botTokenNeedsReauth(tokenStorePath: string): Promise<boolean> {
+  return tokenNeedsReauth(tokenStorePath, BOT_SCOPES);
+}
+
+/** True when the token store is absent, unreadable, or missing a scope. */
+async function tokenNeedsReauth(
+  tokenStorePath: string,
+  requiredScopes: readonly string[],
+): Promise<boolean> {
   if (!existsSync(tokenStorePath)) return true;
   try {
     const token = await readTokenStore(tokenStorePath);
-    return !BOT_SCOPES.every((scope) => token.scope.includes(scope));
+    return !requiredScopes.every((scope) => token.scope.includes(scope));
   } catch {
     return true;
   }
