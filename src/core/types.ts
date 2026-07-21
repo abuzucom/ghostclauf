@@ -40,6 +40,10 @@ export interface StreamOnlineEvent {
   broadcasterId: string;
   broadcasterName: string;
   broadcasterDisplayName: string;
+  /** Platform stream id, when supplied by the transport. */
+  streamId?: string;
+  /** True when the event was synthesized during live-state recovery. */
+  recovered?: boolean;
   /** When the stream started (UTC instant). */
   startedAt: Date;
 }

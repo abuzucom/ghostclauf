@@ -27,6 +27,7 @@ export async function createAuthProvider(
   broadcasterUserIds: string[];
 }> {
   const botToken = await readTokenStore(secrets.tokenStorePath);
+  validateToken(botToken, 'bot', BOT_SCOPES, 'npm run auth -- --bot');
   const authProvider = new RefreshingAuthProvider({
     clientId: secrets.clientId,
     clientSecret: secrets.clientSecret,
@@ -50,6 +51,7 @@ export async function createAuthProvider(
 
   const addToken = async (
     tokenPath: string,
+    account: 'bot' | 'broadcaster',
     intents?: string[],
     loadedToken?: AccessToken,
     authCommand = 'npm run auth -- --bot',
@@ -60,8 +62,17 @@ export async function createAuthProvider(
     const initialToken = loadedToken ?? (await readTokenStore(tokenPath, authCommand));
     pendingTokenPath = tokenPath;
     try {
-      const userId = await authProvider.addUserForToken(initialToken, intents);
+      let userId: string;
+      try {
+        userId = await authProvider.addUserForToken(initialToken, intents);
+      } catch (error) {
+        throw new Error(
+          `${account} token could not be validated. Run \`${authCommand}\` again.`,
+          { cause: error },
+        );
+      }
       userIdsByTokenPath.set(tokenPath, userId);
+      logger.info({ account, userId, scopes: initialToken.scope }, 'Twitch authorization loaded');
       tokenPathsByUserId.set(userId, tokenPath);
       return userId;
     } finally {
@@ -70,12 +81,13 @@ export async function createAuthProvider(
   };
 
   // `chat` intent marks the bot user as the sender/reader for chat operations.
-  const botUserId = await addToken(secrets.tokenStorePath, ['chat'], botToken);
+  const botUserId = await addToken(secrets.tokenStorePath, 'bot', ['chat'], botToken);
   const broadcasterUserIds: string[] = [];
   for (const broadcaster of broadcasters) {
     broadcasterUserIds.push(
       await addToken(
         broadcaster.tokenStorePath,
+        'broadcaster',
         undefined,
         undefined,
         `npm run auth -- --broadcaster ${broadcaster.login}`,
@@ -104,6 +116,21 @@ export async function readTokenStore(
     throw new Error(
       `Token store at "${path}" is invalid or corrupted. ` +
         `Run \`${authCommand}\` to re-authorize this account.`,
+    );
+  }
+}
+
+function validateToken(
+  token: AccessToken,
+  account: string,
+  requiredScopes: readonly string[],
+  authCommand: string,
+): void {
+  const missingScopes = requiredScopes.filter((scope) => !token.scope.includes(scope));
+  if (missingScopes.length) {
+    throw new Error(
+      `${account} token is missing required scopes: ${missingScopes.join(', ')}. ` +
+        `Run \`${authCommand}\` to authorize them.`,
     );
   }
 }

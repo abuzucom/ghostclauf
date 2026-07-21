@@ -39,6 +39,10 @@ const plugin: Plugin = {
     const format: TimestampFormat = cfg.timestampFormat === 'utc' ? 'utc' : 'iso';
 
     ctx.on('streamOnline', async (event) => {
+      if (event.recovered) {
+        ctx.logger.info({ broadcasterId: event.broadcasterId }, 'stream already live during recovery');
+        return;
+      }
       const message = renderAnnouncement(
         template,
         event.broadcasterDisplayName,

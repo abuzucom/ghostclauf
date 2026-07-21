@@ -39,7 +39,7 @@ function asMocked(provider: unknown): MockedRefreshingAuthProvider {
 const sampleToken: AccessToken = {
   accessToken: 'access-123',
   refreshToken: 'refresh-123',
-  scope: ['chat:read'],
+  scope: ['user:read:chat', 'user:write:chat', 'user:bot'],
   expiresIn: 3600,
   obtainmentTimestamp: 1_700_000_000_000,
 };
@@ -161,6 +161,16 @@ describe('createAuthProvider', () => {
   it('fails fast with the token-store error before constructing a RefreshingAuthProvider', async () => {
     const spy = makeSpyLogger();
     await expect(createAuthProvider(secrets, spy.logger)).rejects.toThrow(/npm run auth/);
+    expect(constructorSpy).not.toHaveBeenCalled();
+  });
+
+  it('fails with the missing bot scopes and reauthorization command', async () => {
+    await writeTokenStore(tokenStorePath, { ...sampleToken, scope: ['user:read:chat'] });
+    const spy = makeSpyLogger();
+
+    await expect(createAuthProvider(secrets, spy.logger)).rejects.toThrow(
+      /missing required scopes.*user:write:chat.*user:bot.*npm run auth -- --bot/i,
+    );
     expect(constructorSpy).not.toHaveBeenCalled();
   });
 
