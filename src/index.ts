@@ -40,25 +40,14 @@ async function main(): Promise<void> {
     sender(text, replyToId, broadcasterId);
 
   let helixImpl: HelixClient | undefined;
+  const requireHelix = (): HelixClient => {
+    if (!helixImpl) throw new Error('helix client not ready yet');
+    return helixImpl;
+  };
   const helixRef: HelixClient = {
-    getFollowAge: (...args) => {
-      if (!helixImpl) throw new Error('helix client not ready yet');
-      if (!helixImpl.getFollowAge) throw new Error('legacy followage lookup is not available');
-      return helixImpl.getFollowAge(...args);
-    },
-    getFollowage: (...args) => {
-      if (!helixImpl) throw new Error('helix client not ready yet');
-      if (!helixImpl.getFollowage) throw new Error('followage lookup is not available');
-      return helixImpl.getFollowage(...args);
-    },
-    getUserByLogin: (...args) => {
-      if (!helixImpl) throw new Error('helix client not ready yet');
-      return helixImpl.getUserByLogin(...args);
-    },
-    sendShoutout: (...args) => {
-      if (!helixImpl) throw new Error('helix client not ready yet');
-      return helixImpl.sendShoutout(...args);
-    },
+    getFollowage: (...args) => requireHelix().getFollowage(...args),
+    getUserByLogin: (...args) => requireHelix().getUserByLogin(...args),
+    sendShoutout: (...args) => requireHelix().sendShoutout(...args),
   };
 
   // Discover and initialize plugins (they register commands / event listeners).

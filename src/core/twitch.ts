@@ -251,21 +251,16 @@ export async function createTwitchTransport(
   };
 
   const helix: HelixClient = {
-    async getFollowAge(userId, broadcasterId) {
+    async getFollowage(broadcasterId, userId) {
+      if (!broadcasterIds.includes(broadcasterId)) {
+        throw new Error(`cannot query unconfigured broadcaster "${broadcasterId}"`);
+      }
       // Requires moderator:read:followers on the broadcaster token.
       const result = await api.asUser(broadcasterId, (ctx) =>
         ctx.channels.getChannelFollowers(broadcasterId, userId),
       );
       const follower = result?.data[0];
-      if (!follower) return null;
-      return { followedAt: follower.followDate };
-    },
-
-    async getFollowage(broadcasterId, userId) {
-      if (!broadcasterIds.includes(broadcasterId)) {
-        throw new Error(`cannot query unconfigured broadcaster "${broadcasterId}"`);
-      }
-      return helix.getFollowAge!(userId, broadcasterId);
+      return follower ? { followedAt: follower.followDate } : null;
     },
 
     async getUserByLogin(login) {

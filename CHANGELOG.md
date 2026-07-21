@@ -30,32 +30,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `stream.online` events without repeating going-live announcements.
 - OAuth token stores now receive startup scope, format, and validation checks
   with reauthorization guidance.
+- `lurk` plugin: `!lurk` / `!unlurk` acknowledgements with configurable
+  messages and a per-chatter cooldown (`cooldownSeconds`, default 10). Lurk
+  state is tracked per channel and bounded in memory.
+- `shoutout` plugin: `!so` / `!shoutout @channel` (moderators and the
+  broadcaster) posts a shoutout message and optionally issues Twitch's native
+  shoutout (`sendNativeShoutout`, requires the `moderator:manage:shoutouts`
+  broadcaster scope).
 
 ### Changed
 
 - Broadcaster authorization (`npm run auth -- --broadcaster <login>`) now
-  requests the `moderator:read:followers` scope, needed by the follower
-  lookup. Existing broadcaster tokens must be re-authorized once; the
-  `checkTokens` auto-repair flow now detects the missing scope and prompts
-  the re-auth.
+  requests the `moderator:read:followers` and `moderator:manage:shoutouts`
+  scopes, needed by the follower lookup and native shoutouts. Existing
+  broadcaster tokens must be re-authorized once; the `checkTokens`
+  auto-repair flow detects the missing scopes and prompts the re-auth.
 
 ### Fixed
 
 - Token stores are now shape-validated on read; a corrupted or malformed
   store fails fast with guidance to re-run `npm run auth` instead of
   surfacing confusing twurple errors later.
-
-### Added
-
-- Twitch chat sends now use a shared per-channel and per-account rate limiter,
-  enforce Twitch's 500-character message limit, and log messages dropped by
-  Twitch with their drop reason.
-- EventSub socket disconnects, subscription failures, and revocations are
-  logged with authorization context.
-- Startup and reconnect live-state reconciliation recovers missed
-  `stream.online` events without repeating going-live announcements.
-- OAuth token stores now receive startup scope, format, and validation checks
-  with reauthorization guidance.
+- `config.example.yaml` had a duplicate `plugins.config.followage` key that
+  made the file unparseable; the blocks are merged and a test now guards the
+  example config against parse regressions.
+- `lurk` plugin: lurk state was shared across all channels and grew without
+  bound; it is now per channel, capped in memory, and rate limited.
+- `followage` plugin: removed an unreachable "legacy" code path (and its
+  `messages` config keys, which had no effect) that duplicated the live
+  implementation without its cooldown.
+- `BotContext.helix`: removed the duplicate `getFollowAge` method (unreleased)
+  that mirrored `getFollowage` with swapped parameters and skipped the
+  configured-broadcaster guard; `getFollowage` is required again.
 
 ## [0.4.0] - 2026-07-21
 

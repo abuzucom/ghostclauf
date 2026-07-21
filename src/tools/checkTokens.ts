@@ -38,7 +38,7 @@ async function main(): Promise<void> {
     console.log('MISSING BOT');
   }
   for (const broadcaster of file.broadcasters) {
-    if (await broadcasterTokenNeedsReauth(broadcaster.tokenStorePath)) {
+    if (await tokenNeedsReauth(broadcaster.tokenStorePath, BROADCASTER_SCOPES)) {
       console.log(`MISSING BROADCASTER ${broadcaster.login}`);
     }
   }
@@ -57,17 +57,6 @@ async function tokenNeedsReauth(
   try {
     const token = await readTokenStore(tokenStorePath);
     return !requiredScopes.every((scope) => token.scope.includes(scope));
-  } catch {
-    return true;
-  }
-}
-
-/** True if the broadcaster token is absent or missing any required scope. */
-async function broadcasterTokenNeedsReauth(tokenStorePath: string): Promise<boolean> {
-  if (!existsSync(tokenStorePath)) return true;
-  try {
-    const token = await readTokenStore(tokenStorePath);
-    return !BROADCASTER_SCOPES.every((scope) => token.scope.includes(scope));
   } catch {
     return true;
   }

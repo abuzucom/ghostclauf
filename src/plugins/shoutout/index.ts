@@ -52,12 +52,8 @@ const shoutoutPlugin: Plugin = {
       fallbackGame,
     };
 
+    // Role gating is handled by the registry via `allow` below.
     const handler = async (event: ChatCommandEvent) => {
-      const isMod = event.roles.has('moderator') || event.roles.has('broadcaster');
-      if (!isMod) {
-        return; // Silently ignore non-mods for shoutout trigger
-      }
-
       const targetInput = event.args[0]?.replace(/^@/, '').trim();
       if (!targetInput) {
         await ctx.say(messages.no_target, event.messageId, event.broadcasterId);
