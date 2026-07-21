@@ -209,8 +209,8 @@ const plugin: Plugin = {
     });
     ctx.command({
       trigger: cfg.triggers.reset,
-      allow: ['broadcaster', 'moderator'],
-      description: "Reset a viewer's streak to 0.",
+      allow: ['broadcaster'],
+      description: "Reset a viewer's streak to 0. Broadcaster only.",
       handler: resetHandler(store, cfg),
     });
     ctx.command({
