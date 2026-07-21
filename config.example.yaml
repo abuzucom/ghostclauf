@@ -29,6 +29,7 @@ plugins:
   enabled:
     - ping
     - wentlive
+    - streak
 
   # Per-plugin configuration blocks, keyed by plugin name.
   config:
@@ -37,3 +38,21 @@ plugins:
       template: "{streamer} has gone live at {timestamp}"
       # UTC timestamp format: "iso" (2026-07-12T18:04:05Z) or "utc" (Sun, 12 Jul 2026 18:04:05 GMT).
       timestampFormat: "iso"
+    streak:
+      # Where per-viewer attendance streaks are persisted (own store under ./data).
+      dataPath: ./data/streaks.json
+      # IANA timezone used for day boundaries (e.g. America/New_York). Default UTC.
+      timezone: UTC
+      # Only count days the stream was actually live (via the stream.online event
+      # or the admin open command). Set false to also count any check-in day.
+      requireStreamDay: true
+      # Optional: override trigger words (defaults shown).
+      # triggers:
+      #   checkin: checkin
+      #   streak: streak
+      #   reset: streakreset
+      #   set: streakset
+      #   open: streakopen
+      # Optional: override reply templates. Tokens: {user} {streak} {longest} {day}.
+      # messages:
+      #   extended: "@{user} checked in! Streak: {streak} days (best {longest})."
