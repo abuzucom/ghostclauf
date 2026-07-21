@@ -19,7 +19,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   broadcaster or moderator), matching `!streakreset`.
 - `streak` plugin: disk persistence now coalesces concurrent writes (at most
   one in flight and one queued), so a burst of check-ins costs at most two
-  full-file writes instead of one per check-in.
+  full-file writes instead of one per check-in. Writes stay strictly
+  serialized on a single chain and each uses a unique temp filename, so
+  overlapping writes can never corrupt the data file.
 
 ## [0.3.0] - 2026-07-21
 

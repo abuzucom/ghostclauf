@@ -53,6 +53,39 @@ describe('StreakStore persist coalescing', () => {
     expect(Object.keys(parsed.channels[BID].viewers)).toHaveLength(BURST_SIZE);
   });
 
+  it('never overlaps two temp-file writes even under adversarial scheduling', async () => {
+    const real = await vi.importActual<typeof import('node:fs/promises')>('node:fs/promises');
+    let active = 0;
+    let maxActive = 0;
+    writeFileMock.mockImplementation(async (...args: Parameters<typeof writeFile>) => {
+      active += 1;
+      maxActive = Math.max(maxActive, active);
+      // Yield a macrotask so any concurrently started write becomes observable.
+      await new Promise((resolve) => setImmediate(resolve));
+      try {
+        return await real.writeFile(...args);
+      } finally {
+        active -= 1;
+      }
+    });
+    try {
+      const store = new StreakStore(dataPath, makeSpyLogger().logger);
+      await store.load();
+      await store.recordStreamDay(BID, DAY, STARTED_AT);
+      // Reach into the private scheduler: the race window only opens for a
+      // reaction registered on the in-flight write between its cleanup and a
+      // queued continuation, which no public store method exercises today.
+      const internals = store as unknown as { persist(): Promise<void> };
+      const first = internals.persist();
+      const racer = first.then(() => internals.persist());
+      const queued = internals.persist();
+      await Promise.all([first, racer, queued]);
+      expect(maxActive).toBe(1);
+    } finally {
+      writeFileMock.mockImplementation(real.writeFile);
+    }
+  });
+
   it('resolves an awaited persist only after that mutation is on disk', async () => {
     const store = new StreakStore(dataPath, makeSpyLogger().logger);
     await store.load();

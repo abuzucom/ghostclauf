@@ -26,10 +26,12 @@ function isStreakData(value: unknown): value is StreakData {
 
 export class StreakStore {
   private data: StreakData = emptyData();
-  /** The write currently hitting disk, if any. */
-  private writeInFlight: Promise<void> | null = null;
-  /** The single write queued behind the in-flight one; late callers share it. */
-  private queuedWrite: Promise<void> | null = null;
+  /** Serializes disk writes so they can never overlap. */
+  private saveChain: Promise<void> = Promise.resolve();
+  /** The scheduled-but-not-yet-started write; concurrent callers share it. */
+  private pendingWrite: Promise<void> | null = null;
+  /** Makes each temp filename unique so writes can never share one. */
+  private writeSeq = 0;
 
   constructor(
     private readonly dataPath: string,
@@ -170,33 +172,31 @@ export class StreakStore {
   }
 
   /**
-   * Write current state to disk, coalescing concurrent callers: at most one
-   * write is in flight and one is queued, so a burst of N mutations costs at
-   * most two full-file writes instead of N. The state is snapshotted when a
-   * write starts, so an awaited persist always covers the caller's mutation.
+   * Write current state to disk. Every write is chained on `saveChain`, so
+   * two writes can never overlap. Coalescing: while a write is scheduled but
+   * not yet started, all callers share it, so a burst of N mutations costs at
+   * most two full-file writes instead of N. State is snapshotted when a write
+   * starts, so an awaited persist always covers the caller's mutation.
    */
   private persist(): Promise<void> {
-    if (!this.writeInFlight) return this.startWrite();
-    // Ignore the in-flight write's outcome here; each caller awaits its own
-    // covering write, so a failure still surfaces without poisoning the queue.
-    this.queuedWrite ??= this.writeInFlight.catch(() => {}).then(() => this.startWrite());
-    return this.queuedWrite;
-  }
-
-  private startWrite(): Promise<void> {
-    this.queuedWrite = null;
-    const write = this.writeAtomic(JSON.stringify(this.data, null, 2));
-    this.writeInFlight = write;
-    const clear = () => {
-      if (this.writeInFlight === write) this.writeInFlight = null;
-    };
-    write.then(clear, clear);
+    if (this.pendingWrite) return this.pendingWrite;
+    const write = this.saveChain.then(() => {
+      this.pendingWrite = null;
+      return this.writeAtomic(JSON.stringify(this.data, null, 2));
+    });
+    this.pendingWrite = write;
+    // Keep the chain alive even if a write fails; the error still surfaces
+    // to every caller awaiting `write`.
+    this.saveChain = write.catch(() => {});
     return write;
   }
 
   private async writeAtomic(json: string): Promise<void> {
     await mkdir(dirname(this.dataPath), { recursive: true });
-    const tempPath = `${this.dataPath}.tmp`;
+    // Unique per write, so even a scheduling bug cannot interleave two
+    // writes in one temp file.
+    this.writeSeq += 1;
+    const tempPath = `${this.dataPath}.${this.writeSeq}.tmp`;
     await writeFile(tempPath, json, 'utf8');
     await rename(tempPath, this.dataPath);
   }
