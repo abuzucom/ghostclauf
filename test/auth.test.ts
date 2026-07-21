@@ -87,6 +87,21 @@ describe('readTokenStore / writeTokenStore', () => {
     },
   );
 
+  it.runIf(process.platform !== 'win32')(
+    'tightens permissions before overwriting an existing token store',
+    async () => {
+      const path = join(dir, 'tokens.json');
+      await writeTokenStore(path, sampleToken);
+      await chmod(path, 0o444);
+
+      const refreshedToken: AccessToken = { ...sampleToken, accessToken: 'refreshed-456' };
+      await writeTokenStore(path, refreshedToken);
+
+      await expect(readTokenStore(path)).resolves.toEqual(refreshedToken);
+      expect((await stat(path)).mode & 0o777).toBe(0o600);
+    },
+  );
+
   it('throws guidance to run npm run auth when the file is missing', async () => {
     const path = join(dir, 'missing.json');
     await expect(readTokenStore(path)).rejects.toThrow(/npm run auth/);

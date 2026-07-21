@@ -102,6 +102,13 @@ export async function readTokenStore(
 
 export async function writeTokenStore(path: string, token: AccessToken): Promise<void> {
   await mkdir(dirname(path), { recursive: true });
+  try {
+    await chmod(path, TOKEN_STORE_MODE);
+  } catch (error) {
+    if (!(error instanceof Error && 'code' in error && error.code === 'ENOENT')) {
+      throw error;
+    }
+  }
   await writeFile(path, JSON.stringify(token, null, 2), {
     encoding: 'utf8',
     mode: TOKEN_STORE_MODE,
