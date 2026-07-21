@@ -1,4 +1,4 @@
-import { chmod, mkdtemp, readFile, rm, stat } from 'node:fs/promises';
+import { chmod, mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { AccessToken } from '@twurple/auth';
@@ -104,6 +104,24 @@ describe('readTokenStore / writeTokenStore', () => {
 
   it('throws guidance to run npm run auth when the file is missing', async () => {
     const path = join(dir, 'missing.json');
+    await expect(readTokenStore(path)).rejects.toThrow(/npm run auth/);
+  });
+
+  it('throws guidance when the store is not valid JSON', async () => {
+    const path = join(dir, 'tokens.json');
+    await writeFile(path, 'not json{', 'utf8');
+    await expect(readTokenStore(path)).rejects.toThrow(/npm run auth/);
+  });
+
+  it('throws guidance when the store is missing token fields', async () => {
+    const path = join(dir, 'tokens.json');
+    await writeFile(path, JSON.stringify({ foo: 1 }), 'utf8');
+    await expect(readTokenStore(path)).rejects.toThrow(/npm run auth/);
+  });
+
+  it('throws guidance when token fields have the wrong type', async () => {
+    const path = join(dir, 'tokens.json');
+    await writeFile(path, JSON.stringify({ ...sampleToken, accessToken: 42 }), 'utf8');
     await expect(readTokenStore(path)).rejects.toThrow(/npm run auth/);
   });
 });

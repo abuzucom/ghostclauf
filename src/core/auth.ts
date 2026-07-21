@@ -2,6 +2,7 @@ import { chmod, mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname } from 'node:path';
 import { RefreshingAuthProvider } from '@twurple/auth';
 import type { AccessToken } from '@twurple/auth';
+import { z } from 'zod';
 import type { BroadcasterConfig, Secrets } from './config.js';
 import type { Logger } from './types.js';
 
@@ -97,8 +98,25 @@ export async function readTokenStore(
       `No token store at "${path}". Run \`${authCommand}\` once to authorize this account.`,
     );
   }
-  return JSON.parse(raw) as AccessToken;
+  try {
+    return AccessTokenSchema.parse(JSON.parse(raw));
+  } catch {
+    throw new Error(
+      `Token store at "${path}" is invalid or corrupted. ` +
+        `Run \`${authCommand}\` to re-authorize this account.`,
+    );
+  }
 }
+
+/** Mirrors twurple's AccessToken so malformed stores fail here with guidance
+ *  instead of as confusing twurple errors later. */
+const AccessTokenSchema = z.object({
+  accessToken: z.string().min(1),
+  refreshToken: z.string().min(1).nullable(),
+  scope: z.array(z.string()),
+  expiresIn: z.number().nullable(),
+  obtainmentTimestamp: z.number(),
+});
 
 export async function writeTokenStore(path: string, token: AccessToken): Promise<void> {
   await mkdir(dirname(path), { recursive: true });
