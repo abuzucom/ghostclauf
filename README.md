@@ -73,6 +73,14 @@ WebSocket** that carries *both* required events:
 All Twitch specifics live in [`src/core/twitch.ts`](src/core/twitch.ts) (built on
 [@twurple](https://twurple.js.org)); everything else is platform-neutral.
 
+Outbound messages use a shared queue that stays within Twitch's conservative
+chat limits (one message per channel per second and 20 messages per 30 seconds
+per bot account). The transport reports dropped messages and EventSub
+authorization or connection failures through structured logs. On startup and
+after a reconnect it checks the current stream state to recover missed
+`stream.online` events; recovery updates stateful plugins without repeating a
+going-live announcement.
+
 ## Architecture
 
 ```

@@ -50,4 +50,12 @@ describe('wentlive plugin', () => {
     await flush();
     expect(say).toHaveBeenCalledWith(`Foo @ ${STARTED_AT.toUTCString()}`, undefined, '1');
   });
+
+  it('does not repeat an announcement for recovered live state', async () => {
+    const { bus, say, ctx } = makeHarness('wentlive');
+    await wentlive.init(ctx);
+    bus.emit('streamOnline', { ...onlineEvent(), recovered: true });
+    await flush();
+    expect(say).not.toHaveBeenCalled();
+  });
 });

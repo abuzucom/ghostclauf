@@ -1,6 +1,7 @@
 import { ApiClient } from '@twurple/api';
 import { EventSubWsListener } from '@twurple/eventsub-ws';
 import type { RefreshingAuthProvider } from '@twurple/auth';
+import { ChatRateLimiter } from './chatRateLimiter.js';
 import { resolveRoles } from './permissions.js';
 import type {
   ChatMessageEvent,
@@ -81,6 +82,88 @@ export async function createTwitchTransport(
   }
 
   const listener = new EventSubWsListener({ apiClient: api });
+  const rateLimiter = new ChatRateLimiter();
+  const liveStreamIds = new Map<string, string>();
+  const disconnectedUsers = new Set<string>();
+
+  listener.onUserSocketConnect((userId) => {
+    const wasDisconnected = disconnectedUsers.delete(userId);
+    logger.info({ userId }, 'EventSub WebSocket connected');
+    if (wasDisconnected) void reconcileLiveStreams('EventSub reconnect');
+  });
+  listener.onUserSocketDisconnect((userId, error) => {
+    disconnectedUsers.add(userId);
+    logger.warn({ userId, err: error }, 'EventSub WebSocket disconnected');
+  });
+  listener.onRevoke((subscription, status) => {
+    logger.error(
+      {
+        subscriptionId: subscription.id,
+        subscriptionClass: subscription.constructor.name,
+        authUserId: subscription.authUserId,
+        status,
+      },
+      'EventSub subscription revoked',
+    );
+  });
+  listener.onSubscriptionCreateFailure((subscription, error) => {
+    logger.error(
+      {
+        subscriptionId: subscription.id,
+        subscriptionClass: subscription.constructor.name,
+        authUserId: subscription.authUserId,
+        err: error,
+      },
+      'EventSub subscription creation failed; check token scopes and channel access',
+    );
+  });
+
+  const emitStreamOnline = (event: StreamOnlineEvent): void => {
+    if (event.streamId && liveStreamIds.get(event.broadcasterId) === event.streamId) return;
+    if (event.streamId) liveStreamIds.set(event.broadcasterId, event.streamId);
+    void handlers.onStreamOnline(event);
+  };
+
+  async function reconcileLiveStreams(reason: string): Promise<void> {
+    const states = await Promise.all(
+      broadcasters.map(async (broadcaster) => {
+        try {
+          const stream = await api.streams.getStreamByUserId(broadcaster.id);
+          return { broadcaster, stream };
+        } catch (error) {
+          logger.warn(
+            { broadcasterId: broadcaster.id, reason, err: error },
+            'could not reconcile live stream state',
+          );
+          return null;
+        }
+      }),
+    );
+
+    for (const state of states) {
+      if (!state) continue;
+      if (!state.stream) {
+        liveStreamIds.delete(state.broadcaster.id);
+        continue;
+      }
+      emitStreamOnline({
+        broadcasterId: state.stream.userId,
+        broadcasterName: state.stream.userName,
+        broadcasterDisplayName: state.stream.userDisplayName,
+        streamId: state.stream.id,
+        recovered: true,
+        startedAt: state.stream.startDate,
+      });
+    }
+  }
+  logger.info(
+    {
+      botUserId,
+      botLogin,
+      broadcasters: broadcasters.map(({ id, login }) => ({ id, login })),
+    },
+    'Twitch authorization identities validated',
+  );
 
   for (const broadcaster of broadcasters) {
     // Chat messages → normalize (resolve roles) → handler.
@@ -99,15 +182,16 @@ export async function createTwitchTransport(
       void handlers.onChatMessage(normalized);
     });
 
-    // Stream went live. WebSocket subscriptions use the broadcaster's token.
+    // Stream events use the broadcaster's token, which needs no extra scope.
     listener.onStreamOnline(broadcaster.id, (event) => {
       const normalized: StreamOnlineEvent = {
         broadcasterId: event.broadcasterId,
         broadcasterName: event.broadcasterName,
         broadcasterDisplayName: event.broadcasterDisplayName,
+        streamId: event.id,
         startedAt: event.startDate,
       };
-      void handlers.onStreamOnline(normalized);
+      emitStreamOnline(normalized);
     });
   }
 
@@ -120,16 +204,46 @@ export async function createTwitchTransport(
     if (!broadcasterIds.includes(broadcasterId)) {
       throw new Error(`cannot send to unconfigured broadcaster "${broadcasterId}"`);
     }
-    // Scope the send to the bot user. Without this, twurple defaults the
-    // sender to the broadcaster, whose token is minted without user:write:chat
-    // (see authFlow resolveAuthTarget), so the Helix call throws a scope error.
-    await api.asUser(botUserId, (ctx) =>
-      ctx.chat.sendChatMessage(
-        broadcasterId,
-        text,
-        replyToId ? { replyParentMessageId: replyToId } : undefined,
-      ),
-    );
+    const characterCount = Array.from(text).length;
+    if (characterCount > 500) {
+      throw new Error(`Twitch chat messages cannot exceed 500 characters (got ${characterCount})`);
+    }
+    await rateLimiter.enqueue(broadcasterId, async () => {
+      try {
+        // Scope the send to the bot user. Without this, twurple defaults the
+        // sender to the broadcaster, whose token lacks user:write:chat.
+        const result = await sendChatMessageWithRetry(() =>
+          api.asUser(botUserId, (ctx) =>
+            ctx.chat.sendChatMessage(
+              broadcasterId,
+              text,
+              replyToId ? { replyParentMessageId: replyToId } : undefined,
+            ),
+          ),
+        );
+        if (!result.isSent) {
+          logger.warn(
+            {
+              broadcasterId,
+              dropReasonCode: result.dropReasonCode,
+              dropReasonMessage: result.dropReasonMessage,
+            },
+            'Twitch dropped chat message',
+          );
+        }
+      } catch (error) {
+        logger.error(
+          {
+            broadcasterId,
+            statusCode: getStatusCode(error),
+            failureType: classifySendFailure(error),
+            err: error,
+          },
+          'Twitch chat send failed',
+        );
+        throw error;
+      }
+    });
   };
 
   return {
@@ -138,12 +252,38 @@ export async function createTwitchTransport(
     sender,
     start: async () => {
       listener.start();
+      await reconcileLiveStreams('startup');
       logger.info({ broadcasters }, 'EventSub listener started');
     },
     stop: async () => {
       listener.stop();
+      rateLimiter.close();
     },
   };
+}
+
+async function sendChatMessageWithRetry<T>(send: () => Promise<T>): Promise<T> {
+  try {
+    return await send();
+  } catch (error) {
+    if (getStatusCode(error) !== 503) throw error;
+    return send();
+  }
+}
+
+function getStatusCode(error: unknown): number | undefined {
+  if (typeof error !== 'object' || error === null) return undefined;
+  const statusCode = (error as { statusCode?: unknown }).statusCode;
+  return typeof statusCode === 'number' ? statusCode : undefined;
+}
+
+function classifySendFailure(error: unknown): string {
+  const statusCode = getStatusCode(error);
+  if (statusCode === 403) return 'channel_access';
+  if (statusCode === 422) return 'message_too_large';
+  if (statusCode === 429) return 'rate_limited';
+  if (statusCode === 503) return 'service_unavailable';
+  return 'api_error';
 }
 
 function buildLegacyBroadcasters(

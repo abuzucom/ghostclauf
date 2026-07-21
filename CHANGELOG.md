@@ -13,6 +13,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   store fails fast with guidance to re-run `npm run auth` instead of
   surfacing confusing twurple errors later.
 
+### Added
+
+- Twitch chat sends now use a shared per-channel and per-account rate limiter,
+  enforce Twitch's 500-character message limit, and log messages dropped by
+  Twitch with their drop reason.
+- EventSub socket disconnects, subscription failures, and revocations are
+  logged with authorization context.
+- Startup and reconnect live-state reconciliation recovers missed
+  `stream.online` events without repeating going-live announcements.
+- OAuth token stores now receive startup scope, format, and validation checks
+  with reauthorization guidance.
+
 ## [0.4.0] - 2026-07-21
 
 ### Added
@@ -40,7 +52,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   production audit was already clean).
 - Pin GitHub Actions in CI workflows to full commit SHAs instead of
   mutable tags.
-
 ## [0.3.0] - 2026-07-21
 
 ### Added
