@@ -1,6 +1,12 @@
 import type { CommandRegistry } from './commands.js';
 import type { EventBus } from './eventBus.js';
-import type { BotContext, Logger, MessageSender, PluginConfig } from './types.js';
+import type {
+  BotContext,
+  HelixLookup,
+  Logger,
+  MessageSender,
+  PluginConfig,
+} from './types.js';
 
 export interface ContextDeps {
   pluginName: string;
@@ -9,6 +15,7 @@ export interface ContextDeps {
   bus: EventBus;
   registry: CommandRegistry;
   sender: MessageSender;
+  helix: HelixLookup;
 }
 
 /**
@@ -17,11 +24,12 @@ export interface ContextDeps {
  * this plugin's own config and logger.
  */
 export function createContext(deps: ContextDeps): BotContext {
-  const { pluginName, config, logger, bus, registry, sender } = deps;
+  const { pluginName, config, logger, bus, registry, sender, helix } = deps;
 
   const ctx: BotContext = {
     config,
     logger,
+    helix,
     say: (text, replyToId, broadcasterId) => {
       if (broadcasterId !== undefined) return sender(text, replyToId, broadcasterId);
       if (replyToId !== undefined) return sender(text, replyToId);

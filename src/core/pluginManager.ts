@@ -5,7 +5,7 @@ import { createContext } from './context.js';
 import type { CommandRegistry } from './commands.js';
 import type { EventBus } from './eventBus.js';
 import type { FileConfig } from './config.js';
-import type { Logger, MessageSender, Plugin } from './types.js';
+import type { HelixLookup, Logger, MessageSender, Plugin } from './types.js';
 
 export interface PluginManagerDeps {
   file: FileConfig;
@@ -13,6 +13,7 @@ export interface PluginManagerDeps {
   registry: CommandRegistry;
   bus: EventBus;
   sender: MessageSender;
+  helix: HelixLookup;
 }
 
 /**
@@ -83,7 +84,7 @@ export class PluginManager {
   }
 
   private async loadOne(entryPath: string, enabled: ReadonlySet<string>): Promise<void> {
-    const { logger, file, bus, registry, sender } = this.deps;
+    const { logger, file, bus, registry, sender, helix } = this.deps;
     let plugin: Plugin;
     try {
       const mod = (await import(pathToFileURL(entryPath).href)) as {
@@ -113,6 +114,7 @@ export class PluginManager {
       bus,
       registry,
       sender,
+      helix,
     });
 
     try {

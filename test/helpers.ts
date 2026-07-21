@@ -2,7 +2,13 @@ import { createContext } from '../src/core/context.js';
 import { CommandRegistry } from '../src/core/commands.js';
 import { EventBus } from '../src/core/eventBus.js';
 import { createLogger } from '../src/core/logger.js';
-import type { BotContext, ChatMessageEvent, PluginConfig, Role } from '../src/core/types.js';
+import type {
+  BotContext,
+  ChatMessageEvent,
+  HelixLookup,
+  PluginConfig,
+  Role,
+} from '../src/core/types.js';
 
 /** Silent logger for tests. */
 export const testLogger = createLogger('silent');
@@ -27,8 +33,24 @@ export function makeMessage(
   };
 }
 
+/** Helix stub that fails loudly unless a test injects its own fake. */
+export function stubHelix(): HelixLookup {
+  return {
+    getUserByLogin: async () => {
+      throw new Error('helix not stubbed in this test');
+    },
+    getFollowage: async () => {
+      throw new Error('helix not stubbed in this test');
+    },
+  };
+}
+
 /** A registry + bus + spy sender + a context, wired like the real app. */
-export function makeHarness(pluginName: string, config: PluginConfig = {}): {
+export function makeHarness(
+  pluginName: string,
+  config: PluginConfig = {},
+  helix: HelixLookup = stubHelix(),
+): {
   registry: CommandRegistry;
   bus: EventBus;
   say: ReturnType<typeof spySender>;
@@ -44,6 +66,7 @@ export function makeHarness(pluginName: string, config: PluginConfig = {}): {
     bus,
     registry,
     sender: say,
+    helix,
   });
   return { registry, bus, say, ctx };
 }

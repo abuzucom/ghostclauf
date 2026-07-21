@@ -5,6 +5,8 @@
 
 import type { CheckinOutcome, StreakConfig, StreakMessages, StreakTriggers } from './types.js';
 import type { BotContext, CommandHandler, Logger, Plugin } from '../../core/types.js';
+import { CooldownGate } from '../../core/cooldown.js';
+import { parseLogin } from '../../core/logins.js';
 import { StreakStore } from './store.js';
 import {
   DEFAULT_DATA_PATH,
@@ -29,8 +31,6 @@ interface ResolvedConfig {
   messages: StreakMessages;
 }
 
-/** Twitch logins are 1-25 chars of letters, digits, and underscores. */
-const LOGIN_PATTERN = /^[a-z0-9_]{1,25}$/;
 /** Bound admin-set values to a sane range and reject non-numeric input. */
 const STREAK_VALUE_PATTERN = /^\d{1,6}$/;
 /** A key that can never collide with a real (numeric) Twitch broadcaster id. */
@@ -39,8 +39,6 @@ const MIN_SESSION_HOURS = 1;
 const MAX_SESSION_HOURS = 72;
 const DEFAULT_CHECKIN_COOLDOWN_SECONDS = 10;
 const MAX_CHECKIN_COOLDOWN_SECONDS = 3600;
-/** Bound on the in-memory cooldown map before expired entries are pruned. */
-const COOLDOWN_ENTRY_LIMIT = 10_000;
 const MS_PER_SECOND = 1000;
 
 /** Validate an optional integer config value within [min, max], else fall back. */
@@ -95,13 +93,6 @@ function scopeKey(cfg: ResolvedConfig, broadcasterId: string): string {
   return cfg.shareAcrossChannels ? SHARED_SCOPE_KEY : broadcasterId;
 }
 
-/** Parse an optional "@login" argument into a validated lowercase login. */
-function parseLogin(token: string | undefined): string | null {
-  if (!token) return null;
-  const login = token.replace(/^@/, '').toLowerCase();
-  return LOGIN_PATTERN.test(login) ? login : null;
-}
-
 function parseStreakValue(token: string | undefined): number | null {
   if (token === undefined || !STREAK_VALUE_PATTERN.test(token)) return null;
   return Number(token);
@@ -127,42 +118,15 @@ async function ensureOpen(
   return true;
 }
 
-/** Drop expired cooldown entries so the map stays bounded under chatter churn. */
-function pruneExpiredCooldowns(lastHandledAtMs: Map<string, number>, cutoffMs: number): void {
-  for (const [key, at] of [...lastHandledAtMs]) {
-    if (at < cutoffMs) lastHandledAtMs.delete(key);
-  }
-}
-
-/**
- * True if this chatter checked in within the cooldown window; otherwise
- * records the attempt. Throttled invocations are dropped silently so the bot
- * does not amplify a chat flood.
- */
-function shouldThrottleCheckin(
-  lastHandledAtMs: Map<string, number>,
-  key: string,
-  nowMs: number,
-  cooldownMs: number,
-): boolean {
-  if (cooldownMs <= 0) return false;
-  const last = lastHandledAtMs.get(key);
-  if (last !== undefined && nowMs - last < cooldownMs) return true;
-  if (lastHandledAtMs.size >= COOLDOWN_ENTRY_LIMIT) {
-    pruneExpiredCooldowns(lastHandledAtMs, nowMs - cooldownMs);
-  }
-  lastHandledAtMs.set(key, nowMs);
-  return false;
-}
-
 function checkinHandler(store: StreakStore, cfg: ResolvedConfig, now: () => Date): CommandHandler {
-  const lastHandledAtMs = new Map<string, number>();
-  const cooldownMs = cfg.checkinCooldownSeconds * MS_PER_SECOND;
+  // Throttled check-ins are dropped silently so the bot does not amplify a
+  // chat flood into store writes and replies.
+  const cooldown = new CooldownGate(cfg.checkinCooldownSeconds * MS_PER_SECOND);
   return async (event, ctx) => {
     const scope = scopeKey(cfg, event.broadcasterId);
     const nowInstant = now();
     const cooldownKey = `${scope}:${event.chatterId}`;
-    if (shouldThrottleCheckin(lastHandledAtMs, cooldownKey, nowInstant.getTime(), cooldownMs)) {
+    if (cooldown.shouldThrottle(cooldownKey, nowInstant.getTime())) {
       return;
     }
     const activeStart = store.activeStreamStartedAt(scope);

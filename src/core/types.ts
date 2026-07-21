@@ -90,12 +90,40 @@ export type MessageSender = (
   broadcasterId?: string,
 ) => Promise<void>;
 
+/** A platform user resolved by login. */
+export interface HelixUser {
+  id: string;
+  displayName: string;
+}
+
+/** Follow relationship details for a user in a channel. */
+export interface FollowInfo {
+  /** When the user followed the channel. */
+  followedAt: Date;
+}
+
+/**
+ * Narrow, transport-agnostic lookup surface backed by the platform API.
+ * Kept minimal on purpose: plugins never see the underlying client.
+ */
+export interface HelixLookup {
+  /** Resolve a login to a user, or null when it does not exist. */
+  getUserByLogin(login: string): Promise<HelixUser | null>;
+  /**
+   * When `userId` follows `broadcasterId`, or null when not following.
+   * `broadcasterId` must be a configured channel.
+   */
+  getFollowage(broadcasterId: string, userId: string): Promise<FollowInfo | null>;
+}
+
 /** The facade handed to each plugin's `init`. The only surface plugins touch. */
 export interface BotContext {
   /** This plugin's config block (may be empty). */
   readonly config: PluginConfig;
   /** Logger scoped to this plugin. */
   readonly logger: Logger;
+  /** Platform user/follow lookups. */
+  readonly helix: HelixLookup;
   /** Post a message to a channel (optionally replying to a message id). */
   say(text: string, replyToId?: string, broadcasterId?: string): Promise<void>;
   /** Register a chat command. */

@@ -5,6 +5,7 @@ import { ChatRateLimiter } from './chatRateLimiter.js';
 import { resolveRoles } from './permissions.js';
 import type {
   ChatMessageEvent,
+  HelixLookup,
   Logger,
   MessageSender,
   StreamOnlineEvent,
@@ -33,6 +34,7 @@ export interface TwitchTransport {
   broadcasterId: string;
   broadcasterIds: string[];
   sender: MessageSender;
+  helix: HelixLookup;
   start(): Promise<void>;
   stop(): Promise<void>;
 }
@@ -247,10 +249,30 @@ export async function createTwitchTransport(
     }
   };
 
+  const helix: HelixLookup = {
+    getUserByLogin: async (login) => {
+      const user = await api.users.getUserByName(login);
+      return user ? { id: user.id, displayName: user.displayName } : null;
+    },
+    getFollowage: async (broadcasterId, userId) => {
+      if (!broadcasterIds.includes(broadcasterId)) {
+        throw new Error(`cannot query unconfigured broadcaster "${broadcasterId}"`);
+      }
+      // Run under the broadcaster token: Get Channel Followers requires the
+      // broadcaster (or a channel moderator) with moderator:read:followers.
+      const result = await api.asUser(broadcasterId, (userApi) =>
+        userApi.channels.getChannelFollowers(broadcasterId, userId),
+      );
+      const follower = result.data[0];
+      return follower ? { followedAt: follower.followDate } : null;
+    },
+  };
+
   return {
     broadcasterId: defaultBroadcasterId,
     broadcasterIds,
     sender,
+    helix,
     start: async () => {
       listener.start();
       await reconcileLiveStreams('startup');

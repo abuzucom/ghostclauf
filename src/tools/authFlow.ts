@@ -6,7 +6,7 @@ import { randomBytes, timingSafeEqual } from 'node:crypto';
 import { createServer } from 'node:http';
 import { exchangeCode } from '@twurple/auth';
 import { loadFileConfig, loadSecrets } from '../core/config.js';
-import { BOT_SCOPES, writeTokenStore } from '../core/auth.js';
+import { BOT_SCOPES, BROADCASTER_SCOPES, writeTokenStore } from '../core/auth.js';
 
 async function main(): Promise<void> {
   const file = loadFileConfig();
@@ -140,7 +140,7 @@ function resolveAuthTarget(
     label: 'broadcaster',
     login: broadcaster.login,
     tokenStorePath: broadcaster.tokenStorePath,
-    scopes: [],
+    scopes: BROADCASTER_SCOPES,
   };
 }
 
