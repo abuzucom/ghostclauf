@@ -5,6 +5,19 @@ All notable changes to this project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.0] - 2026-07-21
+
+### Added
+
+- `streak` plugin: check-ins now pool across every configured broadcaster by
+  default (`shareAcrossChannels`, default `true`) - useful when multiple
+  channels belong to the same streamer. Set `shareAcrossChannels: false` to
+  keep channels fully independent as before.
+- `streak` plugin: check-ins are now anchored to when the current stream
+  actually started rather than the wall-clock moment of the check-in
+  (`streamSessionHours`, default 18), so a stream that runs past midnight no
+  longer splits a viewer's attendance across two different stream days.
+
 ## [0.2.1] - 2026-07-21
 
 ### Changed

@@ -46,6 +46,14 @@ plugins:
       # Only count days the stream was actually live (via the stream.online event
       # or the admin open command). Set false to also count any check-in day.
       requireStreamDay: true
+      # Pool streak state across every broadcaster configured above (useful when
+      # they're all the same streamer's channels). Set false to keep each
+      # channel's streaks fully independent.
+      shareAcrossChannels: true
+      # How long after a stream starts a check-in still counts toward that
+      # stream's day, so a stream that runs past midnight doesn't get cut off.
+      # Tune to roughly your longest typical stream length.
+      streamSessionHours: 18
       # Optional: override trigger words (defaults shown).
       # triggers:
       #   checkin: checkin

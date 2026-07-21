@@ -8,6 +8,11 @@ import { makeSpyLogger } from './helpers.js';
 const BID = 'chan-1';
 const CID = 'viewer-1';
 
+/** A UTC instant on the given YYYY-MM-DD day, for recordStreamDay's startedAt. */
+function instantOn(day: string, hour = 20): Date {
+  return new Date(`${day}T${String(hour).padStart(2, '0')}:00:00.000Z`);
+}
+
 describe('StreakStore', () => {
   let dir: string;
   let dataPath: string;
@@ -24,7 +29,7 @@ describe('StreakStore', () => {
   it('persists and reloads state across store instances', async () => {
     const first = new StreakStore(dataPath, makeSpyLogger().logger);
     await first.load();
-    await first.recordStreamDay(BID, '2026-07-20');
+    await first.recordStreamDay(BID, '2026-07-20', instantOn('2026-07-20'));
     await first.checkIn(BID, CID, 'viewer', 'Viewer', '2026-07-20');
 
     const second = new StreakStore(dataPath, makeSpyLogger().logger);
@@ -38,7 +43,7 @@ describe('StreakStore', () => {
   it('writes valid pretty-printed JSON with version 1', async () => {
     const store = new StreakStore(dataPath, makeSpyLogger().logger);
     await store.load();
-    await store.recordStreamDay(BID, '2026-07-20');
+    await store.recordStreamDay(BID, '2026-07-20', instantOn('2026-07-20'));
     const raw = await readFile(dataPath, 'utf8');
     const parsed = JSON.parse(raw);
     expect(parsed.version).toBe(1);
@@ -48,19 +53,19 @@ describe('StreakStore', () => {
   it('dedupes and orders stream days, reporting whether newly added', async () => {
     const store = new StreakStore(dataPath, makeSpyLogger().logger);
     await store.load();
-    expect(await store.recordStreamDay(BID, '2026-07-20')).toBe(true);
-    expect(await store.recordStreamDay(BID, '2026-07-18')).toBe(true);
-    expect(await store.recordStreamDay(BID, '2026-07-20')).toBe(false);
+    expect(await store.recordStreamDay(BID, '2026-07-20', instantOn('2026-07-20'))).toBe(true);
+    expect(await store.recordStreamDay(BID, '2026-07-18', instantOn('2026-07-18'))).toBe(true);
+    expect(await store.recordStreamDay(BID, '2026-07-20', instantOn('2026-07-20'))).toBe(false);
     expect(store.streamDays(BID)).toEqual(['2026-07-18', '2026-07-20']);
   });
 
   it('extends a streak across consecutive recorded stream days', async () => {
     const store = new StreakStore(dataPath, makeSpyLogger().logger);
     await store.load();
-    await store.recordStreamDay(BID, '2026-07-18');
+    await store.recordStreamDay(BID, '2026-07-18', instantOn('2026-07-18'));
     const first = await store.checkIn(BID, CID, 'viewer', 'Viewer', '2026-07-18');
     expect(first.outcome).toBe('started');
-    await store.recordStreamDay(BID, '2026-07-20');
+    await store.recordStreamDay(BID, '2026-07-20', instantOn('2026-07-20'));
     const second = await store.checkIn(BID, CID, 'viewer', 'Viewer', '2026-07-20');
     expect(second.outcome).toBe('extended');
     expect(second.viewer.currentStreak).toBe(2);
@@ -69,7 +74,7 @@ describe('StreakStore', () => {
   it('finds a viewer by login and supports admin reset/set', async () => {
     const store = new StreakStore(dataPath, makeSpyLogger().logger);
     await store.load();
-    await store.recordStreamDay(BID, '2026-07-20');
+    await store.recordStreamDay(BID, '2026-07-20', instantOn('2026-07-20'));
     await store.checkIn(BID, CID, 'viewer', 'Viewer', '2026-07-20');
 
     const found = store.findViewerByName(BID, 'viewer');
@@ -82,6 +87,40 @@ describe('StreakStore', () => {
     await store.resetViewer(BID, CID);
     expect(store.getViewer(BID, CID)?.currentStreak).toBe(0);
     expect(store.getViewer(BID, CID)?.longestStreak).toBe(5); // history preserved
+  });
+
+  it('returns null activeStreamStartedAt for an unrecorded channel', async () => {
+    const store = new StreakStore(dataPath, makeSpyLogger().logger);
+    await store.load();
+    expect(store.activeStreamStartedAt(BID)).toBeNull();
+  });
+
+  it('persists activeStreamStartedAt and round-trips it across store reloads', async () => {
+    const startedAt = instantOn('2026-07-20', 23);
+    const first = new StreakStore(dataPath, makeSpyLogger().logger);
+    await first.load();
+    await first.recordStreamDay(BID, '2026-07-20', startedAt);
+
+    const second = new StreakStore(dataPath, makeSpyLogger().logger);
+    await second.load();
+    expect(second.activeStreamStartedAt(BID)).toEqual(startedAt);
+  });
+
+  it('overwrites the anchor with a more recent start but not with an older one', async () => {
+    const store = new StreakStore(dataPath, makeSpyLogger().logger);
+    await store.load();
+    const earlier = instantOn('2026-07-20', 20);
+    const later = instantOn('2026-07-20', 23);
+
+    await store.recordStreamDay(BID, '2026-07-20', earlier);
+    expect(store.activeStreamStartedAt(BID)).toEqual(earlier);
+
+    await store.recordStreamDay(BID, '2026-07-20', later);
+    expect(store.activeStreamStartedAt(BID)).toEqual(later);
+
+    // An older start for a new day shouldn't roll the anchor backwards.
+    await store.recordStreamDay(BID, '2026-07-21', earlier);
+    expect(store.activeStreamStartedAt(BID)).toEqual(later);
   });
 
   it('starts empty and backs up a corrupt data file instead of destroying it', async () => {

@@ -66,44 +66,65 @@ export class StreakStore {
     }
   }
 
-  private channel(broadcasterId: string): ChannelRecord {
-    const existing = this.data.channels[broadcasterId];
+  private channel(channelKey: string): ChannelRecord {
+    const existing = this.data.channels[channelKey];
     if (existing) return existing;
-    const created: ChannelRecord = { streamDays: [], viewers: {} };
-    this.data.channels[broadcasterId] = created;
+    const created: ChannelRecord = { streamDays: [], activeStreamStartedAt: null, viewers: {} };
+    this.data.channels[channelKey] = created;
     return created;
   }
 
   /** Recorded stream-day keys for a channel (ascending copy). */
-  streamDays(broadcasterId: string): string[] {
-    return [...(this.data.channels[broadcasterId]?.streamDays ?? [])];
+  streamDays(channelKey: string): string[] {
+    return [...(this.data.channels[channelKey]?.streamDays ?? [])];
   }
 
-  hasStreamDay(broadcasterId: string, day: string): boolean {
-    return this.data.channels[broadcasterId]?.streamDays.includes(day) ?? false;
+  hasStreamDay(channelKey: string, day: string): boolean {
+    return this.data.channels[channelKey]?.streamDays.includes(day) ?? false;
   }
 
-  /** Mark `day` a stream day. Returns true if newly added. Persists. */
-  async recordStreamDay(broadcasterId: string, day: string): Promise<boolean> {
-    const channel = this.channel(broadcasterId);
-    if (channel.streamDays.includes(day)) return false;
-    channel.streamDays.push(day);
-    channel.streamDays.sort();
-    await this.persist();
-    return true;
+  /**
+   * Mark `day` a stream day and record `startedAt` as the active session
+   * anchor if it's more recent than whatever's already stored (ISO instants
+   * compare chronologically as strings). Returns true iff `day` was newly
+   * added. Persists whenever either the day or the anchor changes.
+   */
+  async recordStreamDay(channelKey: string, day: string, startedAt: Date): Promise<boolean> {
+    const channel = this.channel(channelKey);
+    const isNewDay = !channel.streamDays.includes(day);
+    if (isNewDay) {
+      channel.streamDays.push(day);
+      channel.streamDays.sort();
+    }
+    const startedAtIso = startedAt.toISOString();
+    const previousAnchor = channel.activeStreamStartedAt;
+    const anchorChanged = previousAnchor === null || startedAtIso > previousAnchor;
+    if (anchorChanged) {
+      channel.activeStreamStartedAt = startedAtIso;
+    }
+    if (isNewDay || anchorChanged) {
+      await this.persist();
+    }
+    return isNewDay;
   }
 
-  getViewer(broadcasterId: string, chatterId: string): ViewerRecord | undefined {
-    return this.data.channels[broadcasterId]?.viewers[chatterId];
+  /** The most recent recorded stream start for a channel, or null if none. */
+  activeStreamStartedAt(channelKey: string): Date | null {
+    const iso = this.data.channels[channelKey]?.activeStreamStartedAt;
+    return iso ? new Date(iso) : null;
+  }
+
+  getViewer(channelKey: string, chatterId: string): ViewerRecord | undefined {
+    return this.data.channels[channelKey]?.viewers[chatterId];
   }
 
   /** Find a viewer by login (lowercased), for admin commands targeting @user. */
   findViewerByName(
-    broadcasterId: string,
+    channelKey: string,
     login: string,
   ): { chatterId: string; viewer: ViewerRecord } | undefined {
     const wanted = login.toLowerCase();
-    const viewers = this.data.channels[broadcasterId]?.viewers ?? {};
+    const viewers = this.data.channels[channelKey]?.viewers ?? {};
     for (const [chatterId, viewer] of Object.entries(viewers)) {
       if (viewer.chatterName === wanted) return { chatterId, viewer };
     }
@@ -112,13 +133,13 @@ export class StreakStore {
 
   /** Apply a check-in on stream day `today` and persist the result. */
   async checkIn(
-    broadcasterId: string,
+    channelKey: string,
     chatterId: string,
     chatterName: string,
     displayName: string,
     today: string,
   ): Promise<{ outcome: CheckinOutcome; viewer: ViewerRecord }> {
-    const channel = this.channel(broadcasterId);
+    const channel = this.channel(channelKey);
     const current = channel.viewers[chatterId] ?? newViewerRecord(chatterName.toLowerCase(), displayName);
     const previous = previousStreamDay(channel.streamDays, today);
     const { viewer, outcome } = applyCheckin(current, today, previous);
@@ -129,8 +150,8 @@ export class StreakStore {
   }
 
   /** Reset a viewer's current streak to 0, preserving their longest. Persists. */
-  async resetViewer(broadcasterId: string, chatterId: string): Promise<void> {
-    const viewer = this.data.channels[broadcasterId]?.viewers[chatterId];
+  async resetViewer(channelKey: string, chatterId: string): Promise<void> {
+    const viewer = this.data.channels[channelKey]?.viewers[chatterId];
     if (!viewer) return;
     viewer.currentStreak = 0;
     viewer.lastCheckinDay = null;
@@ -138,8 +159,8 @@ export class StreakStore {
   }
 
   /** Manually set a viewer's current streak, bumping longest if needed. Persists. */
-  async setViewerStreak(broadcasterId: string, chatterId: string, value: number): Promise<void> {
-    const viewer = this.data.channels[broadcasterId]?.viewers[chatterId];
+  async setViewerStreak(channelKey: string, chatterId: string, value: number): Promise<void> {
+    const viewer = this.data.channels[channelKey]?.viewers[chatterId];
     if (!viewer) return;
     viewer.currentStreak = value;
     viewer.longestStreak = Math.max(viewer.longestStreak, value);
