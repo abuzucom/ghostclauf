@@ -6,7 +6,7 @@ import { EventBus } from './core/eventBus.js';
 import { createLogger } from './core/logger.js';
 import { PluginManager } from './core/pluginManager.js';
 import { createTwitchTransport } from './core/twitch.js';
-import type { MessageSender } from './core/types.js';
+import type { HelixLookup, MessageSender } from './core/types.js';
 
 async function main(): Promise<void> {
   const logger = createLogger();
@@ -38,8 +38,29 @@ async function main(): Promise<void> {
   const senderRef: MessageSender = (text, replyToId, broadcasterId) =>
     sender(text, replyToId, broadcasterId);
 
+  // Same late-bind for Helix lookups; plugins only call them at runtime.
+  let helix: HelixLookup = {
+    getUserByLogin: async () => {
+      throw new Error('helix lookup not ready yet');
+    },
+    getFollowage: async () => {
+      throw new Error('helix lookup not ready yet');
+    },
+  };
+  const helixRef: HelixLookup = {
+    getUserByLogin: (login) => helix.getUserByLogin(login),
+    getFollowage: (broadcasterId, userId) => helix.getFollowage(broadcasterId, userId),
+  };
+
   // Discover and initialize plugins (they register commands / event listeners).
-  const plugins = new PluginManager({ file, logger, registry, bus, sender: senderRef });
+  const plugins = new PluginManager({
+    file,
+    logger,
+    registry,
+    bus,
+    sender: senderRef,
+    helix: helixRef,
+  });
   await plugins.loadAll();
 
   // Transport: one EventSub WS for chat + stream events, plus the sender.
@@ -63,6 +84,7 @@ async function main(): Promise<void> {
     },
   });
   sender = transport.sender;
+  helix = transport.helix;
 
   await transport.start();
   logger.info(

@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `followage` plugin: `!followage` (everyone) replies with how long the
+  caller (or `!followage @user`, another viewer) has followed the channel
+  the command was typed in. Multi-channel aware: each configured channel
+  answers for its own broadcaster.
+- `BotContext.helix`: a narrow, transport-agnostic lookup surface for plugins
+  (`getUserByLogin`, `getFollowage`); twurple stays confined to
+  `src/core/twitch.ts`.
+
+### Changed
+
+- Broadcaster authorization (`npm run auth -- --broadcaster <login>`) now
+  requests the `moderator:read:followers` scope, needed by the follower
+  lookup. Existing broadcaster tokens must be re-authorized once.
+
 ### Fixed
 
 - Token stores are now shape-validated on read; a corrupted or malformed

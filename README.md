@@ -16,6 +16,8 @@ The design borrows the *spirit* of [eggdrop](https://github.com/eggheads/eggdrop
   `<streamer> has gone live at <UTC timestamp>` (template configurable).
 - **Attendance / watch streaks** — viewers `!checkin` while live to build a
   streak of consecutive stream days attended (see below).
+- **Follow age** - `!followage` (or `!followage @user`) replies with how long
+  the viewer has followed the channel the command was typed in (see below).
 
 The first two are shipped as plugins (`src/plugins/ping`, `src/plugins/wentlive`)
 and are the reference examples for writing your own; `src/plugins/streak` is the
@@ -57,6 +59,20 @@ State persists to `dataPath` (default `./data/streaks.json`). Day boundaries use
 the configured `timezone` (IANA name, default `UTC`). A channel-point redeem is
 planned; when added it will reuse the same check-in path. See
 [`config.example.yaml`](config.example.yaml) for all options.
+
+## Follow age (`followage` plugin)
+
+`!followage` tells a viewer how long they have followed the channel, e.g.
+`Viewer has been following itsjustatank for 3 years, 2 months.` Anyone can run
+it; `!followage @user` looks up another viewer instead. The bot is
+multi-channel aware: the command answers for the broadcaster of the chat it
+was typed in, so the same viewer can get different answers in different
+configured channels.
+
+The lookup uses the Helix *Get Channel Followers* endpoint, which requires the
+**broadcaster's** token to carry the `moderator:read:followers` scope. Tokens
+authorized before this plugin existed do not have it — re-run
+`npm run auth -- --broadcaster <login>` once per broadcaster to grant it.
 
 ## How it talks to Twitch
 

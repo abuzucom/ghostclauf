@@ -30,6 +30,7 @@ plugins:
     - ping
     - wentlive
     - streak
+    - followage
 
   # Per-plugin configuration blocks, keyed by plugin name.
   config:
