@@ -33,6 +33,16 @@ the stream already went live (so it missed that event), a broadcaster or
 moderator can run `!streakopen` to open check-in for the day. Set
 `requireStreamDay: false` to instead count any day a viewer checks in.
 
+Check-ins are anchored to when the current stream actually started, not the
+wall-clock moment of the check-in — a viewer checking in at 1AM after an 11PM
+stream start still counts toward the 11PM stream's day, for up to
+`streamSessionHours` (default 18) after the stream began.
+
+Running multiple broadcasters in `config.yaml`? By default (`shareAcrossChannels:
+true`) all of them pool into one streak per viewer — handy when they're all the
+same streamer's channels. Set `shareAcrossChannels: false` to keep each
+channel's streaks fully independent instead.
+
 Commands (trigger words configurable):
 
 | Command | Who | Effect |

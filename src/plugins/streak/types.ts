@@ -32,6 +32,11 @@ export interface StreakConfig {
   dataPath?: string;
   timezone?: string;
   requireStreamDay?: boolean;
+  /** Pool streak state across every configured broadcaster. Default true. */
+  shareAcrossChannels?: boolean;
+  /** How long after a stream starts a check-in still anchors to that stream's
+   *  day, so overnight streams don't get cut off at midnight. Default 18. */
+  streamSessionHours?: number;
   triggers?: Partial<StreakTriggers>;
   messages?: Partial<StreakMessages>;
 }
@@ -49,10 +54,14 @@ export interface ViewerRecord {
   totalCheckins: number;
 }
 
-/** Per-channel state, keyed by broadcasterId. */
+/** Per-channel state, keyed by a channel scope (a broadcasterId, or the
+ *  shared-pool key when shareAcrossChannels is enabled). */
 export interface ChannelRecord {
   /** Ordered, deduped stream-day keys (ascending). */
   streamDays: string[];
+  /** ISO instant of the most recent recorded stream start, or null. Read as
+   *  null for files written before this field existed. */
+  activeStreamStartedAt: string | null;
   /** Viewer records keyed by chatterId. */
   viewers: Record<string, ViewerRecord>;
 }

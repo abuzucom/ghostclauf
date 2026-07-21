@@ -11,6 +11,10 @@ import type {
 
 export const DEFAULT_TIMEZONE = 'UTC';
 export const DEFAULT_DATA_PATH = './data/streaks.json';
+/** How long a stream session anchors check-ins before falling back to the
+ *  wall-clock day; long enough for an overnight stream, short enough not to
+ *  misattribute an unrelated later check-in to a stale session. */
+export const DEFAULT_STREAM_SESSION_HOURS = 18;
 
 export const DEFAULT_TRIGGERS: StreakTriggers = {
   checkin: 'checkin',
@@ -106,6 +110,29 @@ export function applyCheckin(
     totalCheckins: viewer.totalCheckins + 1,
   };
   return { viewer: next, outcome: extends_ ? 'extended' : 'started' };
+}
+
+/**
+ * Resolve which stream day a check-in at `now` should count toward. Anchors
+ * to the day the current stream started (rather than the wall-clock day of
+ * the check-in itself) as long as that start is within `sessionHours` and not
+ * in the future, so a stream that runs past midnight doesn't split a single
+ * session across two stream days. Falls back to the plain wall-clock day
+ * otherwise (no active/recent stream, or the anchor has gone stale).
+ */
+export function resolveCheckinDay(
+  now: Date,
+  activeStreamStartedAt: Date | null,
+  timeZone: string,
+  sessionHours: number,
+): string {
+  if (activeStreamStartedAt) {
+    const elapsedHours = (now.getTime() - activeStreamStartedAt.getTime()) / 3_600_000;
+    if (elapsedHours >= 0 && elapsedHours <= sessionHours) {
+      return streamDayKey(activeStreamStartedAt, timeZone);
+    }
+  }
+  return streamDayKey(now, timeZone);
 }
 
 /** Tokens available to message templates. */

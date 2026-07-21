@@ -1,17 +1,17 @@
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import streak from '../src/plugins/streak/index.js';
+import streak, { createStreakPlugin } from '../src/plugins/streak/index.js';
 import type { StreamOnlineEvent } from '../src/core/types.js';
 import { flush, makeHarness, makeMessage } from './helpers.js';
 
-function onlineNow(broadcasterId = '1'): StreamOnlineEvent {
+function onlineNow(broadcasterId = '1', startedAt: Date = new Date()): StreamOnlineEvent {
   return {
     broadcasterId,
     broadcasterName: 'streamer',
     broadcasterDisplayName: 'Streamer',
-    startedAt: new Date(),
+    startedAt,
   };
 }
 
@@ -106,5 +106,99 @@ describe('streak plugin', () => {
     say.mockClear();
     await registry.handle(makeMessage('!streak', ['everyone']));
     expect(say.mock.calls[0][0]).toContain('your streak is 0');
+  });
+
+  it('counts a post-midnight check-in toward the overnight stream that started it', async () => {
+    const startedAt = new Date('2026-07-20T23:00:00.000Z'); // 11PM
+    const checkinNow = new Date('2026-07-21T01:00:00.000Z'); // 1AM, 2 hours later
+    const plugin = createStreakPlugin(() => checkinNow);
+    const { ctx, bus, say, registry } = harness();
+    await plugin.init(ctx);
+    bus.emit('streamOnline', onlineNow('1', startedAt));
+    await flush();
+
+    await registry.handle(makeMessage('!checkin', ['everyone']));
+    expect(say.mock.calls[0][0]).toContain('Streak started');
+
+    const raw = await readFile(dataPath, 'utf8');
+    const persisted = JSON.parse(raw);
+    const channel = Object.values(persisted.channels)[0] as {
+      streamDays: string[];
+      viewers: Record<string, { lastCheckinDay: string }>;
+    };
+    expect(channel.streamDays).toEqual(['2026-07-20']);
+    const [viewer] = Object.values(channel.viewers);
+    expect(viewer.lastCheckinDay).toBe('2026-07-20');
+  });
+
+  it('falls back to plain wall-clock gating once the session window has elapsed', async () => {
+    const startedAt = new Date('2026-07-18T23:00:00.000Z');
+    const checkinNow = new Date('2026-07-20T01:00:00.000Z'); // ~26 hours later
+    const plugin = createStreakPlugin(() => checkinNow);
+    const { ctx, bus, say, registry } = harness();
+    await plugin.init(ctx);
+    bus.emit('streamOnline', onlineNow('1', startedAt));
+    await flush();
+
+    await registry.handle(makeMessage('!checkin', ['everyone']));
+    expect(say.mock.calls[0][0]).toContain('not open');
+  });
+
+  it('shares a streak across channels by default', async () => {
+    const now = new Date('2026-07-20T20:00:00.000Z');
+    const plugin = createStreakPlugin(() => now);
+    const { ctx, bus, say, registry } = harness();
+    await plugin.init(ctx);
+    bus.emit('streamOnline', onlineNow('1', now));
+    await flush();
+
+    await registry.handle(makeMessage('!checkin', ['everyone'], { broadcasterId: '1' }));
+    expect(say.mock.calls[0][0]).toContain('Streak started');
+
+    say.mockClear();
+    // Channel '2' never went live, but the shared pool is already open via channel '1'.
+    await registry.handle(makeMessage('!checkin', ['everyone'], { broadcasterId: '2' }));
+    expect(say.mock.calls[0][0]).toContain('already checked in');
+
+    say.mockClear();
+    await registry.handle(makeMessage('!streak', ['everyone'], { broadcasterId: '2' }));
+    expect(say.mock.calls[0][0]).toContain('your streak is 1');
+  });
+
+  it('reflects admin reset/set across channels when shared', async () => {
+    const now = new Date('2026-07-20T20:00:00.000Z');
+    const plugin = createStreakPlugin(() => now);
+    const { ctx, bus, say, registry } = harness();
+    await plugin.init(ctx);
+    bus.emit('streamOnline', onlineNow('1', now));
+    await flush();
+    await registry.handle(makeMessage('!checkin', ['everyone'], { broadcasterId: '1' }));
+    say.mockClear();
+
+    await registry.handle(
+      makeMessage('!streakset @viewer 9', ['everyone', 'broadcaster'], { broadcasterId: '1' }),
+    );
+    expect(say.mock.calls[0][0]).toContain('Set');
+
+    say.mockClear();
+    await registry.handle(makeMessage('!streak', ['everyone'], { broadcasterId: '2' }));
+    expect(say.mock.calls[0][0]).toContain('your streak is 9');
+  });
+
+  it('keeps channels independent when shareAcrossChannels is false', async () => {
+    const now = new Date('2026-07-20T20:00:00.000Z');
+    const plugin = createStreakPlugin(() => now);
+    const { ctx, bus, say, registry } = harness({ shareAcrossChannels: false });
+    await plugin.init(ctx);
+    bus.emit('streamOnline', onlineNow('1', now));
+    await flush();
+
+    await registry.handle(makeMessage('!checkin', ['everyone'], { broadcasterId: '1' }));
+    expect(say.mock.calls[0][0]).toContain('Streak started');
+
+    say.mockClear();
+    // Channel '2' is its own independent scope and was never marked live.
+    await registry.handle(makeMessage('!checkin', ['everyone'], { broadcasterId: '2' }));
+    expect(say.mock.calls[0][0]).toContain('not open');
   });
 });

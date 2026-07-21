@@ -4,6 +4,7 @@ import {
   newViewerRecord,
   previousStreamDay,
   renderMessage,
+  resolveCheckinDay,
   streamDayKey,
 } from '../src/plugins/streak/streak.js';
 import type { ViewerRecord } from '../src/plugins/streak/types.js';
@@ -25,6 +26,14 @@ describe('streamDayKey', () => {
       /invalid timezone/i,
     );
   });
+
+  it('lands on Feb 29 in a leap year', () => {
+    expect(streamDayKey(new Date('2028-02-29T12:00:00.000Z'), 'UTC')).toBe('2028-02-29');
+  });
+
+  it('rolls Feb 28 to Mar 1 in a non-leap year (no Feb 29 to land on)', () => {
+    expect(streamDayKey(new Date('2029-03-01T00:30:00.000Z'), 'UTC')).toBe('2029-03-01');
+  });
 });
 
 describe('previousStreamDay', () => {
@@ -45,6 +54,16 @@ describe('previousStreamDay', () => {
 
   it('returns null for an empty list', () => {
     expect(previousStreamDay([], '2026-07-20')).toBeNull();
+  });
+
+  it('finds Feb 28 as the day before Mar 1 when Feb 29 was not recorded (non-leap year)', () => {
+    const nonLeapDays = ['2029-02-27', '2029-02-28', '2029-03-01'];
+    expect(previousStreamDay(nonLeapDays, '2029-03-01')).toBe('2029-02-28');
+  });
+
+  it('finds Feb 29 as the day before Mar 1 when it was recorded (leap year)', () => {
+    const leapDays = ['2028-02-28', '2028-02-29', '2028-03-01'];
+    expect(previousStreamDay(leapDays, '2028-03-01')).toBe('2028-02-29');
   });
 });
 
@@ -110,6 +129,39 @@ describe('applyCheckin', () => {
     applyCheckin(start, '2026-07-20', '2026-07-18');
     expect(start.currentStreak).toBe(1);
     expect(start.lastCheckinDay).toBe('2026-07-18');
+  });
+});
+
+describe('resolveCheckinDay', () => {
+  const SESSION_HOURS = 18;
+
+  it('anchors to the stream start day for a check-in shortly after an overnight start', () => {
+    const startedAt = new Date('2026-07-20T23:00:00.000Z'); // 11PM
+    const checkinNow = new Date('2026-07-21T01:00:00.000Z'); // 1AM, 2 hours later
+    expect(resolveCheckinDay(checkinNow, startedAt, 'UTC', SESSION_HOURS)).toBe('2026-07-20');
+  });
+
+  it('falls back to the wall-clock day when no active stream is recorded', () => {
+    const now = new Date('2026-07-21T01:00:00.000Z');
+    expect(resolveCheckinDay(now, null, 'UTC', SESSION_HOURS)).toBe('2026-07-21');
+  });
+
+  it('falls back to the wall-clock day once elapsed time exceeds the session window', () => {
+    const startedAt = new Date('2026-07-18T23:00:00.000Z');
+    const now = new Date('2026-07-20T01:00:00.000Z'); // ~26 hours later, past 18h window
+    expect(resolveCheckinDay(now, startedAt, 'UTC', SESSION_HOURS)).toBe('2026-07-20');
+  });
+
+  it('falls back to the wall-clock day if the recorded start is in the future (clock skew)', () => {
+    const now = new Date('2026-07-20T12:00:00.000Z');
+    const futureStart = new Date('2026-07-20T13:00:00.000Z');
+    expect(resolveCheckinDay(now, futureStart, 'UTC', SESSION_HOURS)).toBe('2026-07-20');
+  });
+
+  it('anchors a leap-year overnight stream (Feb 28 -> Feb 29) to the start day', () => {
+    const startedAt = new Date('2028-02-28T23:00:00.000Z');
+    const checkinNow = new Date('2028-02-29T01:00:00.000Z');
+    expect(resolveCheckinDay(checkinNow, startedAt, 'UTC', SESSION_HOURS)).toBe('2028-02-28');
   });
 });
 

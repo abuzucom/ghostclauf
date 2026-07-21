@@ -9,10 +9,12 @@ import { StreakStore } from './store.js';
 import {
   DEFAULT_DATA_PATH,
   DEFAULT_MESSAGES,
+  DEFAULT_STREAM_SESSION_HOURS,
   DEFAULT_TIMEZONE,
   DEFAULT_TRIGGERS,
   isValidTimezone,
   renderMessage,
+  resolveCheckinDay,
   streamDayKey,
 } from './streak.js';
 
@@ -20,6 +22,8 @@ interface ResolvedConfig {
   dataPath: string;
   timezone: string;
   requireStreamDay: boolean;
+  shareAcrossChannels: boolean;
+  streamSessionHours: number;
   triggers: StreakTriggers;
   messages: StreakMessages;
 }
@@ -28,6 +32,10 @@ interface ResolvedConfig {
 const LOGIN_PATTERN = /^[a-z0-9_]{1,25}$/;
 /** Bound admin-set values to a sane range and reject non-numeric input. */
 const STREAK_VALUE_PATTERN = /^\d{1,6}$/;
+/** A key that can never collide with a real (numeric) Twitch broadcaster id. */
+const SHARED_SCOPE_KEY = 'shared';
+const MIN_SESSION_HOURS = 1;
+const MAX_SESSION_HOURS = 72;
 
 function resolveConfig(raw: StreakConfig, logger: Logger): ResolvedConfig {
   const configuredTz = raw.timezone ?? DEFAULT_TIMEZONE;
@@ -35,13 +43,29 @@ function resolveConfig(raw: StreakConfig, logger: Logger): ResolvedConfig {
   if (timezone !== configuredTz) {
     logger.warn({ configuredTz }, 'invalid streak timezone; falling back to UTC');
   }
+  const configuredSessionHours = raw.streamSessionHours ?? DEFAULT_STREAM_SESSION_HOURS;
+  const validSessionHours =
+    Number.isInteger(configuredSessionHours) &&
+    configuredSessionHours >= MIN_SESSION_HOURS &&
+    configuredSessionHours <= MAX_SESSION_HOURS;
+  const streamSessionHours = validSessionHours ? configuredSessionHours : DEFAULT_STREAM_SESSION_HOURS;
+  if (!validSessionHours) {
+    logger.warn({ configuredSessionHours }, 'invalid streak streamSessionHours; falling back to default');
+  }
   return {
     dataPath: raw.dataPath ?? DEFAULT_DATA_PATH,
     timezone,
     requireStreamDay: raw.requireStreamDay ?? true,
+    shareAcrossChannels: raw.shareAcrossChannels ?? true,
+    streamSessionHours,
     triggers: { ...DEFAULT_TRIGGERS, ...raw.triggers },
     messages: { ...DEFAULT_MESSAGES, ...raw.messages },
   };
+}
+
+/** Resolve the store scope key for a channel: pooled when sharing is on. */
+function scopeKey(cfg: ResolvedConfig, broadcasterId: string): string {
+  return cfg.shareAcrossChannels ? SHARED_SCOPE_KEY : broadcasterId;
 }
 
 /** Parse an optional "@login" argument into a validated lowercase login. */
@@ -66,26 +90,30 @@ function pickCheckinTemplate(messages: StreakMessages, outcome: CheckinOutcome):
 async function ensureOpen(
   store: StreakStore,
   cfg: ResolvedConfig,
-  broadcasterId: string,
+  scope: string,
   today: string,
+  now: Date,
 ): Promise<boolean> {
-  if (store.hasStreamDay(broadcasterId, today)) return true;
+  if (store.hasStreamDay(scope, today)) return true;
   if (cfg.requireStreamDay) return false;
-  await store.recordStreamDay(broadcasterId, today);
+  await store.recordStreamDay(scope, today, now);
   return true;
 }
 
-function checkinHandler(store: StreakStore, cfg: ResolvedConfig): CommandHandler {
+function checkinHandler(store: StreakStore, cfg: ResolvedConfig, now: () => Date): CommandHandler {
   return async (event, ctx) => {
-    const today = streamDayKey(new Date(), cfg.timezone);
-    const open = await ensureOpen(store, cfg, event.broadcasterId, today);
+    const scope = scopeKey(cfg, event.broadcasterId);
+    const nowInstant = now();
+    const activeStart = store.activeStreamStartedAt(scope);
+    const today = resolveCheckinDay(nowInstant, activeStart, cfg.timezone, cfg.streamSessionHours);
+    const open = await ensureOpen(store, cfg, scope, today, nowInstant);
     if (!open) {
       const text = renderMessage(cfg.messages.notOpen, { user: event.chatterDisplayName });
       await ctx.say(text, event.messageId, event.broadcasterId);
       return;
     }
     const { outcome, viewer } = await store.checkIn(
-      event.broadcasterId,
+      scope,
       event.chatterId,
       event.chatterName,
       event.chatterDisplayName,
@@ -103,9 +131,10 @@ function checkinHandler(store: StreakStore, cfg: ResolvedConfig): CommandHandler
 
 function lookupHandler(store: StreakStore, cfg: ResolvedConfig): CommandHandler {
   return async (event, ctx) => {
+    const scope = scopeKey(cfg, event.broadcasterId);
     const login = parseLogin(event.args[0]);
     if (login) {
-      const found = store.findViewerByName(event.broadcasterId, login);
+      const found = store.findViewerByName(scope, login);
       const text = found
         ? renderMessage(cfg.messages.lookupOther, {
             user: found.viewer.displayName,
@@ -116,7 +145,7 @@ function lookupHandler(store: StreakStore, cfg: ResolvedConfig): CommandHandler 
       await ctx.say(text, event.messageId, event.broadcasterId);
       return;
     }
-    const viewer = store.getViewer(event.broadcasterId, event.chatterId);
+    const viewer = store.getViewer(scope, event.chatterId);
     const text = viewer
       ? renderMessage(cfg.messages.lookupSelf, {
           user: event.chatterDisplayName,
@@ -136,12 +165,13 @@ async function resolveAdminTarget(
   ctx: BotContext,
   usage: string,
 ): Promise<{ chatterId: string; viewer: { displayName: string } } | null> {
+  const scope = scopeKey(cfg, event.broadcasterId);
   const login = parseLogin(event.args[0]);
   if (!login) {
     await ctx.say(renderMessage(cfg.messages.adminUsage, { user: usage }), event.messageId, event.broadcasterId);
     return null;
   }
-  const found = store.findViewerByName(event.broadcasterId, login);
+  const found = store.findViewerByName(scope, login);
   if (!found) {
     await ctx.say(
       renderMessage(cfg.messages.adminNotFound, { user: login }),
@@ -157,7 +187,8 @@ function resetHandler(store: StreakStore, cfg: ResolvedConfig): CommandHandler {
   return async (event, ctx) => {
     const found = await resolveAdminTarget(store, cfg, event, ctx, `!${cfg.triggers.reset} @user`);
     if (!found) return;
-    await store.resetViewer(event.broadcasterId, found.chatterId);
+    const scope = scopeKey(cfg, event.broadcasterId);
+    await store.resetViewer(scope, found.chatterId);
     const text = renderMessage(cfg.messages.reset, { user: found.viewer.displayName });
     await ctx.say(text, event.messageId, event.broadcasterId);
   };
@@ -173,67 +204,79 @@ function setHandler(store: StreakStore, cfg: ResolvedConfig): CommandHandler {
     }
     const found = await resolveAdminTarget(store, cfg, event, ctx, `!${cfg.triggers.set} @user <number>`);
     if (!found) return;
-    await store.setViewerStreak(event.broadcasterId, found.chatterId, value);
+    const scope = scopeKey(cfg, event.broadcasterId);
+    await store.setViewerStreak(scope, found.chatterId, value);
     const text = renderMessage(cfg.messages.setDone, { user: found.viewer.displayName, streak: value });
     await ctx.say(text, event.messageId, event.broadcasterId);
   };
 }
 
-function openHandler(store: StreakStore, cfg: ResolvedConfig): CommandHandler {
+function openHandler(store: StreakStore, cfg: ResolvedConfig, now: () => Date): CommandHandler {
   return async (event, ctx) => {
-    const today = streamDayKey(new Date(), cfg.timezone);
-    await store.recordStreamDay(event.broadcasterId, today);
+    const nowInstant = now();
+    const scope = scopeKey(cfg, event.broadcasterId);
+    const today = streamDayKey(nowInstant, cfg.timezone);
+    await store.recordStreamDay(scope, today, nowInstant);
     await ctx.say(renderMessage(cfg.messages.opened, { day: today }), event.messageId, event.broadcasterId);
   };
 }
 
-const plugin: Plugin = {
-  name: 'streak',
-  version: '1.0.0',
-  async init(ctx) {
-    const cfg = resolveConfig(ctx.config as StreakConfig, ctx.logger);
-    const store = new StreakStore(cfg.dataPath, ctx.logger);
-    await store.load();
+/**
+ * Build the streak plugin. `now` is injectable so check-in day resolution is
+ * deterministically testable (the codebase has no fake-timer precedent);
+ * production use relies on the default real clock.
+ */
+export function createStreakPlugin(now: () => Date = () => new Date()): Plugin {
+  return {
+    name: 'streak',
+    version: '1.0.0',
+    async init(ctx) {
+      const cfg = resolveConfig(ctx.config as StreakConfig, ctx.logger);
+      const store = new StreakStore(cfg.dataPath, ctx.logger);
+      await store.load();
 
-    ctx.command({
-      trigger: cfg.triggers.checkin,
-      allow: ['everyone'],
-      description: 'Check in while live to build your attendance streak.',
-      handler: checkinHandler(store, cfg),
-    });
-    ctx.command({
-      trigger: cfg.triggers.streak,
-      allow: ['everyone'],
-      description: "Show your streak, or another viewer's with @user.",
-      handler: lookupHandler(store, cfg),
-    });
-    ctx.command({
-      trigger: cfg.triggers.reset,
-      allow: ['broadcaster'],
-      description: "Reset a viewer's streak to 0. Broadcaster only.",
-      handler: resetHandler(store, cfg),
-    });
-    ctx.command({
-      trigger: cfg.triggers.set,
-      allow: ['broadcaster', 'moderator'],
-      description: "Set a viewer's streak to a specific value.",
-      handler: setHandler(store, cfg),
-    });
-    ctx.command({
-      trigger: cfg.triggers.open,
-      allow: ['broadcaster', 'moderator'],
-      description: 'Open check-in for today if the stream-live event was missed.',
-      handler: openHandler(store, cfg),
-    });
+      ctx.command({
+        trigger: cfg.triggers.checkin,
+        allow: ['everyone'],
+        description: 'Check in while live to build your attendance streak.',
+        handler: checkinHandler(store, cfg, now),
+      });
+      ctx.command({
+        trigger: cfg.triggers.streak,
+        allow: ['everyone'],
+        description: "Show your streak, or another viewer's with @user.",
+        handler: lookupHandler(store, cfg),
+      });
+      ctx.command({
+        trigger: cfg.triggers.reset,
+        allow: ['broadcaster'],
+        description: "Reset a viewer's streak to 0. Broadcaster only.",
+        handler: resetHandler(store, cfg),
+      });
+      ctx.command({
+        trigger: cfg.triggers.set,
+        allow: ['broadcaster', 'moderator'],
+        description: "Set a viewer's streak to a specific value.",
+        handler: setHandler(store, cfg),
+      });
+      ctx.command({
+        trigger: cfg.triggers.open,
+        allow: ['broadcaster', 'moderator'],
+        description: 'Open check-in for today if the stream-live event was missed.',
+        handler: openHandler(store, cfg, now),
+      });
 
-    ctx.on('streamOnline', async (event) => {
-      const day = streamDayKey(event.startedAt, cfg.timezone);
-      const added = await store.recordStreamDay(event.broadcasterId, day);
-      if (added) {
-        ctx.logger.info({ broadcasterId: event.broadcasterId, day }, 'recorded stream day');
-      }
-    });
-  },
-};
+      ctx.on('streamOnline', async (event) => {
+        const scope = scopeKey(cfg, event.broadcasterId);
+        const day = streamDayKey(event.startedAt, cfg.timezone);
+        const added = await store.recordStreamDay(scope, day, event.startedAt);
+        if (added) {
+          ctx.logger.info({ broadcasterId: event.broadcasterId, day }, 'recorded stream day');
+        }
+      });
+    },
+  };
+}
 
+const plugin = createStreakPlugin();
 export default plugin;
