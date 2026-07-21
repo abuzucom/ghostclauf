@@ -48,8 +48,14 @@ plugins:
       requireStreamDay: true
       # Pool streak state across every broadcaster configured above (useful when
       # they're all the same streamer's channels). Set false to keep each
-      # channel's streaks fully independent.
+      # channel's streaks fully independent. Note: when pooled, the broadcaster
+      # of ANY configured channel can !streakset / !streakreset viewers in the
+      # shared pool, affecting every channel.
       shareAcrossChannels: true
+      # Seconds a chatter must wait between handled !checkin attempts; repeats
+      # inside the window are silently ignored (protects the store from chat
+      # floods). Set 0 to disable.
+      checkinCooldownSeconds: 10
       # How long after a stream starts a check-in still counts toward that
       # stream's day, so a stream that runs past midnight doesn't get cut off.
       # Tune to roughly your longest typical stream length.

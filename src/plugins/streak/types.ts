@@ -37,6 +37,9 @@ export interface StreakConfig {
   /** How long after a stream starts a check-in still anchors to that stream's
    *  day, so overnight streams don't get cut off at midnight. Default 18. */
   streamSessionHours?: number;
+  /** Seconds a chatter must wait between handled check-in attempts; repeats
+   *  inside the window are silently ignored. 0 disables. Default 10. */
+  checkinCooldownSeconds?: number;
   triggers?: Partial<StreakTriggers>;
   messages?: Partial<StreakMessages>;
 }

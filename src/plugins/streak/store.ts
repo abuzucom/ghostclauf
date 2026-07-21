@@ -26,8 +26,10 @@ function isStreakData(value: unknown): value is StreakData {
 
 export class StreakStore {
   private data: StreakData = emptyData();
-  /** Serializes disk writes so concurrent persists never interleave. */
-  private saveChain: Promise<void> = Promise.resolve();
+  /** The write currently hitting disk, if any. */
+  private writeInFlight: Promise<void> | null = null;
+  /** The single write queued behind the in-flight one; late callers share it. */
+  private queuedWrite: Promise<void> | null = null;
 
   constructor(
     private readonly dataPath: string,
@@ -167,12 +169,28 @@ export class StreakStore {
     await this.persist();
   }
 
-  /** Snapshot current state and queue an atomic write behind any in-flight one. */
+  /**
+   * Write current state to disk, coalescing concurrent callers: at most one
+   * write is in flight and one is queued, so a burst of N mutations costs at
+   * most two full-file writes instead of N. The state is snapshotted when a
+   * write starts, so an awaited persist always covers the caller's mutation.
+   */
   private persist(): Promise<void> {
-    const json = JSON.stringify(this.data, null, 2);
-    const write = this.saveChain.then(() => this.writeAtomic(json));
-    // Keep the chain alive even if a write fails; surface the error to this caller.
-    this.saveChain = write.catch(() => {});
+    if (!this.writeInFlight) return this.startWrite();
+    // Ignore the in-flight write's outcome here; each caller awaits its own
+    // covering write, so a failure still surfaces without poisoning the queue.
+    this.queuedWrite ??= this.writeInFlight.catch(() => {}).then(() => this.startWrite());
+    return this.queuedWrite;
+  }
+
+  private startWrite(): Promise<void> {
+    this.queuedWrite = null;
+    const write = this.writeAtomic(JSON.stringify(this.data, null, 2));
+    this.writeInFlight = write;
+    const clear = () => {
+      if (this.writeInFlight === write) this.writeInFlight = null;
+    };
+    write.then(clear, clear);
     return write;
   }
 
