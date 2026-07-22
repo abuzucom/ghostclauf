@@ -38,7 +38,7 @@ export function stubHelix(
   override: Partial<HelixClient> | HelixLookup = {},
 ): HelixClient {
   return {
-    getFollowAge: vi.fn().mockResolvedValue(null),
+    getFollowage: vi.fn().mockResolvedValue(null),
     getUserByLogin: vi.fn().mockResolvedValue(null),
     sendShoutout: vi.fn().mockResolvedValue(undefined),
     ...override,

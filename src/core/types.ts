@@ -112,13 +112,11 @@ export interface FollowInfo {
 export interface HelixClient {
   /** Resolve a login to a user, or null when it does not exist. */
   getUserByLogin(login: string): Promise<HelixUser | null>;
-  /** Null if userId is not following broadcasterId. */
-  getFollowAge?(
-    userId: string,
-    broadcasterId: string,
-  ): Promise<FollowInfo | null>;
-  /** Null if userId is not following broadcasterId. */
-  getFollowage?(
+  /**
+   * When `userId` follows `broadcasterId`, or null when not following.
+   * `broadcasterId` must be a configured channel.
+   */
+  getFollowage(
     broadcasterId: string,
     userId: string,
   ): Promise<FollowInfo | null>;

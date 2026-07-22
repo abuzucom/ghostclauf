@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import lurkPlugin from '../src/plugins/lurk/index.js';
+import lurkPlugin, { createLurkPlugin } from '../src/plugins/lurk/index.js';
 import type { ChatCommandEvent } from '../src/core/types.js';
 import { makeHarness, makeMessage } from './helpers.js';
 
@@ -46,17 +46,62 @@ describe('lurk plugin', () => {
     );
   });
 
-  it('warns on second lurk attempt', async () => {
+  it('warns on second lurk attempt after the cooldown', async () => {
+    let now = new Date('2026-07-21T12:00:00Z');
     const { registry, say, ctx } = makeHarness('lurk');
-    await lurkPlugin.init(ctx);
+    await createLurkPlugin(() => now).init(ctx);
 
     await registry.handle(makeEvent('u-2', 'Bob'));
+    now = new Date(now.getTime() + 10_000);
     await registry.handle(makeEvent('u-2', 'Bob'));
 
     expect(say).toHaveBeenLastCalledWith(
       '@Bob is already lurking — we definitely see you.',
       'msg-1',
       'b-1',
+    );
+  });
+
+  it('silently drops repeat lurks inside the cooldown window', async () => {
+    const now = new Date('2026-07-21T12:00:00Z');
+    const { registry, say, ctx } = makeHarness('lurk');
+    await createLurkPlugin(() => now).init(ctx);
+
+    await registry.handle(makeEvent('u-2', 'Bob'));
+    await registry.handle(makeEvent('u-2', 'Bob'));
+
+    expect(say).toHaveBeenCalledTimes(1);
+  });
+
+  it('disables the cooldown when configured to zero', async () => {
+    const now = new Date('2026-07-21T12:00:00Z');
+    const { registry, say, ctx } = makeHarness('lurk', { cooldownSeconds: 0 });
+    await createLurkPlugin(() => now).init(ctx);
+
+    await registry.handle(makeEvent('u-2', 'Bob'));
+    await registry.handle(makeEvent('u-2', 'Bob'));
+
+    expect(say).toHaveBeenCalledTimes(2);
+    expect(say).toHaveBeenLastCalledWith(
+      '@Bob is already lurking — we definitely see you.',
+      'msg-1',
+      'b-1',
+    );
+  });
+
+  it('keeps lurk state independent per channel', async () => {
+    const { registry, say, ctx } = makeHarness('lurk');
+    await lurkPlugin.init(ctx);
+
+    await registry.handle(makeEvent('u-9', 'Eve'));
+    const otherChannel = { ...makeEvent('u-9', 'Eve'), broadcasterId: 'b-2' };
+    await registry.handle(otherChannel);
+
+    // Same chatter in a second channel starts fresh, not "already lurking".
+    expect(say).toHaveBeenLastCalledWith(
+      'Thanks for the lurk, @Eve! We see you.',
+      'msg-1',
+      'b-2',
     );
   });
 
