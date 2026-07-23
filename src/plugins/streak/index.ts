@@ -93,6 +93,21 @@ function scopeKey(cfg: ResolvedConfig, broadcasterId: string): string {
   return cfg.shareAcrossChannels ? SHARED_SCOPE_KEY : broadcasterId;
 }
 
+/**
+ * Whether the scope that `broadcasterId` maps to currently has a live
+ * stream. When sharing across channels, any one broadcaster in the pool
+ * being live is enough - the pool's check-in gate mirrors its shared
+ * stream-day state. Otherwise the broadcaster's own live state applies.
+ */
+function isScopeLive(
+  cfg: ResolvedConfig,
+  liveBroadcasters: ReadonlySet<string>,
+  broadcasterId: string,
+): boolean {
+  if (cfg.shareAcrossChannels) return liveBroadcasters.size > 0;
+  return liveBroadcasters.has(broadcasterId);
+}
+
 function parseStreakValue(token: string | undefined): number | null {
   if (token === undefined || !STREAK_VALUE_PATTERN.test(token)) return null;
   return Number(token);
@@ -104,21 +119,35 @@ function pickCheckinTemplate(messages: StreakMessages, outcome: CheckinOutcome):
   return messages.started;
 }
 
-/** Ensure today counts as a stream day, honoring the requireStreamDay policy. */
+/**
+ * Ensure today counts as a stream day, honoring the requireStreamDay policy.
+ * When requireStreamDay is on, a day recorded earlier is not enough on its
+ * own - the broadcaster's channel must currently be live, so check-ins close
+ * once the stream ends instead of staying open for the rest of the day.
+ */
 async function ensureOpen(
   store: StreakStore,
   cfg: ResolvedConfig,
   scope: string,
   today: string,
   now: Date,
+  isLive: boolean,
 ): Promise<boolean> {
-  if (store.hasStreamDay(scope, today)) return true;
-  if (cfg.requireStreamDay) return false;
-  await store.recordStreamDay(scope, today, now);
+  if (cfg.requireStreamDay) {
+    return store.hasStreamDay(scope, today) && isLive;
+  }
+  if (!store.hasStreamDay(scope, today)) {
+    await store.recordStreamDay(scope, today, now);
+  }
   return true;
 }
 
-function checkinHandler(store: StreakStore, cfg: ResolvedConfig, now: () => Date): CommandHandler {
+function checkinHandler(
+  store: StreakStore,
+  cfg: ResolvedConfig,
+  now: () => Date,
+  liveBroadcasters: Set<string>,
+): CommandHandler {
   // Throttled check-ins are dropped silently so the bot does not amplify a
   // chat flood into store writes and replies.
   const cooldown = new CooldownGate(cfg.checkinCooldownSeconds * MS_PER_SECOND);
@@ -131,7 +160,8 @@ function checkinHandler(store: StreakStore, cfg: ResolvedConfig, now: () => Date
     }
     const activeStart = store.activeStreamStartedAt(scope);
     const today = resolveCheckinDay(nowInstant, activeStart, cfg.timezone, cfg.streamSessionHours);
-    const open = await ensureOpen(store, cfg, scope, today, nowInstant);
+    const isLive = isScopeLive(cfg, liveBroadcasters, event.broadcasterId);
+    const open = await ensureOpen(store, cfg, scope, today, nowInstant, isLive);
     if (!open) {
       const text = renderMessage(cfg.messages.notOpen, { user: event.chatterDisplayName });
       await ctx.say(text, event.messageId, event.broadcasterId);
@@ -236,12 +266,21 @@ function setHandler(store: StreakStore, cfg: ResolvedConfig): CommandHandler {
   };
 }
 
-function openHandler(store: StreakStore, cfg: ResolvedConfig, now: () => Date): CommandHandler {
+function openHandler(
+  store: StreakStore,
+  cfg: ResolvedConfig,
+  now: () => Date,
+  liveBroadcasters: Set<string>,
+): CommandHandler {
   return async (event, ctx) => {
     const nowInstant = now();
     const scope = scopeKey(cfg, event.broadcasterId);
     const today = streamDayKey(nowInstant, cfg.timezone);
     await store.recordStreamDay(scope, today, nowInstant);
+    // A mod running this is asserting the stream is live right now - the
+    // command exists to unblock check-ins when the stream.online event was
+    // missed, so it must also clear the live gate.
+    liveBroadcasters.add(event.broadcasterId);
     await ctx.say(renderMessage(cfg.messages.opened, { day: today }), event.messageId, event.broadcasterId);
   };
 }
@@ -259,12 +298,17 @@ export function createStreakPlugin(now: () => Date = () => new Date()): Plugin {
       const cfg = resolveConfig(ctx.config as StreakConfig, ctx.logger);
       const store = new StreakStore(cfg.dataPath, ctx.logger);
       await store.load();
+      // In-memory only: which broadcasters are currently live. Rebuilt from
+      // stream events (and the transport's startup reconciliation) on every
+      // boot, so it always reflects real-time state rather than "was today
+      // ever opened."
+      const liveBroadcasters = new Set<string>();
 
       ctx.command({
         trigger: cfg.triggers.checkin,
         allow: ['everyone'],
         description: 'Check in while live to build your attendance streak.',
-        handler: checkinHandler(store, cfg, now),
+        handler: checkinHandler(store, cfg, now, liveBroadcasters),
       });
       ctx.command({
         trigger: cfg.triggers.streak,
@@ -288,16 +332,22 @@ export function createStreakPlugin(now: () => Date = () => new Date()): Plugin {
         trigger: cfg.triggers.open,
         allow: ['broadcaster', 'moderator'],
         description: 'Open check-in for today if the stream-live event was missed.',
-        handler: openHandler(store, cfg, now),
+        handler: openHandler(store, cfg, now, liveBroadcasters),
       });
 
       ctx.on('streamOnline', async (event) => {
+        liveBroadcasters.add(event.broadcasterId);
         const scope = scopeKey(cfg, event.broadcasterId);
         const day = streamDayKey(event.startedAt, cfg.timezone);
         const added = await store.recordStreamDay(scope, day, event.startedAt);
         if (added) {
           ctx.logger.info({ broadcasterId: event.broadcasterId, day }, 'recorded stream day');
         }
+      });
+
+      ctx.on('streamOffline', (event) => {
+        liveBroadcasters.delete(event.broadcasterId);
+        ctx.logger.info({ broadcasterId: event.broadcasterId }, 'closed check-in for offline stream');
       });
     },
   };

@@ -48,6 +48,15 @@ export interface StreamOnlineEvent {
   startedAt: Date;
 }
 
+/** A normalized "stream went offline" event. */
+export interface StreamOfflineEvent {
+  broadcasterId: string;
+  broadcasterName: string;
+  broadcasterDisplayName: string;
+  /** True when the event was synthesized during live-state recovery. */
+  recovered?: boolean;
+}
+
 /** A chat message that matched a registered command, with parsed args. */
 export interface ChatCommandEvent extends ChatMessageEvent {
   /** The matched trigger (lowercased, without the prefix). */
@@ -62,6 +71,7 @@ export interface ChatCommandEvent extends ChatMessageEvent {
 export interface BotEvents {
   chatMessage: ChatMessageEvent;
   streamOnline: StreamOnlineEvent;
+  streamOffline: StreamOfflineEvent;
 }
 
 export type CommandHandler = (

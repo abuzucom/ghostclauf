@@ -9,12 +9,14 @@ import type {
   HelixUser,
   Logger,
   MessageSender,
+  StreamOfflineEvent,
   StreamOnlineEvent,
 } from './types.js';
 
 export interface TransportHandlers {
   onChatMessage(event: ChatMessageEvent): void | Promise<void>;
   onStreamOnline(event: StreamOnlineEvent): void | Promise<void>;
+  onStreamOffline(event: StreamOfflineEvent): void | Promise<void>;
 }
 
 export interface TwitchTransportOptions {
@@ -67,7 +69,7 @@ export async function createTwitchTransport(
             `Run npm run auth -- --broadcaster ${login} again while logged into that account.`,
         );
       }
-      return { login, id: broadcaster.id };
+      return { login, id: broadcaster.id, displayName: broadcaster.displayName };
     }),
   );
 
@@ -127,6 +129,12 @@ export async function createTwitchTransport(
     void handlers.onStreamOnline(event);
   };
 
+  const emitStreamOffline = (event: StreamOfflineEvent): void => {
+    if (!liveStreamIds.has(event.broadcasterId)) return;
+    liveStreamIds.delete(event.broadcasterId);
+    void handlers.onStreamOffline(event);
+  };
+
   async function reconcileLiveStreams(reason: string): Promise<void> {
     const states = await Promise.all(
       broadcasters.map(async (broadcaster) => {
@@ -146,7 +154,12 @@ export async function createTwitchTransport(
     for (const state of states) {
       if (!state) continue;
       if (!state.stream) {
-        liveStreamIds.delete(state.broadcaster.id);
+        emitStreamOffline({
+          broadcasterId: state.broadcaster.id,
+          broadcasterName: state.broadcaster.login,
+          broadcasterDisplayName: state.broadcaster.displayName,
+          recovered: true,
+        });
         continue;
       }
       emitStreamOnline({
@@ -195,6 +208,14 @@ export async function createTwitchTransport(
         startedAt: event.startDate,
       };
       emitStreamOnline(normalized);
+    });
+    listener.onStreamOffline(broadcaster.id, (event) => {
+      const normalized: StreamOfflineEvent = {
+        broadcasterId: event.broadcasterId,
+        broadcasterName: event.broadcasterName,
+        broadcasterDisplayName: event.broadcasterDisplayName,
+      };
+      emitStreamOffline(normalized);
     });
   }
 
