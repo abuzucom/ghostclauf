@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+
+- Pin transitive dependency `ws` to 8.21.1 via `overrides`, fixing a
+  memory-exhaustion DoS (CVE-2026-62389) in `ws`'s WebSocket fragment
+  receiver. Pulled in through `@twurple/eventsub-ws`.
+- CI: `actions/checkout` steps now set `persist-credentials: false`, since
+  neither job pushes back to the repository.
+
 ### Added
 
 - `followage` plugin: `!followage` (everyone) replies with how long the
