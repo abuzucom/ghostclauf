@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import streak, { createStreakPlugin } from '../src/plugins/streak/index.js';
-import type { StreamOnlineEvent } from '../src/core/types.js';
+import type { StreamOfflineEvent, StreamOnlineEvent } from '../src/core/types.js';
 import { flush, makeHarness, makeMessage } from './helpers.js';
 
 function onlineNow(broadcasterId = '1', startedAt: Date = new Date()): StreamOnlineEvent {
@@ -12,6 +12,14 @@ function onlineNow(broadcasterId = '1', startedAt: Date = new Date()): StreamOnl
     broadcasterName: 'streamer',
     broadcasterDisplayName: 'Streamer',
     startedAt,
+  };
+}
+
+function offlineNow(broadcasterId = '1'): StreamOfflineEvent {
+  return {
+    broadcasterId,
+    broadcasterName: 'streamer',
+    broadcasterDisplayName: 'Streamer',
   };
 }
 
@@ -253,6 +261,46 @@ describe('streak plugin', () => {
     say.mockClear();
     await registry.handle(makeMessage('!streak', ['everyone'], { broadcasterId: '2' }));
     expect(say.mock.calls[0][0]).toContain('your streak is 9');
+  });
+
+  it('closes check-in once the stream goes offline, even though today was already opened', async () => {
+    const { ctx, bus, say, registry } = harness();
+    await streak.init(ctx);
+    bus.emit('streamOnline', onlineNow('1'));
+    await flush();
+
+    await registry.handle(makeMessage('!checkin', ['everyone']));
+    expect(say.mock.calls[0][0]).toContain('Streak started');
+
+    bus.emit('streamOffline', offlineNow('1'));
+    await flush();
+    say.mockClear();
+
+    // A different chatter tries to check in after the stream ended: today
+    // was recorded as a stream day, but the channel is no longer live.
+    await registry.handle(
+      makeMessage('!checkin', ['everyone'], {
+        chatterId: '200',
+        chatterName: 'other',
+        chatterDisplayName: 'Other',
+      }),
+    );
+    expect(say.mock.calls[0][0]).toContain('not open');
+  });
+
+  it('reopens check-in for the pool while any shared channel is still live', async () => {
+    const { ctx, bus, say, registry } = harness();
+    await streak.init(ctx);
+    bus.emit('streamOnline', onlineNow('1'));
+    bus.emit('streamOnline', onlineNow('2'));
+    await flush();
+
+    bus.emit('streamOffline', offlineNow('1'));
+    await flush();
+
+    // Channel '2' is still live, so the shared pool remains open.
+    await registry.handle(makeMessage('!checkin', ['everyone'], { broadcasterId: '2' }));
+    expect(say.mock.calls[0][0]).toContain('Streak started');
   });
 
   it('keeps channels independent when shareAcrossChannels is false', async () => {

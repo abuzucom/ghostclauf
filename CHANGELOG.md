@@ -37,6 +37,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   broadcaster) posts a shoutout message and optionally issues Twitch's native
   shoutout (`sendNativeShoutout`, requires the `moderator:manage:shoutouts`
   broadcaster scope).
+- `stream.offline` is now a first-class transport event (`BotContext.on`),
+  wired end-to-end alongside `stream.online`, including startup/reconnect
+  reconciliation.
 
 ### Changed
 
@@ -62,6 +65,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `BotContext.helix`: removed the duplicate `getFollowAge` method (unreleased)
   that mirrored `getFollowage` with swapped parameters and skipped the
   configured-broadcaster guard; `getFollowage` is required again.
+- `streak` plugin: `!checkin` no longer stays open for the rest of the day
+  once a stream has started; it now also requires the channel (or, when
+  pooled, any channel in the shared pool) to be live right now, closing on
+  the new `stream.offline` event.
+- `streak` plugin store: a read failure other than "file does not exist"
+  (e.g. a permission or I/O error) is now logged and rethrown instead of
+  being treated as an empty database, so a transient failure can no longer
+  cause a later check-in to overwrite real history. The on-disk shape check
+  also validates nested channel/viewer records, not just the top-level
+  envelope.
 
 ## [0.4.0] - 2026-07-21
 

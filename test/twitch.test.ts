@@ -40,6 +40,7 @@ vi.mock('@twurple/eventsub-ws', () => {
     }
     onChannelChatMessage = vi.fn();
     onStreamOnline = vi.fn();
+    onStreamOffline = vi.fn();
     start = vi.fn();
     stop = vi.fn();
     onUserSocketConnect = vi.fn();
@@ -68,7 +69,7 @@ describe('twitch transport sender', () => {
       botUserId: 'bot-id',
       broadcasters: [{ login: 'streamer' }],
       logger: testLogger,
-      handlers: { onChatMessage: vi.fn(), onStreamOnline: vi.fn() },
+      handlers: { onChatMessage: vi.fn(), onStreamOnline: vi.fn(), onStreamOffline: vi.fn() },
     });
 
     await transport.sender('pong!', 'msg-1');
@@ -96,7 +97,7 @@ describe('twitch transport sender', () => {
       botUserId: 'bot-id',
       broadcasters: [{ login: 'streamer' }],
       logger: testLogger,
-      handlers: { onChatMessage: vi.fn(), onStreamOnline: vi.fn() },
+      handlers: { onChatMessage: vi.fn(), onStreamOnline: vi.fn(), onStreamOffline: vi.fn() },
     });
 
     await transport.sender('blocked');
@@ -123,7 +124,7 @@ describe('twitch transport sender', () => {
         botUserId: 'bot-id',
         broadcasters: [{ login: 'streamer' }],
         logger: testLogger,
-        handlers: { onChatMessage: vi.fn(), onStreamOnline: vi.fn() },
+        handlers: { onChatMessage: vi.fn(), onStreamOnline: vi.fn(), onStreamOffline: vi.fn() },
       });
 
       const sending = transport.sender('retry');
@@ -146,7 +147,7 @@ describe('twitch transport sender', () => {
       botUserId: 'bot-id',
       broadcasters: [{ login: 'streamer' }],
       logger: testLogger,
-      handlers: { onChatMessage: vi.fn(), onStreamOnline: vi.fn() },
+      handlers: { onChatMessage: vi.fn(), onStreamOnline: vi.fn(), onStreamOffline: vi.fn() },
     });
 
     await expect(transport.sender('x'.repeat(501))).rejects.toThrow(/500 characters/);
@@ -172,7 +173,7 @@ describe('twitch transport sender', () => {
       botUserId: 'bot-id',
       broadcasters: [{ login: 'streamer' }],
       logger: testLogger,
-      handlers: { onChatMessage: vi.fn(), onStreamOnline },
+      handlers: { onChatMessage: vi.fn(), onStreamOnline, onStreamOffline: vi.fn() },
     });
 
     await transport.start();

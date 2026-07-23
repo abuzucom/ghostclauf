@@ -138,4 +138,33 @@ describe('StreakStore', () => {
     const backups = files.filter((f) => f.startsWith(basename(dataPath)) && f.includes('corrupt'));
     expect(backups.length).toBe(1);
   });
+
+  it('starts empty and backs up valid JSON with a malformed nested viewer record', async () => {
+    const { mkdir } = await import('node:fs/promises');
+    await mkdir(dirname(dataPath), { recursive: true });
+    const malformed = {
+      version: 1,
+      channels: {
+        [BID]: {
+          streamDays: ['2026-07-20'],
+          activeStreamStartedAt: null,
+          // currentStreak should be a number - this file was hand-edited or
+          // corrupted in a way that survives JSON.parse but not the shape
+          // guard.
+          viewers: { [CID]: { chatterName: 'viewer', displayName: 'Viewer', currentStreak: 'oops' } },
+        },
+      },
+    };
+    await writeFile(dataPath, JSON.stringify(malformed), 'utf8');
+    const spy = makeSpyLogger();
+
+    const store = new StreakStore(dataPath, spy.logger);
+    await store.load();
+
+    expect(store.getViewer(BID, CID)).toBeUndefined();
+    expect(spy.error).toHaveBeenCalled();
+    const files = await readdir(dirname(dataPath));
+    const backups = files.filter((f) => f.startsWith(basename(dataPath)) && f.includes('corrupt'));
+    expect(backups.length).toBe(1);
+  });
 });

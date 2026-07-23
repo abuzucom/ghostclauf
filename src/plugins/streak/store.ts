@@ -17,11 +17,42 @@ function emptyData(): StreakData {
   return { version: 1, channels: {} };
 }
 
-/** Minimal shape guard for a loaded data file. */
+/** Shape guard for a single viewer record. */
+function isViewerRecord(value: unknown): value is ViewerRecord {
+  if (typeof value !== 'object' || value === null) return false;
+  const candidate = value as Partial<ViewerRecord>;
+  return (
+    typeof candidate.chatterName === 'string' &&
+    typeof candidate.displayName === 'string' &&
+    typeof candidate.currentStreak === 'number' &&
+    typeof candidate.longestStreak === 'number' &&
+    typeof candidate.totalCheckins === 'number' &&
+    (candidate.lastCheckinDay === null || typeof candidate.lastCheckinDay === 'string')
+  );
+}
+
+/** Shape guard for a single channel record, including its nested viewers. */
+function isChannelRecord(value: unknown): value is ChannelRecord {
+  if (typeof value !== 'object' || value === null) return false;
+  const candidate = value as Partial<ChannelRecord>;
+  if (!Array.isArray(candidate.streamDays) || !candidate.streamDays.every((d) => typeof d === 'string')) {
+    return false;
+  }
+  if (candidate.activeStreamStartedAt !== null && typeof candidate.activeStreamStartedAt !== 'string') {
+    return false;
+  }
+  if (typeof candidate.viewers !== 'object' || candidate.viewers === null) return false;
+  return Object.values(candidate.viewers).every(isViewerRecord);
+}
+
+/** Shape guard for a loaded data file, validating nested channel/viewer records. */
 function isStreakData(value: unknown): value is StreakData {
   if (typeof value !== 'object' || value === null) return false;
   const candidate = value as Partial<StreakData>;
-  return candidate.version === 1 && typeof candidate.channels === 'object' && candidate.channels !== null;
+  if (candidate.version !== 1 || typeof candidate.channels !== 'object' || candidate.channels === null) {
+    return false;
+  }
+  return Object.values(candidate.channels).every(isChannelRecord);
 }
 
 export class StreakStore {
@@ -38,14 +69,23 @@ export class StreakStore {
     private readonly logger: Logger,
   ) {}
 
-  /** Load state from disk. Missing file starts empty; corrupt file is backed up. */
+  /**
+   * Load state from disk. Missing file starts empty; corrupt file is backed
+   * up and started empty. Any other read failure (permissions, I/O) is
+   * logged and rethrown rather than treated as "empty," so a transient
+   * unreadable file can never be persisted over the real data.
+   */
   async load(): Promise<void> {
     let raw: string;
     try {
       raw = await readFile(this.dataPath, 'utf8');
-    } catch {
-      this.data = emptyData();
-      return;
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
+        this.data = emptyData();
+        return;
+      }
+      this.logger.error({ err, dataPath: this.dataPath }, 'failed to read streak data file');
+      throw err;
     }
     try {
       const parsed: unknown = JSON.parse(raw);

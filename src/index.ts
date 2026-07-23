@@ -79,6 +79,9 @@ async function main(): Promise<void> {
       onStreamOnline: (event) => {
         bus.emit('streamOnline', event);
       },
+      onStreamOffline: (event) => {
+        bus.emit('streamOffline', event);
+      },
     },
   });
   sender = transport.sender;
