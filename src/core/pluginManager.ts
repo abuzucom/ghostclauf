@@ -18,15 +18,18 @@ export interface PluginManagerDeps {
 
 /**
  * Discovers plugins across the configured directories, dynamically imports them,
- * validates the `Plugin` contract, and initializes the ones listed in
- * `plugins.enabled`. Discovery and load are isolated per-plugin: a broken plugin
- * is logged and skipped, never crashing the bot.
+ * validates the `Plugin` contract, and initializes the ones that are allowed to
+ * run: either the explicit `plugins.enabled` allow-list when set, or (the
+ * default) every discovered plugin except those named in `plugins.disabled`.
+ * Discovery and load are isolated per-plugin: a broken plugin is logged and
+ * skipped, never crashing the bot.
  *
  * A "plugin" is either a directory containing an `index.js`, or a standalone
  * `.js`/`.mjs` file, inside one of the configured directories.
  */
 export class PluginManager {
   private readonly loaded = new Map<string, Plugin>();
+  private readonly discovered = new Set<string>();
 
   constructor(private readonly deps: PluginManagerDeps) {}
 
@@ -37,20 +40,32 @@ export class PluginManager {
 
   async loadAll(): Promise<void> {
     const { file, logger } = this.deps;
-    const enabled = new Set(file.plugins.enabled);
+    const enabled = file.plugins.enabled ? new Set(file.plugins.enabled) : undefined;
+    const disabled = new Set(file.plugins.disabled);
+    const isAllowed = (name: string): boolean =>
+      enabled ? enabled.has(name) : !disabled.has(name);
 
     for (const dir of file.plugins.directories) {
       const abs = isAbsolute(dir) ? dir : resolve(process.cwd(), dir);
       const entries = await this.discover(abs);
       for (const entryPath of entries) {
-        await this.loadOne(entryPath, enabled);
+        await this.loadOne(entryPath, isAllowed);
       }
     }
 
-    // Warn about anything enabled but never found.
-    for (const name of enabled) {
-      if (!this.loaded.has(name)) {
-        logger.warn({ plugin: name }, 'enabled plugin was not found in any plugin directory');
+    if (enabled) {
+      // Warn about anything enabled but never found.
+      for (const name of enabled) {
+        if (!this.loaded.has(name)) {
+          logger.warn({ plugin: name }, 'enabled plugin was not found in any plugin directory');
+        }
+      }
+    } else {
+      // Warn about anything disabled but never found (likely a typo).
+      for (const name of disabled) {
+        if (!this.discovered.has(name)) {
+          logger.warn({ plugin: name }, 'disabled plugin was not found in any plugin directory');
+        }
       }
     }
 
@@ -83,7 +98,7 @@ export class PluginManager {
     return candidates;
   }
 
-  private async loadOne(entryPath: string, enabled: ReadonlySet<string>): Promise<void> {
+  private async loadOne(entryPath: string, isAllowed: (name: string) => boolean): Promise<void> {
     const { logger, file, bus, registry, sender, helix } = this.deps;
     let plugin: Plugin;
     try {
@@ -97,7 +112,8 @@ export class PluginManager {
       return;
     }
 
-    if (!enabled.has(plugin.name)) {
+    this.discovered.add(plugin.name);
+    if (!isAllowed(plugin.name)) {
       logger.debug({ plugin: plugin.name, entryPath }, 'plugin discovered but not enabled');
       return;
     }
