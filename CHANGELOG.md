@@ -7,15 +7,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Changed
-
-- `plugins.enabled` in `config.yaml` is now optional: every discovered
-  plugin is enabled by default, so adding a new plugin no longer requires
-  editing `config.yaml` to turn it on. Use the new `plugins.disabled` list
-  to turn specific plugins off. Setting `plugins.enabled` explicitly still
-  works exactly as before (an allow-list restricted to just those names,
-  and `plugins.disabled` is ignored in that case).
-
 ### Added
 
 - `followage` plugin: `!followage` (everyone) replies with how long the
@@ -52,6 +43,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- `plugins.enabled` in `config.yaml` is now optional: every discovered
+  plugin is enabled by default, so adding a new plugin no longer requires
+  editing `config.yaml` to turn it on. Use the new `plugins.disabled` list
+  to turn specific plugins off. Setting `plugins.enabled` explicitly still
+  works exactly as before (an allow-list restricted to just those names,
+  and `plugins.disabled` is ignored in that case).
 - Broadcaster authorization (`npm run auth -- --broadcaster <login>`) now
   requests the `moderator:read:followers` and `moderator:manage:shoutouts`
   scopes, needed by the follower lookup and native shoutouts. Existing
