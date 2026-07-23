@@ -39,7 +39,7 @@ describe('loadFileConfig', () => {
     expect(config.chat).toEqual({ commandPrefix: '!' });
     expect(config.plugins).toEqual({
       directories: ['./dist/plugins'],
-      enabled: [],
+      disabled: [],
       config: {},
     });
   });

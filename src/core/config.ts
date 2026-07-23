@@ -24,10 +24,14 @@ const RawFileConfigSchema = z
     plugins: z
       .object({
         directories: z.array(z.string()).default(['./dist/plugins']),
-        enabled: z.array(z.string()).default([]),
+        // Omitted (the default): every discovered plugin runs except those
+        // listed in `disabled`. Set explicitly to restrict to only these
+        // names (legacy allow-list behavior); `disabled` is ignored then.
+        enabled: z.array(z.string()).optional(),
+        disabled: z.array(z.string()).default([]),
         config: z.record(z.record(z.unknown())).default({}),
       })
-      .default({ directories: ['./dist/plugins'], enabled: [], config: {} }),
+      .default({ directories: ['./dist/plugins'], disabled: [], config: {} }),
   })
   .superRefine((config, ctx) => {
     if (!config.broadcaster && !config.broadcasters) {
@@ -59,7 +63,9 @@ export interface FileConfig {
   chat: { commandPrefix: string };
   plugins: {
     directories: string[];
-    enabled: string[];
+    /** Explicit allow-list, when set. Absent means "enable all except `disabled`". */
+    enabled?: string[];
+    disabled: string[];
     config: Record<string, Record<string, unknown>>;
   };
 }

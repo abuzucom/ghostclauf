@@ -261,9 +261,12 @@ const plugin: Plugin = {
 export default plugin;
 ```
 
-Then add its `name` to `plugins.enabled` in `config.yaml`. Discovery, loading,
-and errors are isolated per-plugin — a broken plugin is logged and skipped, never
-crashing the bot.
+It's enabled automatically — every plugin discovered in `plugins.directories`
+runs by default. To turn a specific plugin off, add its `name` to
+`plugins.disabled` in `config.yaml` (or set `plugins.enabled` to an explicit
+list to switch to an allow-list instead). Discovery, loading, and errors are
+isolated per-plugin — a broken plugin is logged and skipped, never crashing
+the bot.
 
 ## Testing
 

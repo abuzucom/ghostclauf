@@ -175,7 +175,7 @@ export interface BotContext {
 
 /** A plugin module's default export. */
 export interface Plugin {
-  /** Unique plugin name; must appear in `plugins.enabled` to run. */
+  /** Unique plugin name; runs by default unless listed in `plugins.disabled`. */
   name: string;
   /** Semantic version string (informational). */
   version: string;

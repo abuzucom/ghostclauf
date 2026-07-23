@@ -24,15 +24,14 @@ plugins:
     - "./dist/plugins"   # built-in plugins (compiled)
     - "/data/plugins"    # external drop-in plugins (optional volume)
 
-  # Only plugins whose `name` appears here are initialized. Everything else is
-  # discovered but left dormant.
-  enabled:
-    - ping
-    - wentlive
-    - streak
-    - lurk
-    - followage
-    - shoutout
+  # Every plugin discovered in `directories` is enabled by default (including
+  # ones you add later) — list names here only to turn specific ones off.
+  disabled: []
+  # Uncomment and list names to switch to an explicit allow-list instead:
+  # only those plugins run, and `disabled` above is ignored.
+  # enabled:
+  #   - ping
+  #   - wentlive
 
   # Per-plugin configuration blocks, keyed by plugin name.
   config:

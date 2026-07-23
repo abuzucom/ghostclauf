@@ -16,7 +16,7 @@ function baseFileConfig(overrides: Partial<FileConfig['plugins']>): FileConfig {
     chat: { commandPrefix: '!' },
     plugins: {
       directories: [],
-      enabled: [],
+      disabled: [],
       config: {},
       ...overrides,
     },
@@ -122,5 +122,40 @@ describe('PluginManager', () => {
     });
     await expect(pm.loadAll()).resolves.toBeUndefined();
     expect(pm.active).toEqual([]);
+  });
+
+  it('initializes every discovered plugin when enabled/disabled are both unset', async () => {
+    const dir = join(fixturesRoot, 'plugins');
+    const { pm } = setup({ directories: [dir] });
+    await pm.loadAll();
+
+    expect(pm.active.sort()).toEqual(['fixture-good-a', 'fixture-good-b']);
+  });
+
+  it('skips only the plugins named in plugins.disabled', async () => {
+    const dir = join(fixturesRoot, 'plugins');
+    const { pm, registry } = setup({
+      directories: [dir],
+      disabled: ['fixture-good-b'],
+    });
+    await pm.loadAll();
+
+    expect(pm.active).toEqual(['fixture-good-a']);
+    expect(registry.match(makeMessage('!fixture-b'))).toBeNull();
+  });
+
+  it('warns when a disabled plugin name matches nothing discovered', async () => {
+    const dir = join(fixturesRoot, 'plugins');
+    const { pm, spy } = setup({
+      directories: [dir],
+      disabled: ['totally-unknown'],
+    });
+    await pm.loadAll();
+
+    expect(pm.active.sort()).toEqual(['fixture-good-a', 'fixture-good-b']);
+    expect(spy.warn).toHaveBeenCalledWith(
+      { plugin: 'totally-unknown' },
+      'disabled plugin was not found in any plugin directory',
+    );
   });
 });
