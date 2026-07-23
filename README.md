@@ -8,6 +8,24 @@ The design borrows the *spirit* of [eggdrop](https://github.com/eggheads/eggdrop
 (event bindings + modules) and [ub3r-b0t](https://github.com/moiph/ub3r-b0t)
 (clean multi-command structure), but is written fresh — no fork, no vendored code.
 
+## Contents
+
+- [Features](#features-v1)
+- [Attendance / watch streaks (`streak`)](#attendance--watch-streaks-streak-plugin)
+- [Follow age (`followage`)](#follow-age-followage-plugin)
+- [Lurk (`lurk`)](#lurk-lurk-plugin)
+- [Shoutout (`shoutout`)](#shoutout-shoutout-plugin)
+- [How it talks to Twitch](#how-it-talks-to-twitch)
+- [Architecture](#architecture)
+- [Prerequisites](#prerequisites)
+- [Setup](#setup)
+- [Run](#run)
+- [Configuration](#configuration)
+- [Writing a plugin](#writing-a-plugin)
+- [Testing](#testing)
+- [Troubleshooting](#troubleshooting)
+- [License](#license)
+
 ## Features (v1)
 
 - **`!ping` → `pong!`** — replies `pong!` when the **broadcaster, a moderator, a
@@ -18,10 +36,14 @@ The design borrows the *spirit* of [eggdrop](https://github.com/eggheads/eggdrop
   streak of consecutive stream days attended (see below).
 - **Follow age** - `!followage` (or `!followage @user`) replies with how long
   the viewer has followed the channel the command was typed in (see below).
+- **Lurk acknowledgement** — `!lurk` / `!unlurk` let viewers announce they're
+  around without being active in chat (see below).
+- **Shoutouts** — `!so` / `!shoutout @channel` (moderators and the
+  broadcaster) plugs another streamer's channel (see below).
 
-The first two are shipped as plugins (`src/plugins/ping`, `src/plugins/wentlive`)
-and are the reference examples for writing your own; `src/plugins/streak` is the
-larger worked example.
+`ping` and `wentlive` are the reference examples for writing your own
+(`src/plugins/ping`, `src/plugins/wentlive`); `src/plugins/streak` is the
+larger worked example. All six built-in plugins live under `src/plugins/`.
 
 ## Attendance / watch streaks (`streak` plugin)
 
@@ -30,10 +52,15 @@ stream days** a viewer checked in: only calendar days on which the stream was
 live count, so off-days are skipped rather than breaking a streak; missing a
 check-in on a day the stream *was* live resets the streak to 1.
 
-A day is marked "live" by the `stream.online` event. If the bot starts *after*
-the stream already went live (so it missed that event), a broadcaster or
-moderator can run `!streakopen` to open check-in for the day. Set
-`requireStreamDay: false` to instead count any day a viewer checks in.
+A day is marked "live" by the `stream.online` event, but recording the day
+alone isn't enough to keep check-in open: with the default
+`requireStreamDay: true`, the channel (or, when pooled, any channel in the
+shared pool) must also be live *right now* — `!checkin` closes as soon as
+`stream.offline` fires, rather than staying open for the rest of the day. If
+the bot starts *after* the stream already went live (so it missed the
+`stream.online` event), a broadcaster or moderator can run `!streakopen` to
+mark the day and mark that channel live. Set `requireStreamDay: false` to
+instead count any day a viewer checks in, with no live requirement at all.
 
 Check-ins are anchored to when the current stream actually started, not the
 wall-clock moment of the check-in — a viewer checking in at 1AM after an 11PM
@@ -53,7 +80,7 @@ Commands (trigger words configurable):
 | `!streak` | everyone | Show your streak; `!streak @user` looks up another viewer. |
 | `!streakreset @user` | broadcaster only | Reset a viewer's streak to 0. |
 | `!streakset @user <n>` | broadcaster / mod | Set a viewer's streak to a value. |
-| `!streakopen` | broadcaster / mod | Mark today a stream day if `stream.online` was missed. |
+| `!streakopen` | broadcaster / mod | Mark today a stream day and the channel live, if `stream.online` was missed. |
 
 State persists to `dataPath` (default `./data/streaks.json`). Day boundaries use
 the configured `timezone` (IANA name, default `UTC`). A channel-point redeem is
@@ -78,6 +105,36 @@ The lookup uses the Helix *Get Channel Followers* endpoint, which requires the
 authorized before this plugin existed do not have it — re-run
 `npm run auth -- --broadcaster <login>` once per broadcaster to grant it.
 
+## Lurk (`lurk` plugin)
+
+`!lurk` announces a viewer is lurking (`Thanks for the lurk, @user! We see
+you.`); `!unlurk` welcomes them back. Repeating `!lurk` while already lurking
+gets a different acknowledgement instead of a duplicate reply. State (who's
+currently lurking) is tracked per channel, in memory only, and capped so it
+can't grow unbounded under chatter churn. The broadcaster's own messages are
+ignored so a streamer testing chat commands doesn't announce themselves as
+lurking.
+
+Each chatter is rate-limited (`cooldownSeconds`, default 10) per command
+(`!lurk` and `!unlurk` cooldown independently), and every message is
+configurable. See the `lurk:` block in
+[`config.example.yaml`](config.example.yaml).
+
+## Shoutout (`shoutout` plugin)
+
+`!so @channel` (alias `!shoutout @channel`, moderators and the broadcaster
+only) posts a configurable plug — by default `Go check out @channel at
+twitch.tv/channel! They were last seen playing <game>.` — using the target's
+last-played category, falling back to `fallbackGame` when the channel has no
+category set.
+
+When `sendNativeShoutout` is true (the default), it also issues Twitch's
+native shoutout via Helix, which requires the **broadcaster's** token to
+carry the `moderator:manage:shoutouts` scope (the same re-auth as
+`followage`, above, covers this). A failed native shoutout is logged as a
+warning but doesn't block the chat reply. See the `shoutout:` block in
+[`config.example.yaml`](config.example.yaml) for message/template overrides.
+
 ## How it talks to Twitch
 
 Twitch now recommends **[EventSub](https://dev.twitch.tv/docs/eventsub/) for
@@ -87,8 +144,9 @@ WebSocket** that carries *both* required events:
 
 | Requirement            | EventSub subscription   |
 | ---------------------- | ----------------------- |
-| `!ping` command        | `channel.chat.message`  |
-| Going-live announcement| `stream.online`         |
+| Chat commands          | `channel.chat.message`  |
+| Going-live announcement, streak live-gating | `stream.online`  |
+| Streak live-gating (close on end)  | `stream.offline` |
 
 All Twitch specifics live in [`src/core/twitch.ts`](src/core/twitch.ts) (built on
 [@twurple](https://twurple.js.org)); everything else is platform-neutral.
@@ -98,8 +156,13 @@ chat limits (one message per channel per second and 20 messages per 30 seconds
 per bot account). The transport reports dropped messages and EventSub
 authorization or connection failures through structured logs. On startup and
 after a reconnect it checks the current stream state to recover missed
-`stream.online` events; recovery updates stateful plugins without repeating a
-going-live announcement.
+`stream.online`/`stream.offline` events; recovery updates stateful plugins
+without repeating a going-live announcement.
+
+Plugins subscribe to either event via `ctx.on(...)` (see
+[Writing a plugin](#writing-a-plugin)): `streamOnline` (`BotEvents.streamOnline`)
+fires when a channel goes live, `streamOffline` (`BotEvents.streamOffline`)
+when it ends.
 
 ## Architecture
 
@@ -120,8 +183,14 @@ src/
   plugins/
     ping/               !ping -> pong!
     wentlive/           stream.online -> announcement
+    streak/             !checkin / !streak / admin commands, live-gated
+    followage/          !followage - Helix follower lookup
+    lurk/               !lurk / !unlurk
+    shoutout/           !so / !shoutout - Helix user lookup + native shoutout
   tools/
-    authFlow.ts         one-time OAuth to mint the bot's initial token
+    authFlow.ts         one-time OAuth to mint an account's initial token
+    checkTokens.ts      reports missing/under-scoped token stores (used by run.bat)
+    configureAccounts.ts  writes real Twitch logins into config.yaml (used by run.bat)
 ```
 
 **Plugins never import twurple.** They receive a `BotContext` and use only:
@@ -133,14 +202,20 @@ src/
 1. A **Twitch application** — register at
    <https://dev.twitch.tv/console/apps>. Note the **Client ID** and
    **Client Secret**, and add `http://localhost:3000/callback` as a redirect URI.
-2. Two **broadcaster accounts** whose channels the bot will monitor.
+2. One or more **broadcaster accounts** whose channels the bot will monitor
+   (the examples throughout this README use two, but any number works — see
+   [Configuration](#configuration)).
 3. A **bot account** (a separate Twitch account the bot posts as).
 4. In each broadcaster's channel, make the bot a **moderator**, *or* have the
    broadcaster grant the `channel:bot` scope — either lets the bot post.
 
 The bot account authorizes these scopes: `user:read:chat`, `user:write:chat`,
-`user:bot`. Each broadcaster also authorizes a user token for its EventSub
-WebSocket. (`stream.online` needs no extra scope.)
+`user:bot`. Each broadcaster authorizes a user token for its EventSub
+WebSocket (`stream.online`/`stream.offline` need no extra scope) plus two
+scopes used by plugins: `moderator:read:followers` (the `followage` lookup)
+and `moderator:manage:shoutouts` (native shoutouts from the `shoutout`
+plugin). `npm run auth -- --broadcaster <login>` requests all of a
+broadcaster's required scopes together.
 
 ## Setup
 
@@ -255,6 +330,7 @@ const plugin: Plugin = {
     });
 
     ctx.on('streamOnline', (e) => ctx.logger.info({ e }, 'we are live'));
+    ctx.on('streamOffline', (e) => ctx.logger.info({ e }, 'stream ended'));
   },
 };
 
@@ -271,7 +347,7 @@ the bot.
 ## Testing
 
 ```bash
-npm test          # vitest unit tests (permissions, commands, both plugins)
+npm test          # vitest unit tests (core + all six plugins)
 npm run typecheck # tsc --noEmit
 ```
 
@@ -286,6 +362,32 @@ twitch event websocket start-server
 twitch event trigger channel.chat.message --transport=websocket
 twitch event trigger stream.online       --transport=websocket
 ```
+
+## Troubleshooting
+
+**A plugin's commands don't respond at all, but `!ping` works.** The plugin
+either isn't enabled or failed to start. Check `plugins.disabled` (or
+`plugins.enabled`, if you're using the explicit allow-list) in `config.yaml`,
+and check the startup log for `initialized N plugin(s)` (lists which plugins
+actually loaded) or a `plugin init threw, skipping` error naming the plugin.
+
+**`!followage` replies "Couldn't look up followage right now."** The
+broadcaster's token for that channel is missing `moderator:read:followers`.
+Re-run `npm run auth -- --broadcaster <login>` for that channel; `run.bat`
+also detects and prompts for this automatically via `checkTokens`.
+
+**`!so`/`!shoutout` posts the chat message but no native Twitch shoutout
+happens.** Same cause as above, but for `moderator:manage:shoutouts` — check
+the log for a `Twitch native shoutout call failed or was rate limited`
+warning, then re-authorize that broadcaster.
+
+**`!checkin` replies "check-in is not open yet."** Either the channel hasn't
+gone live yet this session (the bot needs the real `stream.online` event, or
+a broadcaster/mod running `!streakopen`), or the stream already ended
+(`stream.offline` closes check-in even if the day was already recorded — see
+[Attendance / watch streaks](#attendance--watch-streaks-streak-plugin)). Set
+`requireStreamDay: false` if you want check-ins to work regardless of live
+status.
 
 ## License
 
