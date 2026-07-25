@@ -42,8 +42,9 @@ plugins:
       baseUrl: http://127.0.0.1:8080
       # Milliseconds to wait for the /state request before giving up.
       requestTimeoutMs: 1500
-      # Seconds a chatter must wait between handled !nowplaying lookups.
-      cooldownSeconds: 10
+      # Broadcasters and moderators can use !nowplaying any time, unlimited.
+      # Everyone else is limited to once per user every 3 minutes (fixed,
+      # not configurable).
     ping:
       # Broadcaster login -> chatter logins treated as broadcaster-tier
       # (unlimited !ping, no cooldown) on that channel, despite their actual

@@ -127,7 +127,7 @@ describe('nowplaying plugin', () => {
     expect(say).not.toHaveBeenCalled();
   });
 
-  it('silently drops repeat invocations inside the cooldown window', async () => {
+  it('throttles a plain viewer to one reply per 3 minutes', async () => {
     const fetchImpl = fakeFetch(async () =>
       okResponse(stateBody({ A: deck({ onAir: true, track: { title: 'Night Drive', artist: 'DJ Rae' } }) })),
     );
@@ -137,11 +137,12 @@ describe('nowplaying plugin', () => {
     await plugin.init(h.ctx);
 
     await h.registry.handle(makeMessage('!nowplaying'));
+    now = new Date(now.getTime() + 60 * 1000);
     await h.registry.handle(makeMessage('!nowplaying'));
     expect(h.say).toHaveBeenCalledTimes(1);
     expect(fetchImpl).toHaveBeenCalledTimes(1);
 
-    now = new Date(NOW.getTime() + 10_000);
+    now = new Date(now.getTime() + 2 * 60 * 1000 + 1);
     await h.registry.handle(makeMessage('!nowplaying'));
     expect(h.say).toHaveBeenCalledTimes(2);
   });
@@ -159,15 +160,27 @@ describe('nowplaying plugin', () => {
     expect(say).toHaveBeenCalledTimes(3);
   });
 
-  it('disables the cooldown when configured to zero', async () => {
+  it('never throttles the broadcaster', async () => {
     const fetchImpl = fakeFetch(async () =>
       okResponse(stateBody({ A: deck({ onAir: true, track: { title: 'Night Drive', artist: 'DJ Rae' } }) })),
     );
-    const { ctx, registry, say, plugin } = setup({ cooldownSeconds: 0 }, fetchImpl);
+    const { ctx, registry, say, plugin } = setup({}, fetchImpl);
     await plugin.init(ctx);
 
-    await registry.handle(makeMessage('!nowplaying'));
-    await registry.handle(makeMessage('!nowplaying'));
+    await registry.handle(makeMessage('!nowplaying', ['everyone', 'broadcaster']));
+    await registry.handle(makeMessage('!nowplaying', ['everyone', 'broadcaster']));
+    expect(say).toHaveBeenCalledTimes(2);
+  });
+
+  it('never throttles a moderator', async () => {
+    const fetchImpl = fakeFetch(async () =>
+      okResponse(stateBody({ A: deck({ onAir: true, track: { title: 'Night Drive', artist: 'DJ Rae' } }) })),
+    );
+    const { ctx, registry, say, plugin } = setup({}, fetchImpl);
+    await plugin.init(ctx);
+
+    await registry.handle(makeMessage('!nowplaying', ['everyone', 'moderator']));
+    await registry.handle(makeMessage('!nowplaying', ['everyone', 'moderator']));
     expect(say).toHaveBeenCalledTimes(2);
   });
 

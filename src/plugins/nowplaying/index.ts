@@ -11,17 +11,16 @@ import { formatNowPlaying, parseState } from './nowplaying.js';
 const DEFAULT_BASE_URL = 'http://127.0.0.1:8080';
 const DEFAULT_REQUEST_TIMEOUT_MS = 1500;
 const MAX_REQUEST_TIMEOUT_MS = 10_000;
-const DEFAULT_COOLDOWN_SECONDS = 10;
-const MAX_COOLDOWN_SECONDS = 3600;
-const MS_PER_SECOND = 1000;
+// Broadcasters and moderators are unlimited, any time. Everyone else is
+// limited to one !nowplaying per three minutes. Fixed policy, not
+// configurable, matching the same role-tiered approach used by !ping.
+const VIEWER_COOLDOWN_MS = 3 * 60 * 1000;
 
 export interface NowPlayingConfig {
   /** Base URL of the 1a2n-track-id server. Default: http://127.0.0.1:8080 */
   baseUrl?: string;
   /** Timeout for the /state request, in milliseconds. Default: 1500 */
   requestTimeoutMs?: number;
-  /** Seconds a chatter must wait between handled !nowplaying lookups. Default: 10 */
-  cooldownSeconds?: number;
 }
 
 function resolveBaseUrl(configured: unknown, logger: Logger): string {
@@ -43,20 +42,6 @@ function resolveRequestTimeoutMs(configured: unknown, logger: Logger): number {
   }
   logger.warn({ configured }, 'invalid nowplaying requestTimeoutMs; falling back to default');
   return DEFAULT_REQUEST_TIMEOUT_MS;
-}
-
-function resolveCooldownSeconds(configured: unknown, logger: Logger): number {
-  if (configured === undefined) return DEFAULT_COOLDOWN_SECONDS;
-  if (
-    typeof configured === 'number' &&
-    Number.isInteger(configured) &&
-    configured >= 0 &&
-    configured <= MAX_COOLDOWN_SECONDS
-  ) {
-    return configured;
-  }
-  logger.warn({ configured }, 'invalid nowplaying cooldownSeconds; falling back to default');
-  return DEFAULT_COOLDOWN_SECONDS;
 }
 
 /**
@@ -117,18 +102,20 @@ export function createNowPlayingPlugin(
       const config = (ctx.config ?? {}) as NowPlayingConfig;
       const baseUrl = resolveBaseUrl(config.baseUrl, ctx.logger);
       const requestTimeoutMs = resolveRequestTimeoutMs(config.requestTimeoutMs, ctx.logger);
-      const cooldownSeconds = resolveCooldownSeconds(config.cooldownSeconds, ctx.logger);
       // Throttled repeats are dropped silently, before the fetch, so a chat
       // flood cannot be amplified into a flood of localhost requests either.
-      const cooldown = new CooldownGate(cooldownSeconds * MS_PER_SECOND);
+      const viewerCooldown = new CooldownGate(VIEWER_COOLDOWN_MS);
 
       ctx.command({
         trigger: 'nowplaying',
         allow: ['everyone'],
         description: 'Reports the track(s) currently on air on the DJ overlay.',
         handler: async (event, ctx) => {
-          const cooldownKey = `${event.broadcasterId}:${event.chatterId}`;
-          if (cooldown.shouldThrottle(cooldownKey, now().getTime())) return;
+          const isUnlimited = event.roles.has('broadcaster') || event.roles.has('moderator');
+          if (!isUnlimited) {
+            const cooldownKey = `${event.broadcasterId}:${event.chatterId}`;
+            if (viewerCooldown.shouldThrottle(cooldownKey, now().getTime())) return;
+          }
 
           const tracks = await fetchState(baseUrl, requestTimeoutMs, fetchImpl, ctx.logger);
           // No reply when nothing is on air, or the overlay isn't reachable.
