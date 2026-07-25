@@ -35,6 +35,15 @@ plugins:
 
   # Per-plugin configuration blocks, keyed by plugin name.
   config:
+    ping:
+      # Broadcaster login -> chatter logins treated as broadcaster-tier
+      # (unlimited !ping, no cooldown) on that channel, despite their actual
+      # Twitch role there. For streamers who moderate each other's channels.
+      treatAsBroadcaster:
+        dj1a2n:
+          - itsjustatank
+        itsjustatank:
+          - dj1a2n
     followage:
       # Seconds a chatter must wait between handled !followage lookups;
       # repeats inside the window are silently ignored (protects the shared
