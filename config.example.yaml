@@ -35,6 +35,16 @@ plugins:
 
   # Per-plugin configuration blocks, keyed by plugin name.
   config:
+    nowplaying:
+      # Base URL of the local 1a2n-track-id overlay server (Traktor Pro 4
+      # deck/track tracker for DJ streams). Only reachable on the same
+      # machine; nothing here ever leaves 127.0.0.1.
+      baseUrl: http://127.0.0.1:8080
+      # Milliseconds to wait for the /state request before giving up.
+      requestTimeoutMs: 1500
+      # Broadcasters and moderators can use !nowplaying any time, unlimited.
+      # Everyone else is limited to once per user every 3 minutes (fixed,
+      # not configurable).
     ping:
       # Broadcaster login -> chatter logins treated as broadcaster-tier
       # (unlimited !ping, no cooldown) on that channel, despite their actual
