@@ -10,13 +10,13 @@ const MODERATOR_COOLDOWN_MS = 5 * 60 * 1000;
 const VIEWER_COOLDOWN_MS = 15 * 60 * 1000;
 
 export interface PingConfig {
-  /**
-   * Broadcaster login (any case) -> chatter logins (any case) to treat as
-   * broadcaster-tier (unlimited !ping, no cooldown) on that channel, despite
-   * their actual Twitch role there. For streamers who moderate each other's
-   * channels.
-   */
-  treatAsBroadcaster?: Record<string, string[]>;
+    /**
+     * Broadcaster login (any case) -> chatter logins (any case) to treat as
+     * broadcaster-tier (unlimited !ping, no cooldown) on that channel, despite
+     * their actual Twitch role there. For streamers who moderate each other's
+     * channels.
+     */
+    treatAsBroadcaster?: Record<string, string[]>;
 }
 
 /**
@@ -26,22 +26,22 @@ export interface PingConfig {
  * inherited `Object.prototype` member (e.g. "constructor").
  */
 function buildElevationMap(config: PingConfig): Map<string, Set<string>> {
-  const entries = Object.entries(config.treatAsBroadcaster ?? {});
-  return new Map(
-    entries.map(([broadcasterLogin, chatterLogins]) => [
-      broadcasterLogin.toLowerCase(),
-      new Set(chatterLogins.map((login) => login.toLowerCase())),
-    ]),
-  );
+    const entries = Object.entries(config.treatAsBroadcaster ?? {});
+    return new Map(
+        entries.map(([broadcasterLogin, chatterLogins]) => [
+            broadcasterLogin.toLowerCase(),
+            new Set(chatterLogins.map((login) => login.toLowerCase())),
+        ]),
+    );
 }
 
 function isElevated(
-  elevationMap: Map<string, Set<string>>,
-  broadcasterName: string,
-  chatterName: string,
+    elevationMap: Map<string, Set<string>>,
+    broadcasterName: string,
+    chatterName: string,
 ): boolean {
-  if (!LOGIN_PATTERN.test(broadcasterName) || !LOGIN_PATTERN.test(chatterName)) return false;
-  return elevationMap.get(broadcasterName)?.has(chatterName) ?? false;
+    if (!LOGIN_PATTERN.test(broadcasterName) || !LOGIN_PATTERN.test(chatterName)) return false;
+    return elevationMap.get(broadcasterName)?.has(chatterName) ?? false;
 }
 
 /**
@@ -49,31 +49,37 @@ function isElevated(
  * deterministically testable; production use relies on the real clock.
  */
 export function createPingPlugin(now: () => Date = () => new Date()): Plugin {
-  return {
-    name: 'ping',
-    version: '2.0.0',
-    init(ctx: BotContext): void {
-      const config = (ctx.config ?? {}) as PingConfig;
-      const elevationMap = buildElevationMap(config);
-      const moderatorCooldown = new CooldownGate(MODERATOR_COOLDOWN_MS);
-      const viewerCooldown = new CooldownGate(VIEWER_COOLDOWN_MS);
+    return {
+        name: 'ping',
+        version: '2.0.0',
+        init(ctx: BotContext): void {
+            const config = (ctx.config ?? {}) as PingConfig;
+            const elevationMap = buildElevationMap(config);
+            const moderatorCooldown = new CooldownGate(MODERATOR_COOLDOWN_MS);
+            const viewerCooldown = new CooldownGate(VIEWER_COOLDOWN_MS);
 
-      ctx.command({
-        trigger: 'ping',
-        allow: ['everyone'],
-        description: 'Replies "pong!" (rate-limited for non-broadcasters).',
-        handler: async (event, ctx) => {
-          const elevated = isElevated(elevationMap, event.broadcasterName, event.chatterName);
-          if (!event.roles.has('broadcaster') && !elevated) {
-            const key = `${event.broadcasterId}:${event.chatterId}`;
-            const cooldown = event.roles.has('moderator') ? moderatorCooldown : viewerCooldown;
-            if (cooldown.shouldThrottle(key, now().getTime())) return;
-          }
-          await ctx.say('pong!', event.messageId, event.broadcasterId);
+            ctx.command({
+                trigger: 'ping',
+                allow: ['everyone'],
+                description: 'Replies "pong!" (rate-limited for non-broadcasters).',
+                handler: async (event, ctx) => {
+                    const elevated = isElevated(
+                        elevationMap,
+                        event.broadcasterName,
+                        event.chatterName,
+                    );
+                    if (!event.roles.has('broadcaster') && !elevated) {
+                        const key = `${event.broadcasterId}:${event.chatterId}`;
+                        const cooldown = event.roles.has('moderator')
+                            ? moderatorCooldown
+                            : viewerCooldown;
+                        if (cooldown.shouldThrottle(key, now().getTime())) return;
+                    }
+                    await ctx.say('pong!', event.messageId, event.broadcasterId);
+                },
+            });
         },
-      });
-    },
-  };
+    };
 }
 
 const plugin = createPingPlugin();

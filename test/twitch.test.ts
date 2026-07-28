@@ -5,183 +5,266 @@ import { testLogger } from './helpers.js';
 
 // Map logins to Twitch user ids so the transport can resolve broadcasters.
 const USER_IDS: Record<string, string> = {
-  ghostbot: 'bot-id',
-  streamer: 'channel-id',
+    ghostbot: 'bot-id',
+    streamer: 'channel-id',
 };
 
-const { sendChatMessageSpy, asUserSpy, getStreamByUserIdSpy, listenerInstances } = vi.hoisted(() => ({
-  sendChatMessageSpy: vi.fn().mockResolvedValue({ isSent: true, id: 'sent-1' }),
-  asUserSpy: vi.fn(),
-  getStreamByUserIdSpy: vi.fn().mockResolvedValue(null),
-  listenerInstances: [] as unknown[],
-}));
+const { sendChatMessageSpy, asUserSpy, getStreamByUserIdSpy, listenerInstances } = vi.hoisted(
+    () => ({
+        sendChatMessageSpy: vi.fn().mockResolvedValue({ isSent: true, id: 'sent-1' }),
+        asUserSpy: vi.fn(),
+        getStreamByUserIdSpy: vi.fn().mockResolvedValue(null),
+        listenerInstances: [] as unknown[],
+    }),
+);
 
 vi.mock('@twurple/api', () => {
-  class MockApiClient {
-    users = {
-      getUserByName: (login: string) =>
-        Promise.resolve(USER_IDS[login] ? { id: USER_IDS[login] } : null),
-    };
-    streams = { getStreamByUserId: getStreamByUserIdSpy };
-    chat = { sendChatMessage: sendChatMessageSpy };
-    // asUser scopes the call to a user; the runner receives the same client.
-    asUser = (userId: string, runner: (ctx: unknown) => Promise<unknown>) => {
-      asUserSpy(userId);
-      return runner(this);
-    };
-  }
-  return { ApiClient: MockApiClient };
+    class MockApiClient {
+        users = {
+            getUserByName: (login: string) =>
+                Promise.resolve(USER_IDS[login] ? { id: USER_IDS[login] } : null),
+        };
+        streams = { getStreamByUserId: getStreamByUserIdSpy };
+        chat = { sendChatMessage: sendChatMessageSpy };
+        // asUser scopes the call to a user; the runner receives the same client.
+        asUser = (userId: string, runner: (ctx: unknown) => Promise<unknown>) => {
+            asUserSpy(userId);
+            return runner(this);
+        };
+    }
+    return { ApiClient: MockApiClient };
 });
 
 vi.mock('@twurple/eventsub-ws', () => {
-  class MockListener {
-    constructor() {
-      listenerInstances.push(this);
+    class MockListener {
+        constructor() {
+            listenerInstances.push(this);
+        }
+        onChannelChatMessage = vi.fn();
+        onStreamOnline = vi.fn();
+        onStreamOffline = vi.fn();
+        start = vi.fn();
+        stop = vi.fn();
+        onUserSocketConnect = vi.fn();
+        onUserSocketDisconnect = vi.fn();
+        onRevoke = vi.fn();
+        onSubscriptionCreateFailure = vi.fn();
     }
-    onChannelChatMessage = vi.fn();
-    onStreamOnline = vi.fn();
-    onStreamOffline = vi.fn();
-    start = vi.fn();
-    stop = vi.fn();
-    onUserSocketConnect = vi.fn();
-    onUserSocketDisconnect = vi.fn();
-    onRevoke = vi.fn();
-    onSubscriptionCreateFailure = vi.fn();
-  }
-  return { EventSubWsListener: MockListener };
+    return { EventSubWsListener: MockListener };
 });
 
 const dummyAuthProvider = {} as RefreshingAuthProvider;
 
 beforeEach(() => {
-  sendChatMessageSpy.mockReset().mockResolvedValue({ isSent: true, id: 'sent-1' });
-  asUserSpy.mockClear();
-  getStreamByUserIdSpy.mockReset().mockResolvedValue(null);
-  listenerInstances.length = 0;
+    sendChatMessageSpy.mockReset().mockResolvedValue({ isSent: true, id: 'sent-1' });
+    asUserSpy.mockClear();
+    getStreamByUserIdSpy.mockReset().mockResolvedValue(null);
+    listenerInstances.length = 0;
 });
 
-describe('twitch transport sender', () => {
-  it('sends chat messages as the bot user, not the broadcaster', async () => {
-    asUserSpy.mockClear();
+describe('twitch transport', () => {
+    it('sends chat messages as the bot user, not the broadcaster', async () => {
+        asUserSpy.mockClear();
 
-    const transport = await createTwitchTransport({
-      authProvider: dummyAuthProvider,
-      botUserId: 'bot-id',
-      broadcasters: [{ login: 'streamer' }],
-      logger: testLogger,
-      handlers: { onChatMessage: vi.fn(), onStreamOnline: vi.fn(), onStreamOffline: vi.fn() },
+        const transport = await createTwitchTransport({
+            authProvider: dummyAuthProvider,
+            botUserId: 'bot-id',
+            broadcasters: [{ login: 'streamer' }],
+            logger: testLogger,
+            handlers: { onChatMessage: vi.fn(), onStreamOnline: vi.fn(), onStreamOffline: vi.fn() },
+        });
+
+        await transport.sender('pong!', 'msg-1');
+
+        // The send must be scoped to the bot's user context; otherwise twurple
+        // defaults the sender to the broadcaster, whose token lacks
+        // user:write:chat, and the Helix call throws a scope error.
+        expect(asUserSpy).toHaveBeenCalledWith('bot-id');
+        expect(sendChatMessageSpy).toHaveBeenCalledWith('channel-id', 'pong!', {
+            replyParentMessageId: 'msg-1',
+        });
     });
 
-    await transport.sender('pong!', 'msg-1');
+    it('logs when Twitch drops a message', async () => {
+        sendChatMessageSpy.mockResolvedValueOnce({
+            isSent: false,
+            id: '',
+            dropReasonCode: 'automod_held',
+            dropReasonMessage: 'held for review',
+        });
+        const warn = vi.spyOn(testLogger, 'warn');
 
-    // The send must be scoped to the bot's user context; otherwise twurple
-    // defaults the sender to the broadcaster, whose token lacks
-    // user:write:chat, and the Helix call throws a scope error.
-    expect(asUserSpy).toHaveBeenCalledWith('bot-id');
-    expect(sendChatMessageSpy).toHaveBeenCalledWith('channel-id', 'pong!', {
-      replyParentMessageId: 'msg-1',
-    });
-  });
+        const transport = await createTwitchTransport({
+            authProvider: dummyAuthProvider,
+            botUserId: 'bot-id',
+            broadcasters: [{ login: 'streamer' }],
+            logger: testLogger,
+            handlers: { onChatMessage: vi.fn(), onStreamOnline: vi.fn(), onStreamOffline: vi.fn() },
+        });
 
-  it('logs when Twitch drops a message', async () => {
-    sendChatMessageSpy.mockResolvedValueOnce({
-      isSent: false,
-      id: '',
-      dropReasonCode: 'automod_held',
-      dropReasonMessage: 'held for review',
-    });
-    const warn = vi.spyOn(testLogger, 'warn');
+        await transport.sender('blocked');
 
-    const transport = await createTwitchTransport({
-      authProvider: dummyAuthProvider,
-      botUserId: 'bot-id',
-      broadcasters: [{ login: 'streamer' }],
-      logger: testLogger,
-      handlers: { onChatMessage: vi.fn(), onStreamOnline: vi.fn(), onStreamOffline: vi.fn() },
-    });
-
-    await transport.sender('blocked');
-
-    expect(warn).toHaveBeenCalledWith(
-      expect.objectContaining({
-        broadcasterId: 'channel-id',
-        dropReasonCode: 'automod_held',
-      }),
-      'Twitch dropped chat message',
-    );
-    warn.mockRestore();
-  });
-
-  it('routes a 503 retry through the chat rate limiter', async () => {
-    vi.useFakeTimers();
-    try {
-      const serviceUnavailable = Object.assign(new Error('unavailable'), { statusCode: 503 });
-      sendChatMessageSpy
-        .mockRejectedValueOnce(serviceUnavailable)
-        .mockResolvedValueOnce({ isSent: true, id: 'sent-2' });
-      const transport = await createTwitchTransport({
-        authProvider: dummyAuthProvider,
-        botUserId: 'bot-id',
-        broadcasters: [{ login: 'streamer' }],
-        logger: testLogger,
-        handlers: { onChatMessage: vi.fn(), onStreamOnline: vi.fn(), onStreamOffline: vi.fn() },
-      });
-
-      const sending = transport.sender('retry');
-      await vi.advanceTimersByTimeAsync(0);
-      expect(sendChatMessageSpy).toHaveBeenCalledTimes(1);
-      await vi.advanceTimersByTimeAsync(999);
-      expect(sendChatMessageSpy).toHaveBeenCalledTimes(1);
-      await vi.advanceTimersByTimeAsync(1);
-      await sending;
-      expect(sendChatMessageSpy).toHaveBeenCalledTimes(2);
-    } finally {
-      vi.useRealTimers();
-    }
-  });
-
-  it('rejects messages longer than Twitch allows', async () => {
-    sendChatMessageSpy.mockClear();
-    const transport = await createTwitchTransport({
-      authProvider: dummyAuthProvider,
-      botUserId: 'bot-id',
-      broadcasters: [{ login: 'streamer' }],
-      logger: testLogger,
-      handlers: { onChatMessage: vi.fn(), onStreamOnline: vi.fn(), onStreamOffline: vi.fn() },
+        expect(warn).toHaveBeenCalledWith(
+            expect.objectContaining({
+                broadcasterId: 'channel-id',
+                dropReasonCode: 'automod_held',
+            }),
+            'Twitch dropped chat message',
+        );
+        warn.mockRestore();
     });
 
-    await expect(transport.sender('x'.repeat(501))).rejects.toThrow(/500 characters/);
-    expect(sendChatMessageSpy).not.toHaveBeenCalledWith(
-      'channel-id',
-      expect.any(String),
-      expect.anything(),
-    );
-  });
+    it('routes a 503 retry through the chat rate limiter', async () => {
+        vi.useFakeTimers();
+        try {
+            const serviceUnavailable = Object.assign(new Error('unavailable'), { statusCode: 503 });
+            sendChatMessageSpy
+                .mockRejectedValueOnce(serviceUnavailable)
+                .mockResolvedValueOnce({ isSent: true, id: 'sent-2' });
+            const transport = await createTwitchTransport({
+                authProvider: dummyAuthProvider,
+                botUserId: 'bot-id',
+                broadcasters: [{ login: 'streamer' }],
+                logger: testLogger,
+                handlers: {
+                    onChatMessage: vi.fn(),
+                    onStreamOnline: vi.fn(),
+                    onStreamOffline: vi.fn(),
+                },
+            });
 
-  it('recovers a live stream during startup without announcing it as new', async () => {
-    getStreamByUserIdSpy.mockResolvedValueOnce({
-      id: 'stream-1',
-      userId: 'channel-id',
-      userName: 'streamer',
-      userDisplayName: 'Streamer',
-      startDate: new Date('2026-07-21T10:00:00Z'),
+            const sending = transport.sender('retry');
+            await vi.advanceTimersByTimeAsync(0);
+            expect(sendChatMessageSpy).toHaveBeenCalledTimes(1);
+            await vi.advanceTimersByTimeAsync(999);
+            expect(sendChatMessageSpy).toHaveBeenCalledTimes(1);
+            await vi.advanceTimersByTimeAsync(1);
+            await sending;
+            expect(sendChatMessageSpy).toHaveBeenCalledTimes(2);
+        } finally {
+            vi.useRealTimers();
+        }
     });
-    const onStreamOnline = vi.fn();
 
-    const transport = await createTwitchTransport({
-      authProvider: dummyAuthProvider,
-      botUserId: 'bot-id',
-      broadcasters: [{ login: 'streamer' }],
-      logger: testLogger,
-      handlers: { onChatMessage: vi.fn(), onStreamOnline, onStreamOffline: vi.fn() },
+    it('rejects messages longer than Twitch allows', async () => {
+        sendChatMessageSpy.mockClear();
+        const transport = await createTwitchTransport({
+            authProvider: dummyAuthProvider,
+            botUserId: 'bot-id',
+            broadcasters: [{ login: 'streamer' }],
+            logger: testLogger,
+            handlers: { onChatMessage: vi.fn(), onStreamOnline: vi.fn(), onStreamOffline: vi.fn() },
+        });
+
+        await expect(transport.sender('x'.repeat(501))).rejects.toThrow(/500 characters/);
+        expect(sendChatMessageSpy).not.toHaveBeenCalledWith(
+            'channel-id',
+            expect.any(String),
+            expect.anything(),
+        );
     });
 
-    await transport.start();
+    it('recovers a live stream during startup without announcing it as new', async () => {
+        getStreamByUserIdSpy.mockResolvedValueOnce({
+            id: 'stream-1',
+            userId: 'channel-id',
+            userName: 'streamer',
+            userDisplayName: 'Streamer',
+            startDate: new Date('2026-07-21T10:00:00Z'),
+        });
+        const onStreamOnline = vi.fn();
 
-    expect(onStreamOnline).toHaveBeenCalledWith(
-      expect.objectContaining({ streamId: 'stream-1', recovered: true }),
-    );
-    expect(listenerInstances).toHaveLength(1);
-    await transport.stop();
-  });
+        const transport = await createTwitchTransport({
+            authProvider: dummyAuthProvider,
+            botUserId: 'bot-id',
+            broadcasters: [{ login: 'streamer' }],
+            logger: testLogger,
+            handlers: { onChatMessage: vi.fn(), onStreamOnline, onStreamOffline: vi.fn() },
+        });
+
+        await transport.start();
+
+        expect(onStreamOnline).toHaveBeenCalledWith(
+            expect.objectContaining({ streamId: 'stream-1', recovered: true }),
+        );
+        expect(listenerInstances).toHaveLength(1);
+        await transport.stop();
+    });
+
+    it('forwards chat messages from EventSub', async () => {
+        const onChatMessage = vi.fn();
+        const transport = await createTwitchTransport({
+            authProvider: dummyAuthProvider,
+            botUserId: 'bot-id',
+            broadcasters: [{ login: 'streamer' }],
+            logger: testLogger,
+            handlers: { onChatMessage, onStreamOnline: vi.fn(), onStreamOffline: vi.fn() },
+        });
+
+        await transport.start();
+        expect(listenerInstances).toHaveLength(1);
+
+        const listener = listenerInstances[0] as any;
+        const handler = listener.onChannelChatMessage.mock.calls[0][2];
+
+        const mockEvent = {
+            messageId: 'msg-1',
+            broadcasterId: 'channel-id',
+            broadcasterName: 'streamer',
+            chatterId: 'user-1',
+            chatterName: 'viewer',
+            chatterDisplayName: 'Viewer',
+            messageText: 'hello world',
+            badges: new Map([['subscriber', '1']]),
+        };
+        handler(mockEvent);
+
+        expect(onChatMessage).toHaveBeenCalledWith(
+            expect.objectContaining({
+                messageId: 'msg-1',
+                broadcasterId: 'channel-id',
+                text: 'hello world',
+            }),
+        );
+        await transport.stop();
+    });
+
+    it('forwards stream online/offline events', async () => {
+        const onStreamOnline = vi.fn();
+        const onStreamOffline = vi.fn();
+        const transport = await createTwitchTransport({
+            authProvider: dummyAuthProvider,
+            botUserId: 'bot-id',
+            broadcasters: [{ login: 'streamer' }],
+            logger: testLogger,
+            handlers: { onChatMessage: vi.fn(), onStreamOnline, onStreamOffline },
+        });
+
+        await transport.start();
+        const listener = listenerInstances[0] as any;
+
+        // Simulate stream online
+        const onlineHandler = listener.onStreamOnline.mock.calls[0][1];
+        onlineHandler({
+            broadcasterId: 'channel-id',
+            broadcasterName: 'streamer',
+            id: 'stream-123',
+            startDate: new Date('2026-07-21T10:00:00Z'),
+        });
+        expect(onStreamOnline).toHaveBeenCalledWith(
+            expect.objectContaining({ streamId: 'stream-123' }),
+        );
+
+        // Simulate stream offline
+        const offlineHandler = listener.onStreamOffline.mock.calls[0][1];
+        offlineHandler({
+            broadcasterId: 'channel-id',
+            broadcasterName: 'streamer',
+        });
+        expect(onStreamOffline).toHaveBeenCalledWith(
+            expect.objectContaining({ broadcasterId: 'channel-id' }),
+        );
+
+        await transport.stop();
+    });
 });

@@ -7,9 +7,9 @@ import type { Logger } from './types.js';
  *   node dist/index.js | npx pino-pretty
  */
 export function createLogger(level: string = process.env.LOG_LEVEL ?? 'info'): Logger {
-  return pino({
-    level,
-    base: { app: 'ghostclauf' },
-    timestamp: pino.stdTimeFunctions.isoTime,
-  });
+    return pino({
+        level,
+        base: { app: 'ghostclauf' },
+        timestamp: pino.stdTimeFunctions.isoTime,
+    });
 }

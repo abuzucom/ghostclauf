@@ -5,15 +5,15 @@ import { createContext } from './context.js';
 import type { CommandRegistry } from './commands.js';
 import type { EventBus } from './eventBus.js';
 import type { FileConfig } from './config.js';
-import type { HelixClient, Logger, MessageSender, Plugin } from './types.js';
+import type { BotContext, HelixClient, Logger, MessageSender, Plugin } from './types.js';
 
 export interface PluginManagerDeps {
-  file: FileConfig;
-  logger: Logger;
-  registry: CommandRegistry;
-  bus: EventBus;
-  sender: MessageSender;
-  helix: HelixClient;
+    file: FileConfig;
+    logger: Logger;
+    registry: CommandRegistry;
+    bus: EventBus;
+    sender: MessageSender;
+    helix: HelixClient;
 }
 
 /**
@@ -28,136 +28,156 @@ export interface PluginManagerDeps {
  * `.js`/`.mjs` file, inside one of the configured directories.
  */
 export class PluginManager {
-  private readonly loaded = new Map<string, Plugin>();
-  private readonly discovered = new Set<string>();
+    private readonly loaded = new Map<string, { plugin: Plugin; ctx: BotContext }>();
+    private readonly discovered = new Set<string>();
 
-  constructor(private readonly deps: PluginManagerDeps) {}
+    constructor(private readonly deps: PluginManagerDeps) {}
 
-  /** The names of plugins that were successfully initialized. */
-  get active(): string[] {
-    return [...this.loaded.keys()];
-  }
-
-  async loadAll(): Promise<void> {
-    const { file, logger } = this.deps;
-    const enabled = file.plugins.enabled ? new Set(file.plugins.enabled) : undefined;
-    const disabled = new Set(file.plugins.disabled);
-    const isAllowed = (name: string): boolean =>
-      enabled ? enabled.has(name) : !disabled.has(name);
-
-    for (const dir of file.plugins.directories) {
-      const abs = isAbsolute(dir) ? dir : resolve(process.cwd(), dir);
-      const entries = await this.discover(abs);
-      for (const entryPath of entries) {
-        await this.loadOne(entryPath, isAllowed);
-      }
+    /** The names of plugins that were successfully initialized. */
+    get active(): string[] {
+        return [...this.loaded.keys()];
     }
 
-    if (enabled) {
-      // Warn about anything enabled but never found.
-      for (const name of enabled) {
-        if (!this.loaded.has(name)) {
-          logger.warn({ plugin: name }, 'enabled plugin was not found in any plugin directory');
+    async loadAll(): Promise<void> {
+        const { file, logger } = this.deps;
+        const enabled = file.plugins.enabled ? new Set(file.plugins.enabled) : undefined;
+        const disabled = new Set(file.plugins.disabled);
+        const isAllowed = (name: string): boolean =>
+            enabled ? enabled.has(name) : !disabled.has(name);
+
+        for (const dir of file.plugins.directories) {
+            const abs = isAbsolute(dir) ? dir : resolve(process.cwd(), dir);
+            const entries = await this.discover(abs);
+            for (const entryPath of entries) {
+                await this.loadOne(entryPath, isAllowed);
+            }
         }
-      }
-    } else {
-      // Warn about anything disabled but never found (likely a typo).
-      for (const name of disabled) {
-        if (!this.discovered.has(name)) {
-          logger.warn({ plugin: name }, 'disabled plugin was not found in any plugin directory');
+
+        if (enabled) {
+            // Warn about anything enabled but never found.
+            for (const name of enabled) {
+                if (!this.loaded.has(name)) {
+                    logger.warn(
+                        { plugin: name },
+                        'enabled plugin was not found in any plugin directory',
+                    );
+                }
+            }
+        } else {
+            // Warn about anything disabled but never found (likely a typo).
+            for (const name of disabled) {
+                if (!this.discovered.has(name)) {
+                    logger.warn(
+                        { plugin: name },
+                        'disabled plugin was not found in any plugin directory',
+                    );
+                }
+            }
         }
-      }
+
+        logger.info({ plugins: this.active }, `initialized ${this.loaded.size} plugin(s)`);
     }
 
-    logger.info({ plugins: this.active }, `initialized ${this.loaded.size} plugin(s)`);
-  }
+    /** Return candidate module paths inside a directory (non-recursive). */
+    private async discover(dir: string): Promise<string[]> {
+        const { logger } = this.deps;
+        let entries: string[];
+        try {
+            entries = await readdir(dir);
+        } catch {
+            logger.debug({ dir }, 'plugin directory not present, skipping');
+            return [];
+        }
 
-  /** Return candidate module paths inside a directory (non-recursive). */
-  private async discover(dir: string): Promise<string[]> {
-    const { logger } = this.deps;
-    let entries: string[];
-    try {
-      entries = await readdir(dir);
-    } catch {
-      logger.debug({ dir }, 'plugin directory not present, skipping');
-      return [];
+        const candidates: string[] = [];
+        for (const entry of entries) {
+            const full = join(dir, entry);
+            const info = await stat(full).catch(() => null);
+            if (!info) continue;
+            if (info.isDirectory()) {
+                const index = join(full, 'index.js');
+                if (await this.exists(index)) candidates.push(index);
+            } else if (/\.(mjs|js)$/.test(entry) && !/\.d\.js$/.test(entry)) {
+                candidates.push(full);
+            }
+        }
+        return candidates;
     }
 
-    const candidates: string[] = [];
-    for (const entry of entries) {
-      const full = join(dir, entry);
-      const info = await stat(full).catch(() => null);
-      if (!info) continue;
-      if (info.isDirectory()) {
-        const index = join(full, 'index.js');
-        if (await this.exists(index)) candidates.push(index);
-      } else if (/\.(mjs|js)$/.test(entry) && !/\.d\.js$/.test(entry)) {
-        candidates.push(full);
-      }
-    }
-    return candidates;
-  }
+    private async loadOne(entryPath: string, isAllowed: (name: string) => boolean): Promise<void> {
+        const { logger, file, bus, registry, sender, helix } = this.deps;
+        let plugin: Plugin;
+        try {
+            const mod = (await import(pathToFileURL(entryPath).href)) as {
+                default?: unknown;
+            } & Record<string, unknown>;
+            const candidate = (mod.default ?? mod) as unknown;
+            plugin = assertPlugin(candidate, entryPath);
+        } catch (err) {
+            logger.error({ err, entryPath }, 'failed to import plugin, skipping');
+            return;
+        }
 
-  private async loadOne(entryPath: string, isAllowed: (name: string) => boolean): Promise<void> {
-    const { logger, file, bus, registry, sender, helix } = this.deps;
-    let plugin: Plugin;
-    try {
-      const mod = (await import(pathToFileURL(entryPath).href)) as {
-        default?: unknown;
-      } & Record<string, unknown>;
-      const candidate = (mod.default ?? mod) as unknown;
-      plugin = assertPlugin(candidate, entryPath);
-    } catch (err) {
-      logger.error({ err, entryPath }, 'failed to import plugin, skipping');
-      return;
+        this.discovered.add(plugin.name);
+        if (!isAllowed(plugin.name)) {
+            logger.debug({ plugin: plugin.name, entryPath }, 'plugin discovered but not enabled');
+            return;
+        }
+        if (this.loaded.has(plugin.name)) {
+            logger.warn({ plugin: plugin.name, entryPath }, 'duplicate plugin name, skipping');
+            return;
+        }
+
+        const pluginConfig = file.plugins.config[plugin.name] ?? {};
+        const ctx = createContext({
+            pluginName: plugin.name,
+            config: pluginConfig,
+            logger: logger.child({ plugin: plugin.name }),
+            bus,
+            registry,
+            sender,
+            helix,
+        });
+
+        try {
+            await plugin.init(ctx);
+            this.loaded.set(plugin.name, { plugin, ctx });
+            logger.info({ plugin: plugin.name, version: plugin.version }, 'plugin initialized');
+        } catch (err) {
+            logger.error({ err, plugin: plugin.name }, 'plugin init threw, skipping');
+        }
     }
 
-    this.discovered.add(plugin.name);
-    if (!isAllowed(plugin.name)) {
-      logger.debug({ plugin: plugin.name, entryPath }, 'plugin discovered but not enabled');
-      return;
-    }
-    if (this.loaded.has(plugin.name)) {
-      logger.warn({ plugin: plugin.name, entryPath }, 'duplicate plugin name, skipping');
-      return;
+    private async exists(path: string): Promise<boolean> {
+        return (await stat(path).catch(() => null)) !== null;
     }
 
-    const pluginConfig = file.plugins.config[plugin.name] ?? {};
-    const ctx = createContext({
-      pluginName: plugin.name,
-      config: pluginConfig,
-      logger: logger.child({ plugin: plugin.name }),
-      bus,
-      registry,
-      sender,
-      helix,
-    });
-
-    try {
-      await plugin.init(ctx);
-      this.loaded.set(plugin.name, plugin);
-      logger.info({ plugin: plugin.name, version: plugin.version }, 'plugin initialized');
-    } catch (err) {
-      logger.error({ err, plugin: plugin.name }, 'plugin init threw, skipping');
+    /** Dispose all loaded plugins in reverse order. Errors are logged, not thrown. */
+    async disposeAll(): Promise<void> {
+        const entries = [...this.loaded.entries()].reverse();
+        for (const [name, { plugin, ctx }] of entries) {
+            if (!plugin.dispose) continue;
+            try {
+                await plugin.dispose(ctx);
+                this.deps.logger.info({ plugin: name }, 'plugin disposed');
+            } catch (err) {
+                this.deps.logger.error({ err, plugin: name }, 'plugin dispose threw');
+            }
+        }
     }
-  }
-
-  private async exists(path: string): Promise<boolean> {
-    return (await stat(path).catch(() => null)) !== null;
-  }
 }
 
 function assertPlugin(value: unknown, source: string): Plugin {
-  if (
-    typeof value === 'object' &&
-    value !== null &&
-    typeof (value as Plugin).name === 'string' &&
-    typeof (value as Plugin).version === 'string' &&
-    typeof (value as Plugin).init === 'function'
-  ) {
-    return value as Plugin;
-  }
-  throw new Error(
-    `module "${source}" does not export a valid Plugin (need { name, version, init })`,
-  );
+    if (
+        typeof value === 'object' &&
+        value !== null &&
+        typeof (value as Plugin).name === 'string' &&
+        typeof (value as Plugin).version === 'string' &&
+        typeof (value as Plugin).init === 'function'
+    ) {
+        return value as Plugin;
+    }
+    throw new Error(
+        `module "${source}" does not export a valid Plugin (need { name, version, init })`,
+    );
 }

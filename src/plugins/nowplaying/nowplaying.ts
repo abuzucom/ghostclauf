@@ -10,22 +10,22 @@
 import { z } from 'zod';
 
 const DeckSchema = z.object({
-  onAir: z.boolean(),
-  track: z.object({ title: z.string(), artist: z.string() }).nullable(),
+    onAir: z.boolean(),
+    track: z.object({ title: z.string(), artist: z.string() }).nullable(),
 });
 
 const StateSchema = z.object({
-  decks: z.object({
-    A: DeckSchema,
-    B: DeckSchema,
-    C: DeckSchema,
-    D: DeckSchema,
-  }),
+    decks: z.object({
+        A: DeckSchema,
+        B: DeckSchema,
+        C: DeckSchema,
+        D: DeckSchema,
+    }),
 });
 
 export interface OnAirTrack {
-  title: string;
-  artist: string;
+    title: string;
+    artist: string;
 }
 
 /**
@@ -34,20 +34,18 @@ export interface OnAirTrack {
  * (caller treats that the same as "server unreachable").
  */
 export function parseState(json: unknown): OnAirTrack[] | null {
-  const parsed = StateSchema.safeParse(json);
-  if (!parsed.success) return null;
+    const parsed = StateSchema.safeParse(json);
+    if (!parsed.success) return null;
 
-  const tracks: OnAirTrack[] = [];
-  for (const deck of Object.values(parsed.data.decks)) {
-    if (!deck.onAir || !deck.track || !deck.track.title) continue;
-    tracks.push({ title: deck.track.title, artist: deck.track.artist });
-  }
-  return tracks;
+    const tracks: OnAirTrack[] = [];
+    for (const deck of Object.values(parsed.data.decks)) {
+        if (!deck.onAir || !deck.track || !deck.track.title) continue;
+        tracks.push({ title: deck.track.title, artist: deck.track.artist });
+    }
+    return tracks;
 }
 
 /** Format on-air tracks as "Artist - Title", joining multiple decks with " / ". */
 export function formatNowPlaying(tracks: readonly OnAirTrack[]): string {
-  return tracks
-    .map(({ title, artist }) => (artist ? `${artist} - ${title}` : title))
-    .join(' / ');
+    return tracks.map(({ title, artist }) => (artist ? `${artist} - ${title}` : title)).join(' / ');
 }

@@ -3,13 +3,13 @@ import type { EventBus } from './eventBus.js';
 import type { BotContext, HelixClient, Logger, MessageSender, PluginConfig } from './types.js';
 
 export interface ContextDeps {
-  pluginName: string;
-  config: PluginConfig;
-  logger: Logger;
-  bus: EventBus;
-  registry: CommandRegistry;
-  sender: MessageSender;
-  helix: HelixClient;
+    pluginName: string;
+    config: PluginConfig;
+    logger: Logger;
+    bus: EventBus;
+    registry: CommandRegistry;
+    sender: MessageSender;
+    helix: HelixClient;
 }
 
 /**
@@ -18,20 +18,20 @@ export interface ContextDeps {
  * this plugin's own config and logger.
  */
 export function createContext(deps: ContextDeps): BotContext {
-  const { pluginName, config, logger, bus, registry, sender, helix } = deps;
+    const { pluginName, config, logger, bus, registry, sender, helix } = deps;
 
-  const ctx: BotContext = {
-    config,
-    logger,
-    helix,
-    say: (text, replyToId, broadcasterId) => {
-      if (broadcasterId !== undefined) return sender(text, replyToId, broadcasterId);
-      if (replyToId !== undefined) return sender(text, replyToId);
-      return sender(text);
-    },
-    command: (def) => registry.register(pluginName, def, ctx),
-    on: (event, handler) => bus.on(event, handler),
-  };
+    const ctx: BotContext = {
+        config,
+        logger,
+        helix,
+        say: (text, replyToId, broadcasterId) => {
+            if (broadcasterId !== undefined) return sender(text, replyToId, broadcasterId);
+            if (replyToId !== undefined) return sender(text, replyToId);
+            return sender(text);
+        },
+        command: (def) => registry.register(pluginName, def, ctx),
+        on: (event, handler) => bus.on(event, handler),
+    };
 
-  return ctx;
+    return ctx;
 }

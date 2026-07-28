@@ -23,46 +23,46 @@ import { loadFileConfig, loadSecrets } from '../core/config.js';
 const PLACEHOLDER_LOGIN = /^your[_-].*login$/i;
 
 async function main(): Promise<void> {
-  const file = loadFileConfig();
-  const secrets = loadSecrets();
+    const file = loadFileConfig();
+    const secrets = loadSecrets();
 
-  const hasPlaceholderLogin =
-    PLACEHOLDER_LOGIN.test(file.bot.login) ||
-    file.broadcasters.some((broadcaster) => PLACEHOLDER_LOGIN.test(broadcaster.login));
-  if (hasPlaceholderLogin) {
-    console.log('PLACEHOLDER LOGIN');
-    return;
-  }
-
-  if (await botTokenNeedsReauth(secrets.tokenStorePath)) {
-    console.log('MISSING BOT');
-  }
-  for (const broadcaster of file.broadcasters) {
-    if (await tokenNeedsReauth(broadcaster.tokenStorePath, BROADCASTER_SCOPES)) {
-      console.log(`MISSING BROADCASTER ${broadcaster.login}`);
+    const hasPlaceholderLogin =
+        PLACEHOLDER_LOGIN.test(file.bot.login) ||
+        file.broadcasters.some((broadcaster) => PLACEHOLDER_LOGIN.test(broadcaster.login));
+    if (hasPlaceholderLogin) {
+        console.log('PLACEHOLDER LOGIN');
+        return;
     }
-  }
+
+    if (await botTokenNeedsReauth(secrets.tokenStorePath)) {
+        console.log('MISSING BOT');
+    }
+    for (const broadcaster of file.broadcasters) {
+        if (await tokenNeedsReauth(broadcaster.tokenStorePath, BROADCASTER_SCOPES)) {
+            console.log(`MISSING BROADCASTER ${broadcaster.login}`);
+        }
+    }
 }
 
 async function botTokenNeedsReauth(tokenStorePath: string): Promise<boolean> {
-  return tokenNeedsReauth(tokenStorePath, BOT_SCOPES);
+    return tokenNeedsReauth(tokenStorePath, BOT_SCOPES);
 }
 
 /** True when the token store is absent, unreadable, or missing a scope. */
 async function tokenNeedsReauth(
-  tokenStorePath: string,
-  requiredScopes: readonly string[],
+    tokenStorePath: string,
+    requiredScopes: readonly string[],
 ): Promise<boolean> {
-  if (!existsSync(tokenStorePath)) return true;
-  try {
-    const token = await readTokenStore(tokenStorePath);
-    return !requiredScopes.every((scope) => token.scope.includes(scope));
-  } catch {
-    return true;
-  }
+    if (!existsSync(tokenStorePath)) return true;
+    try {
+        const token = await readTokenStore(tokenStorePath);
+        return !requiredScopes.every((scope) => token.scope.includes(scope));
+    } catch {
+        return true;
+    }
 }
 
 main().catch((err: unknown) => {
-  console.error(err instanceof Error ? err.message : err);
-  process.exit(1);
+    console.error(err instanceof Error ? err.message : err);
+    process.exit(1);
 });
