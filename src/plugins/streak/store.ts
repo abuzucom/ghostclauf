@@ -240,4 +240,9 @@ export class StreakStore {
     await writeFile(tempPath, json, 'utf8');
     await rename(tempPath, this.dataPath);
   }
+
+  /** Wait for all pending writes to complete. Call during shutdown. */
+  async flush(): Promise<void> {
+    await this.saveChain;
+  }
 }

@@ -291,13 +291,15 @@ function openHandler(
  * production use relies on the default real clock.
  */
 export function createStreakPlugin(now: () => Date = () => new Date()): Plugin {
+  let store: StreakStore | undefined;
   return {
     name: 'streak',
     version: '1.0.0',
     async init(ctx) {
       const cfg = resolveConfig(ctx.config as StreakConfig, ctx.logger);
-      const store = new StreakStore(cfg.dataPath, ctx.logger);
-      await store.load();
+      const localStore = new StreakStore(cfg.dataPath, ctx.logger);
+      store = localStore;
+      await localStore.load();
       // In-memory only: which broadcasters are currently live. Rebuilt from
       // stream events (and the transport's startup reconciliation) on every
       // boot, so it always reflects real-time state rather than "was today
@@ -308,38 +310,38 @@ export function createStreakPlugin(now: () => Date = () => new Date()): Plugin {
         trigger: cfg.triggers.checkin,
         allow: ['everyone'],
         description: 'Check in while live to build your attendance streak.',
-        handler: checkinHandler(store, cfg, now, liveBroadcasters),
+        handler: checkinHandler(localStore, cfg, now, liveBroadcasters),
       });
       ctx.command({
         trigger: cfg.triggers.streak,
         allow: ['everyone'],
         description: "Show your streak, or another viewer's with @user.",
-        handler: lookupHandler(store, cfg),
+        handler: lookupHandler(localStore, cfg),
       });
       ctx.command({
         trigger: cfg.triggers.reset,
         allow: ['broadcaster'],
         description: "Reset a viewer's streak to 0. Broadcaster only.",
-        handler: resetHandler(store, cfg),
+        handler: resetHandler(localStore, cfg),
       });
       ctx.command({
         trigger: cfg.triggers.set,
         allow: ['broadcaster'],
         description: "Set a viewer's streak to a specific value. Broadcaster only.",
-        handler: setHandler(store, cfg),
+        handler: setHandler(localStore, cfg),
       });
       ctx.command({
         trigger: cfg.triggers.open,
         allow: ['broadcaster', 'moderator'],
         description: 'Open check-in for today if the stream-live event was missed.',
-        handler: openHandler(store, cfg, now, liveBroadcasters),
+        handler: openHandler(localStore, cfg, now, liveBroadcasters),
       });
 
       ctx.on('streamOnline', async (event) => {
         liveBroadcasters.add(event.broadcasterId);
         const scope = scopeKey(cfg, event.broadcasterId);
         const day = streamDayKey(event.startedAt, cfg.timezone);
-        const added = await store.recordStreamDay(scope, day, event.startedAt);
+        const added = await localStore.recordStreamDay(scope, day, event.startedAt);
         if (added) {
           ctx.logger.info({ broadcasterId: event.broadcasterId, day }, 'recorded stream day');
         }
@@ -349,6 +351,9 @@ export function createStreakPlugin(now: () => Date = () => new Date()): Plugin {
         liveBroadcasters.delete(event.broadcasterId);
         ctx.logger.info({ broadcasterId: event.broadcasterId }, 'closed check-in for offline stream');
       });
+    },
+    async dispose() {
+      await store?.flush();
     },
   };
 }

@@ -181,4 +181,6 @@ export interface Plugin {
   version: string;
   /** Called once at startup to register bindings. */
   init(ctx: BotContext): void | Promise<void>;
+  /** Called once during shutdown for cleanup. Optional. */
+  dispose?(ctx: BotContext): void | Promise<void>;
 }

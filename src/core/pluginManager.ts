@@ -5,7 +5,7 @@ import { createContext } from './context.js';
 import type { CommandRegistry } from './commands.js';
 import type { EventBus } from './eventBus.js';
 import type { FileConfig } from './config.js';
-import type { HelixClient, Logger, MessageSender, Plugin } from './types.js';
+import type { BotContext, HelixClient, Logger, MessageSender, Plugin } from './types.js';
 
 export interface PluginManagerDeps {
   file: FileConfig;
@@ -28,7 +28,7 @@ export interface PluginManagerDeps {
  * `.js`/`.mjs` file, inside one of the configured directories.
  */
 export class PluginManager {
-  private readonly loaded = new Map<string, Plugin>();
+  private readonly loaded = new Map<string, { plugin: Plugin; ctx: BotContext }>();
   private readonly discovered = new Set<string>();
 
   constructor(private readonly deps: PluginManagerDeps) {}
@@ -135,7 +135,7 @@ export class PluginManager {
 
     try {
       await plugin.init(ctx);
-      this.loaded.set(plugin.name, plugin);
+      this.loaded.set(plugin.name, { plugin, ctx });
       logger.info({ plugin: plugin.name, version: plugin.version }, 'plugin initialized');
     } catch (err) {
       logger.error({ err, plugin: plugin.name }, 'plugin init threw, skipping');
@@ -144,6 +144,20 @@ export class PluginManager {
 
   private async exists(path: string): Promise<boolean> {
     return (await stat(path).catch(() => null)) !== null;
+  }
+
+  /** Dispose all loaded plugins in reverse order. Errors are logged, not thrown. */
+  async disposeAll(): Promise<void> {
+    const entries = [...this.loaded.entries()].reverse();
+    for (const [name, { plugin, ctx }] of entries) {
+      if (!plugin.dispose) continue;
+      try {
+        await plugin.dispose(ctx);
+        this.deps.logger.info({ plugin: name }, 'plugin disposed');
+      } catch (err) {
+        this.deps.logger.error({ err, plugin: name }, 'plugin dispose threw');
+      }
+    }
   }
 }
 

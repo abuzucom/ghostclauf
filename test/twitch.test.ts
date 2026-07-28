@@ -60,7 +60,7 @@ beforeEach(() => {
   listenerInstances.length = 0;
 });
 
-describe('twitch transport sender', () => {
+describe('twitch transport', () => {
   it('sends chat messages as the bot user, not the broadcaster', async () => {
     asUserSpy.mockClear();
 
@@ -182,6 +182,83 @@ describe('twitch transport sender', () => {
       expect.objectContaining({ streamId: 'stream-1', recovered: true }),
     );
     expect(listenerInstances).toHaveLength(1);
+    await transport.stop();
+  });
+
+  it('forwards chat messages from EventSub', async () => {
+    const onChatMessage = vi.fn();
+    const transport = await createTwitchTransport({
+      authProvider: dummyAuthProvider,
+      botUserId: 'bot-id',
+      broadcasters: [{ login: 'streamer' }],
+      logger: testLogger,
+      handlers: { onChatMessage, onStreamOnline: vi.fn(), onStreamOffline: vi.fn() },
+    });
+
+    await transport.start();
+    expect(listenerInstances).toHaveLength(1);
+
+    const listener = listenerInstances[0] as any;
+    const handler = listener.onChannelChatMessage.mock.calls[0][2];
+
+    const mockEvent = {
+      messageId: 'msg-1',
+      broadcasterId: 'channel-id',
+      broadcasterName: 'streamer',
+      chatterId: 'user-1',
+      chatterName: 'viewer',
+      chatterDisplayName: 'Viewer',
+      messageText: 'hello world',
+      badges: new Map([['subscriber', '1']]),
+    };
+    handler(mockEvent);
+
+    expect(onChatMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        messageId: 'msg-1',
+        broadcasterId: 'channel-id',
+        text: 'hello world',
+      }),
+    );
+    await transport.stop();
+  });
+
+  it('forwards stream online/offline events', async () => {
+    const onStreamOnline = vi.fn();
+    const onStreamOffline = vi.fn();
+    const transport = await createTwitchTransport({
+      authProvider: dummyAuthProvider,
+      botUserId: 'bot-id',
+      broadcasters: [{ login: 'streamer' }],
+      logger: testLogger,
+      handlers: { onChatMessage: vi.fn(), onStreamOnline, onStreamOffline },
+    });
+
+    await transport.start();
+    const listener = listenerInstances[0] as any;
+    
+    // Simulate stream online
+    const onlineHandler = listener.onStreamOnline.mock.calls[0][1];
+    onlineHandler({
+      broadcasterId: 'channel-id',
+      broadcasterName: 'streamer',
+      id: 'stream-123',
+      startDate: new Date('2026-07-21T10:00:00Z'),
+    });
+    expect(onStreamOnline).toHaveBeenCalledWith(
+      expect.objectContaining({ streamId: 'stream-123' })
+    );
+
+    // Simulate stream offline
+    const offlineHandler = listener.onStreamOffline.mock.calls[0][1];
+    offlineHandler({
+      broadcasterId: 'channel-id',
+      broadcasterName: 'streamer',
+    });
+    expect(onStreamOffline).toHaveBeenCalledWith(
+      expect.objectContaining({ broadcasterId: 'channel-id' })
+    );
+
     await transport.stop();
   });
 });

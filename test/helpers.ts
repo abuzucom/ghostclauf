@@ -1,3 +1,4 @@
+import { vi } from 'vitest';
 import { createContext } from '../src/core/context.js';
 import { CommandRegistry } from '../src/core/commands.js';
 import { EventBus } from '../src/core/eventBus.js';
@@ -77,8 +78,6 @@ export function makeHarness(
 export function flush(): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, 10));
 }
-
-import { vi } from 'vitest';
 
 export function spySender() {
   return vi.fn<(text: string, replyToId?: string) => Promise<void>>().mockResolvedValue(undefined);

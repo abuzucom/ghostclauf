@@ -99,6 +99,7 @@ async function main(): Promise<void> {
 
   const shutdown = async (signal: string): Promise<void> => {
     logger.info({ signal }, 'shutting down');
+    await plugins.disposeAll();
     await transport.stop();
     process.exit(0);
   };
