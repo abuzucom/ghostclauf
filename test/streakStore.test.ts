@@ -177,4 +177,22 @@ describe('StreakStore', () => {
         );
         expect(backups.length).toBe(1);
     });
+
+    it('flush awaits an in-flight write', async () => {
+        const store = new StreakStore(dataPath, makeSpyLogger().logger);
+        await store.load();
+
+        let writeFinished = false;
+        // Don't await it yet so it remains in-flight
+        const writePromise = store
+            .recordStreamDay(BID, '2026-07-20', instantOn('2026-07-20'))
+            .then(() => {
+                writeFinished = true;
+            });
+
+        expect(writeFinished).toBe(false);
+        await store.flush();
+        expect(writeFinished).toBe(true);
+        await writePromise; // Ensure we clean up the promise
+    });
 });

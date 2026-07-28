@@ -158,4 +158,48 @@ describe('PluginManager', () => {
             'disabled plugin was not found in any plugin directory',
         );
     });
+
+    it('disposes plugins in reverse init order and a throwing dispose does not stop the others', async () => {
+        const { pm, spy } = setup({});
+        const order: string[] = [];
+
+        // Directly inject mock plugins into the private loaded map
+        const loaded = (pm as unknown as { loaded: Map<string, unknown> }).loaded;
+
+        loaded.set('plugin-a', {
+            plugin: {
+                dispose: async () => {
+                    order.push('a');
+                },
+            },
+            ctx: {},
+        });
+
+        loaded.set('plugin-b', {
+            plugin: {
+                dispose: async () => {
+                    order.push('b');
+                    throw new Error('boom');
+                },
+            },
+            ctx: {},
+        });
+
+        loaded.set('plugin-c', {
+            plugin: {
+                dispose: async () => {
+                    order.push('c');
+                },
+            },
+            ctx: {},
+        });
+
+        await pm.disposeAll();
+
+        expect(order).toEqual(['c', 'b', 'a']);
+        expect(spy.error).toHaveBeenCalledWith(
+            expect.objectContaining({ err: expect.any(Error), plugin: 'plugin-b' }),
+            'plugin dispose threw',
+        );
+    });
 });

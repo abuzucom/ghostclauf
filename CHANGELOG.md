@@ -14,6 +14,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   receiver. Pulled in through `@twurple/eventsub-ws`.
 - CI: `actions/checkout` steps now set `persist-credentials: false`, since
   neither job pushes back to the repository.
+- CI: GitHub Actions are now pinned to full commit SHAs instead of mutable
+  tags, ensuring workflow immutability.
+
+### Added
+
+- CI lint tooling: ESLint (with `@typescript-eslint`) and Prettier are now
+  configured and enforced, and devDependencies are strictly version-pinned.
+- Graceful shutdown lifecycle: `PluginManager.disposeAll()` cleans up plugins
+  in reverse-init order, and `StreakStore.flush()` ensures in-flight disk
+  writes finish before exit.
 
 ### Added
 
