@@ -7,13 +7,13 @@ import type { BotContext, ChatCommandEvent, Plugin } from '../../core/types.js';
 import { CooldownGate } from '../../core/cooldown.js';
 import { parseLogin } from '../../core/logins.js';
 import {
-  formatFollowDuration,
-  LOOKUP_FAILED_MESSAGE,
-  renderBroadcasterSelf,
-  renderFollowage,
-  renderNotFollowing,
-  renderUnknownUser,
-  USAGE_MESSAGE,
+    formatFollowDuration,
+    LOOKUP_FAILED_MESSAGE,
+    renderBroadcasterSelf,
+    renderFollowage,
+    renderNotFollowing,
+    renderUnknownUser,
+    USAGE_MESSAGE,
 } from './followage.js';
 
 const DEFAULT_COOLDOWN_SECONDS = 10;
@@ -22,22 +22,22 @@ const MS_PER_SECOND = 1000;
 
 /** Resolve the per-chatter cooldown, bounding invalid config to the default. */
 function resolveCooldownSeconds(configured: unknown, logger: BotContext['logger']): number {
-  if (configured === undefined) return DEFAULT_COOLDOWN_SECONDS;
-  if (
-    typeof configured === 'number' &&
-    Number.isInteger(configured) &&
-    configured >= 0 &&
-    configured <= MAX_COOLDOWN_SECONDS
-  ) {
-    return configured;
-  }
-  logger.warn({ configured }, 'invalid followage cooldownSeconds; falling back to default');
-  return DEFAULT_COOLDOWN_SECONDS;
+    if (configured === undefined) return DEFAULT_COOLDOWN_SECONDS;
+    if (
+        typeof configured === 'number' &&
+        Number.isInteger(configured) &&
+        configured >= 0 &&
+        configured <= MAX_COOLDOWN_SECONDS
+    ) {
+        return configured;
+    }
+    logger.warn({ configured }, 'invalid followage cooldownSeconds; falling back to default');
+    return DEFAULT_COOLDOWN_SECONDS;
 }
 
 interface Target {
-  id: string;
-  displayName: string;
+    id: string;
+    displayName: string;
 }
 
 /**
@@ -45,20 +45,20 @@ interface Target {
  * is invalid or names an unknown user.
  */
 async function resolveTarget(event: ChatCommandEvent, ctx: BotContext): Promise<Target | null> {
-  if (!event.args.length) {
-    return { id: event.chatterId, displayName: event.chatterDisplayName };
-  }
-  const login = parseLogin(event.args[0]);
-  if (!login) {
-    await ctx.say(USAGE_MESSAGE, event.messageId, event.broadcasterId);
-    return null;
-  }
-  const user = await ctx.helix.getUserByLogin(login);
-  if (!user) {
-    await ctx.say(renderUnknownUser(login), event.messageId, event.broadcasterId);
-    return null;
-  }
-  return { id: user.id, displayName: user.displayName };
+    if (!event.args.length) {
+        return { id: event.chatterId, displayName: event.chatterDisplayName };
+    }
+    const login = parseLogin(event.args[0]);
+    if (!login) {
+        await ctx.say(USAGE_MESSAGE, event.messageId, event.broadcasterId);
+        return null;
+    }
+    const user = await ctx.helix.getUserByLogin(login);
+    if (!user) {
+        await ctx.say(renderUnknownUser(login), event.messageId, event.broadcasterId);
+        return null;
+    }
+    return { id: user.id, displayName: user.displayName };
 }
 
 /**
@@ -67,50 +67,50 @@ async function resolveTarget(event: ChatCommandEvent, ctx: BotContext): Promise<
  * the real clock.
  */
 export function createFollowagePlugin(now: () => Date = () => new Date()): Plugin {
-  return {
-    name: 'followage',
-    version: '1.0.0',
-    init(ctx): void {
-      const cooldownSeconds = resolveCooldownSeconds(ctx.config.cooldownSeconds, ctx.logger);
-      // Throttled repeats are dropped silently so a chat flood cannot burn
-      // the shared Helix rate budget or be amplified with a reply per spam.
-      const cooldown = new CooldownGate(cooldownSeconds * MS_PER_SECOND);
+    return {
+        name: 'followage',
+        version: '1.0.0',
+        init(ctx): void {
+            const cooldownSeconds = resolveCooldownSeconds(ctx.config.cooldownSeconds, ctx.logger);
+            // Throttled repeats are dropped silently so a chat flood cannot burn
+            // the shared Helix rate budget or be amplified with a reply per spam.
+            const cooldown = new CooldownGate(cooldownSeconds * MS_PER_SECOND);
 
-      ctx.command({
-        trigger: 'followage',
-        allow: ['everyone'],
-        description: 'Show how long you (or @user) have followed this channel.',
-        handler: async (event) => {
-          const cooldownKey = `${event.broadcasterId}:${event.chatterId}`;
-          if (cooldown.shouldThrottle(cooldownKey, now().getTime())) return;
-          try {
-            const target = await resolveTarget(event, ctx);
-            if (!target) return;
-            if (target.id === event.broadcasterId) {
-              await ctx.say(
-                renderBroadcasterSelf(event.broadcasterName),
-                event.messageId,
-                event.broadcasterId,
-              );
-              return;
-            }
-            const follow = await ctx.helix.getFollowage(event.broadcasterId, target.id);
-            const text = follow
-              ? renderFollowage(
-                  target.displayName,
-                  event.broadcasterName,
-                  formatFollowDuration(follow.followedAt, now()),
-                )
-              : renderNotFollowing(target.displayName, event.broadcasterName);
-            await ctx.say(text, event.messageId, event.broadcasterId);
-          } catch (err) {
-            ctx.logger.error({ err }, 'followage lookup failed');
-            await ctx.say(LOOKUP_FAILED_MESSAGE, event.messageId, event.broadcasterId);
-          }
+            ctx.command({
+                trigger: 'followage',
+                allow: ['everyone'],
+                description: 'Show how long you (or @user) have followed this channel.',
+                handler: async (event) => {
+                    const cooldownKey = `${event.broadcasterId}:${event.chatterId}`;
+                    if (cooldown.shouldThrottle(cooldownKey, now().getTime())) return;
+                    try {
+                        const target = await resolveTarget(event, ctx);
+                        if (!target) return;
+                        if (target.id === event.broadcasterId) {
+                            await ctx.say(
+                                renderBroadcasterSelf(event.broadcasterName),
+                                event.messageId,
+                                event.broadcasterId,
+                            );
+                            return;
+                        }
+                        const follow = await ctx.helix.getFollowage(event.broadcasterId, target.id);
+                        const text = follow
+                            ? renderFollowage(
+                                  target.displayName,
+                                  event.broadcasterName,
+                                  formatFollowDuration(follow.followedAt, now()),
+                              )
+                            : renderNotFollowing(target.displayName, event.broadcasterName);
+                        await ctx.say(text, event.messageId, event.broadcasterId);
+                    } catch (err) {
+                        ctx.logger.error({ err }, 'followage lookup failed');
+                        await ctx.say(LOOKUP_FAILED_MESSAGE, event.messageId, event.broadcasterId);
+                    }
+                },
+            });
         },
-      });
-    },
-  };
+    };
 }
 
 const plugin = createFollowagePlugin();

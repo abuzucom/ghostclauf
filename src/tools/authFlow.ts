@@ -9,142 +9,145 @@ import { loadFileConfig, loadSecrets } from '../core/config.js';
 import { BOT_SCOPES, BROADCASTER_SCOPES, writeTokenStore } from '../core/auth.js';
 
 async function main(): Promise<void> {
-  const file = loadFileConfig();
-  const secrets = loadSecrets();
-  const target = resolveAuthTarget(file, secrets, process.argv.slice(2));
-  const redirect = new URL(secrets.redirectUri);
-  const port = Number(redirect.port || '80');
+    const file = loadFileConfig();
+    const secrets = loadSecrets();
+    const target = resolveAuthTarget(file, secrets, process.argv.slice(2));
+    const redirect = new URL(secrets.redirectUri);
+    const port = Number(redirect.port || '80');
 
-  const authorizeUrl = new URL('https://id.twitch.tv/oauth2/authorize');
-  const state = randomBytes(32).toString('hex');
-  authorizeUrl.searchParams.set('client_id', secrets.clientId);
-  authorizeUrl.searchParams.set('redirect_uri', secrets.redirectUri);
-  authorizeUrl.searchParams.set('response_type', 'code');
-  authorizeUrl.searchParams.set('state', state);
-  if (target.scopes.length) authorizeUrl.searchParams.set('scope', target.scopes.join(' '));
-  // `force_verify` ensures you can pick the bot account even if already logged in.
-  authorizeUrl.searchParams.set('force_verify', 'true');
+    const authorizeUrl = new URL('https://id.twitch.tv/oauth2/authorize');
+    const state = randomBytes(32).toString('hex');
+    authorizeUrl.searchParams.set('client_id', secrets.clientId);
+    authorizeUrl.searchParams.set('redirect_uri', secrets.redirectUri);
+    authorizeUrl.searchParams.set('response_type', 'code');
+    authorizeUrl.searchParams.set('state', state);
+    if (target.scopes.length) authorizeUrl.searchParams.set('scope', target.scopes.join(' '));
+    // `force_verify` ensures you can pick the bot account even if already logged in.
+    authorizeUrl.searchParams.set('force_verify', 'true');
 
-  await new Promise<void>((resolveDone, rejectDone) => {
-    const server = createServer((req, res) => {
-      const url = new URL(req.url ?? '/', secrets.redirectUri);
-      if (url.pathname !== redirect.pathname) {
-        res.writeHead(404).end('Not found');
-        return;
-      }
+    await new Promise<void>((resolveDone, rejectDone) => {
+        const server = createServer((req, res) => {
+            const url = new URL(req.url ?? '/', secrets.redirectUri);
+            if (url.pathname !== redirect.pathname) {
+                res.writeHead(404).end('Not found');
+                return;
+            }
 
-      const callbackState = url.searchParams.get('state');
-      if (!matchesOAuthState(callbackState, state)) {
-        res
-          .writeHead(400, { 'content-type': 'text/plain; charset=utf-8' })
-          .end('Authorization failed. Invalid OAuth state.');
-        server.close();
-        rejectDone(new Error('authorization failed: invalid OAuth state'));
-        return;
-      }
+            const callbackState = url.searchParams.get('state');
+            if (!matchesOAuthState(callbackState, state)) {
+                res.writeHead(400, { 'content-type': 'text/plain; charset=utf-8' }).end(
+                    'Authorization failed. Invalid OAuth state.',
+                );
+                server.close();
+                rejectDone(new Error('authorization failed: invalid OAuth state'));
+                return;
+            }
 
-      const error = url.searchParams.get('error');
-      const code = url.searchParams.get('code');
-      if (error) {
-        res
-          .writeHead(400, { 'content-type': 'text/plain; charset=utf-8' })
-          .end('Authorization failed. Check the terminal.');
-        server.close();
-        rejectDone(new Error(`authorization denied: ${error}`));
-        return;
-      }
-      if (!code) {
-        res.writeHead(400).end('Missing authorization code.');
-        return;
-      }
+            const error = url.searchParams.get('error');
+            const code = url.searchParams.get('code');
+            if (error) {
+                res.writeHead(400, { 'content-type': 'text/plain; charset=utf-8' }).end(
+                    'Authorization failed. Check the terminal.',
+                );
+                server.close();
+                rejectDone(new Error(`authorization denied: ${error}`));
+                return;
+            }
+            if (!code) {
+                res.writeHead(400).end('Missing authorization code.');
+                return;
+            }
 
-      exchangeCode(secrets.clientId, secrets.clientSecret, code, secrets.redirectUri)
-        .then(async (token) => {
-          await writeTokenStore(target.tokenStorePath, token);
-          res.writeHead(200, { 'content-type': 'text/plain' }).end(
-            'Ghostclauf authorized. Token saved — you can close this tab.',
-          );
-          server.close();
-          console.log(`\n✓ Token written to ${target.tokenStorePath}`);
-          resolveDone();
-        })
-        .catch((err: unknown) => {
-          res.writeHead(500).end('Token exchange failed. Check the terminal.');
-          server.close();
-          rejectDone(err instanceof Error ? err : new Error(String(err)));
+            exchangeCode(secrets.clientId, secrets.clientSecret, code, secrets.redirectUri)
+                .then(async (token) => {
+                    await writeTokenStore(target.tokenStorePath, token);
+                    res.writeHead(200, { 'content-type': 'text/plain' }).end(
+                        'Ghostclauf authorized. Token saved — you can close this tab.',
+                    );
+                    server.close();
+                    console.log(`\n✓ Token written to ${target.tokenStorePath}`);
+                    resolveDone();
+                })
+                .catch((err: unknown) => {
+                    res.writeHead(500).end('Token exchange failed. Check the terminal.');
+                    server.close();
+                    rejectDone(err instanceof Error ? err : new Error(String(err)));
+                });
+        });
+
+        server.listen(port, '127.0.0.1', () => {
+            console.log(`\nGhostclauf — one-time ${target.label} authorization`);
+            console.log(
+                `1. Make sure you are logged into Twitch as ${target.label} (${target.login}).`,
+            );
+            console.log('2. Open this URL in your browser:\n');
+            console.log(`   ${authorizeUrl.toString()}\n`);
+            console.log(`Waiting for the redirect to ${secrets.redirectUri} ...`);
         });
     });
-
-    server.listen(port, '127.0.0.1', () => {
-      console.log(`\nGhostclauf — one-time ${target.label} authorization`);
-      console.log(`1. Make sure you are logged into Twitch as ${target.label} (${target.login}).`);
-      console.log('2. Open this URL in your browser:\n');
-      console.log(`   ${authorizeUrl.toString()}\n`);
-      console.log(`Waiting for the redirect to ${secrets.redirectUri} ...`);
-    });
-  });
 }
 
 function matchesOAuthState(actual: string | null, expected: string): boolean {
-  if (!actual) return false;
-  const actualBytes = Buffer.from(actual, 'utf8');
-  const expectedBytes = Buffer.from(expected, 'utf8');
-  return (
-    actualBytes.length === expectedBytes.length && timingSafeEqual(actualBytes, expectedBytes)
-  );
+    if (!actual) return false;
+    const actualBytes = Buffer.from(actual, 'utf8');
+    const expectedBytes = Buffer.from(expected, 'utf8');
+    return (
+        actualBytes.length === expectedBytes.length && timingSafeEqual(actualBytes, expectedBytes)
+    );
 }
 
 interface AuthTarget {
-  label: 'bot' | 'broadcaster';
-  login: string;
-  tokenStorePath: string;
-  scopes: string[];
+    label: 'bot' | 'broadcaster';
+    login: string;
+    tokenStorePath: string;
+    scopes: string[];
 }
 
 function resolveAuthTarget(
-  file: ReturnType<typeof loadFileConfig>,
-  secrets: ReturnType<typeof loadSecrets>,
-  args: string[],
+    file: ReturnType<typeof loadFileConfig>,
+    secrets: ReturnType<typeof loadSecrets>,
+    args: string[],
 ): AuthTarget {
-  const mode = args[0] ?? '--bot';
-  if (mode === '--bot') {
+    const mode = args[0] ?? '--bot';
+    if (mode === '--bot') {
+        return {
+            label: 'bot',
+            login: file.bot.login,
+            tokenStorePath: secrets.tokenStorePath,
+            scopes: BOT_SCOPES,
+        };
+    }
+
+    const broadcasterLogin =
+        mode === '--broadcaster'
+            ? args[1]
+            : mode.startsWith('--broadcaster=')
+              ? mode.slice('--broadcaster='.length)
+              : undefined;
+    if (!broadcasterLogin) {
+        throw new Error(
+            'Usage: npm run auth -- --bot | npm run auth -- --broadcaster <configured-login>',
+        );
+    }
+
+    const broadcaster = file.broadcasters.find(
+        (candidate) => candidate.login.toLowerCase() === broadcasterLogin.toLowerCase(),
+    );
+    if (!broadcaster) {
+        throw new Error(
+            `Broadcaster "${broadcasterLogin}" is not configured. ` +
+                `Choose one of: ${file.broadcasters.map(({ login }) => login).join(', ')}`,
+        );
+    }
     return {
-      label: 'bot',
-      login: file.bot.login,
-      tokenStorePath: secrets.tokenStorePath,
-      scopes: BOT_SCOPES,
+        label: 'broadcaster',
+        login: broadcaster.login,
+        tokenStorePath: broadcaster.tokenStorePath,
+        scopes: BROADCASTER_SCOPES,
     };
-  }
-
-  const broadcasterLogin = mode === '--broadcaster'
-    ? args[1]
-    : mode.startsWith('--broadcaster=')
-      ? mode.slice('--broadcaster='.length)
-      : undefined;
-  if (!broadcasterLogin) {
-    throw new Error(
-      'Usage: npm run auth -- --bot | npm run auth -- --broadcaster <configured-login>',
-    );
-  }
-
-  const broadcaster = file.broadcasters.find(
-    (candidate) => candidate.login.toLowerCase() === broadcasterLogin.toLowerCase(),
-  );
-  if (!broadcaster) {
-    throw new Error(
-      `Broadcaster "${broadcasterLogin}" is not configured. ` +
-        `Choose one of: ${file.broadcasters.map(({ login }) => login).join(', ')}`,
-    );
-  }
-  return {
-    label: 'broadcaster',
-    login: broadcaster.login,
-    tokenStorePath: broadcaster.tokenStorePath,
-    scopes: BROADCASTER_SCOPES,
-  };
 }
 
 main().catch((err: unknown) => {
-  console.error('\nAuthorization failed:', err instanceof Error ? err.message : err);
-  process.exit(1);
+    console.error('\nAuthorization failed:', err instanceof Error ? err.message : err);
+    process.exit(1);
 });

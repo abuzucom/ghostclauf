@@ -4,7 +4,7 @@ A lightweight, highly extensible chat bot. Its first deployment target is
 **Twitch chat**, but the extensibility layer is transport-agnostic — behaviours
 are added as drop-in **plugins**, not hard-coded against Twitch.
 
-The design borrows the *spirit* of [eggdrop](https://github.com/eggheads/eggdrop)
+The design borrows the _spirit_ of [eggdrop](https://github.com/eggheads/eggdrop)
 (event bindings + modules) and [ub3r-b0t](https://github.com/moiph/ub3r-b0t)
 (clean multi-command structure), but is written fresh — no fork, no vendored code.
 
@@ -50,14 +50,14 @@ larger worked example. All six built-in plugins live under `src/plugins/`.
 Tracks regular viewers with a chat check-in. A streak counts **consecutive
 stream days** a viewer checked in: only calendar days on which the stream was
 live count, so off-days are skipped rather than breaking a streak; missing a
-check-in on a day the stream *was* live resets the streak to 1.
+check-in on a day the stream _was_ live resets the streak to 1.
 
 A day is marked "live" by the `stream.online` event, but recording the day
 alone isn't enough to keep check-in open: with the default
 `requireStreamDay: true`, the channel (or, when pooled, any channel in the
-shared pool) must also be live *right now* — `!checkin` closes as soon as
+shared pool) must also be live _right now_ — `!checkin` closes as soon as
 `stream.offline` fires, rather than staying open for the rest of the day. If
-the bot starts *after* the stream already went live (so it missed the
+the bot starts _after_ the stream already went live (so it missed the
 `stream.online` event), a broadcaster or moderator can run `!streakopen` to
 mark the day and mark that channel live. Set `requireStreamDay: false` to
 instead count any day a viewer checks in, with no live requirement at all.
@@ -74,13 +74,13 @@ channel's streaks fully independent instead.
 
 Commands (trigger words configurable):
 
-| Command | Who | Effect |
-| ------- | --- | ------ |
-| `!checkin` | everyone | Record attendance for today and extend the streak. |
-| `!streak` | everyone | Show your streak; `!streak @user` looks up another viewer. |
-| `!streakreset @user` | broadcaster only | Reset a viewer's streak to 0. |
-| `!streakset @user <n>` | broadcaster / mod | Set a viewer's streak to a value. |
-| `!streakopen` | broadcaster / mod | Mark today a stream day and the channel live, if `stream.online` was missed. |
+| Command                | Who               | Effect                                                                       |
+| ---------------------- | ----------------- | ---------------------------------------------------------------------------- |
+| `!checkin`             | everyone          | Record attendance for today and extend the streak.                           |
+| `!streak`              | everyone          | Show your streak; `!streak @user` looks up another viewer.                   |
+| `!streakreset @user`   | broadcaster only  | Reset a viewer's streak to 0.                                                |
+| `!streakset @user <n>` | broadcaster / mod | Set a viewer's streak to a value.                                            |
+| `!streakopen`          | broadcaster / mod | Mark today a stream day and the channel live, if `stream.online` was missed. |
 
 State persists to `dataPath` (default `./data/streaks.json`). Day boundaries use
 the configured `timezone` (IANA name, default `UTC`). A channel-point redeem is
@@ -100,7 +100,7 @@ Each chatter is rate-limited (`cooldownSeconds`, default 10); repeats inside
 the window are silently ignored so chat floods cannot burn the shared Helix
 API budget. Set `0` to disable.
 
-The lookup uses the Helix *Get Channel Followers* endpoint, which requires the
+The lookup uses the Helix _Get Channel Followers_ endpoint, which requires the
 **broadcaster's** token to carry the `moderator:read:followers` scope. Tokens
 authorized before this plugin existed do not have it — re-run
 `npm run auth -- --broadcaster <login>` once per broadcaster to grant it.
@@ -140,13 +140,13 @@ warning but doesn't block the chat reply. See the `shoutout:` block in
 Twitch now recommends **[EventSub](https://dev.twitch.tv/docs/eventsub/) for
 reading chat + the [Helix Send Chat Message API](https://dev.twitch.tv/docs/chat/send-receive-messages/)
 for writing**, replacing legacy IRC. ghostclauf opens a **single EventSub
-WebSocket** that carries *both* required events:
+WebSocket** that carries _both_ required events:
 
-| Requirement            | EventSub subscription   |
-| ---------------------- | ----------------------- |
-| Chat commands          | `channel.chat.message`  |
-| Going-live announcement, streak live-gating | `stream.online`  |
-| Streak live-gating (close on end)  | `stream.offline` |
+| Requirement                                 | EventSub subscription  |
+| ------------------------------------------- | ---------------------- |
+| Chat commands                               | `channel.chat.message` |
+| Going-live announcement, streak live-gating | `stream.online`        |
+| Streak live-gating (close on end)           | `stream.offline`       |
 
 All Twitch specifics live in [`src/core/twitch.ts`](src/core/twitch.ts) (built on
 [@twurple](https://twurple.js.org)); everything else is platform-neutral.
@@ -206,7 +206,7 @@ src/
    (the examples throughout this README use two, but any number works — see
    [Configuration](#configuration)).
 3. A **bot account** (a separate Twitch account the bot posts as).
-4. In each broadcaster's channel, make the bot a **moderator**, *or* have the
+4. In each broadcaster's channel, make the bot a **moderator**, _or_ have the
    broadcaster grant the `channel:bot` scope — either lets the bot post.
 
 The bot account authorizes these scopes: `user:read:chat`, `user:write:chat`,
@@ -245,7 +245,7 @@ first time it runs:
   them into `config.yaml` (comments and formatting preserved).
 - It then checks which of those accounts still need authorization - including
   the bot token existing but missing a required scope (e.g. `user:write:chat`)
-  - and opens the OAuth flow for each one automatically.
+    - and opens the OAuth flow for each one automatically.
 - No manual `npm run auth` commands. Once every account is configured and
   authorized, later runs skip straight to starting the bot, and it keeps its
   window open if the bot stops.
@@ -301,10 +301,10 @@ Key `wentlive` options:
 
 ```yaml
 plugins:
-  config:
-    wentlive:
-      template: "{streamer} has gone live at {timestamp}"
-      timestampFormat: "iso"   # or "utc"
+    config:
+        wentlive:
+            template: '{streamer} has gone live at {timestamp}'
+            timestampFormat: 'iso' # or "utc"
 ```
 
 ## Writing a plugin
@@ -316,22 +316,19 @@ listed under `plugins.directories`) and export a default `Plugin`:
 import type { Plugin } from '../../core/types.js';
 
 const plugin: Plugin = {
-  name: 'hello',
-  version: '1.0.0',
-  init(ctx) {
-    ctx.command({
-      trigger: 'hello',
-      allow: ['everyone'],          // or ['broadcaster','moderator','vip','subscriber']
-      handler: (event, ctx) => ctx.say(
-        `hi @${event.chatterDisplayName}!`,
-        event.messageId,
-        event.broadcasterId,
-      ),
-    });
+    name: 'hello',
+    version: '1.0.0',
+    init(ctx) {
+        ctx.command({
+            trigger: 'hello',
+            allow: ['everyone'], // or ['broadcaster','moderator','vip','subscriber']
+            handler: (event, ctx) =>
+                ctx.say(`hi @${event.chatterDisplayName}!`, event.messageId, event.broadcasterId),
+        });
 
-    ctx.on('streamOnline', (e) => ctx.logger.info({ e }, 'we are live'));
-    ctx.on('streamOffline', (e) => ctx.logger.info({ e }, 'stream ended'));
-  },
+        ctx.on('streamOnline', (e) => ctx.logger.info({ e }, 'we are live'));
+        ctx.on('streamOffline', (e) => ctx.logger.info({ e }, 'stream ended'));
+    },
 };
 
 export default plugin;

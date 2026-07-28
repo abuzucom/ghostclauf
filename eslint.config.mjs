@@ -3,26 +3,36 @@ import tseslint from 'typescript-eslint';
 import prettierConfig from 'eslint-config-prettier';
 
 export default tseslint.config(
-  eslint.configs.recommended,
-  ...tseslint.configs.recommendedTypeChecked,
-  prettierConfig,
-  {
-    languageOptions: {
-      parserOptions: {
-        projectService: true,
-        tsconfigRootDir: import.meta.dirname,
-      },
+    eslint.configs.recommended,
+    ...tseslint.configs.recommendedTypeChecked,
+    prettierConfig,
+    {
+        languageOptions: {
+            parserOptions: {
+                project: ['./tsconfig.eslint.json'],
+                tsconfigRootDir: import.meta.dirname,
+            },
+        },
+        rules: {
+            '@typescript-eslint/no-floating-promises': 'error',
+            '@typescript-eslint/no-unused-vars': [
+                'error',
+                { argsIgnorePattern: '^_', varsIgnorePattern: '^_' },
+            ],
+            'no-console': 'warn',
+        },
     },
-    rules: {
-      '@typescript-eslint/no-floating-promises': 'error',
-      '@typescript-eslint/no-unused-vars': [
-        'error',
-        { argsIgnorePattern: '^_', varsIgnorePattern: '^_' },
-      ],
-      'no-console': 'warn',
+    {
+        files: ['test/**/*.ts'],
+        ...tseslint.configs.disableTypeChecked,
     },
-  },
-  {
-    ignores: ['dist/', 'node_modules/', 'test/fixtures/'],
-  },
+    {
+        files: ['test/**/*.ts'],
+        rules: {
+            '@typescript-eslint/no-explicit-any': 'off',
+        },
+    },
+    {
+        ignores: ['dist/', 'node_modules/', 'test/fixtures/'],
+    },
 );

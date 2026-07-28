@@ -117,6 +117,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   production audit was already clean).
 - Pin GitHub Actions in CI workflows to full commit SHAs instead of
   mutable tags.
+
 ## [0.3.0] - 2026-07-21
 
 ### Added

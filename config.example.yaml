@@ -3,109 +3,109 @@
 
 # The channels the bot operates in. Each broadcaster needs its own OAuth token.
 broadcasters:
-  - login: your_first_streamer_login
-    tokenStorePath: ./data/first-broadcaster-tokens.json
-  - login: your_second_streamer_login
-    tokenStorePath: ./data/second-broadcaster-tokens.json
+    - login: your_first_streamer_login
+      tokenStorePath: ./data/first-broadcaster-tokens.json
+    - login: your_second_streamer_login
+      tokenStorePath: ./data/second-broadcaster-tokens.json
 
 # The account the bot posts as. This is the account you authorize via `npm run auth`.
 bot:
-  login: your_bot_login
+    login: your_bot_login
 
 chat:
-  # Prefix that marks a chat command, e.g. "!ping".
-  commandPrefix: "!"
+    # Prefix that marks a chat command, e.g. "!ping".
+    commandPrefix: '!'
 
 plugins:
-  # Directories scanned for plugins, in order. Built-in plugins ship under the
-  # app itself; add extra dirs here (mounted as a Docker volume) to drop in your
-  # own without rebuilding the image. Paths are relative to the working dir.
-  directories:
-    - "./dist/plugins"   # built-in plugins (compiled)
-    - "/data/plugins"    # external drop-in plugins (optional volume)
+    # Directories scanned for plugins, in order. Built-in plugins ship under the
+    # app itself; add extra dirs here (mounted as a Docker volume) to drop in your
+    # own without rebuilding the image. Paths are relative to the working dir.
+    directories:
+        - './dist/plugins' # built-in plugins (compiled)
+        - '/data/plugins' # external drop-in plugins (optional volume)
 
-  # Every plugin discovered in `directories` is enabled by default (including
-  # ones you add later) — list names here only to turn specific ones off.
-  disabled: []
-  # Uncomment and list names to switch to an explicit allow-list instead:
-  # only those plugins run, and `disabled` above is ignored.
-  # enabled:
-  #   - ping
-  #   - wentlive
+    # Every plugin discovered in `directories` is enabled by default (including
+    # ones you add later) — list names here only to turn specific ones off.
+    disabled: []
+    # Uncomment and list names to switch to an explicit allow-list instead:
+    # only those plugins run, and `disabled` above is ignored.
+    # enabled:
+    #   - ping
+    #   - wentlive
 
-  # Per-plugin configuration blocks, keyed by plugin name.
-  config:
-    nowplaying:
-      # Base URL of the local 1a2n-track-id overlay server (Traktor Pro 4
-      # deck/track tracker for DJ streams). Only reachable on the same
-      # machine; nothing here ever leaves 127.0.0.1.
-      baseUrl: http://127.0.0.1:8080
-      # Milliseconds to wait for the /state request before giving up.
-      requestTimeoutMs: 1500
-      # Broadcasters and moderators can use !nowplaying any time, unlimited.
-      # Everyone else is limited to once per user every 3 minutes (fixed,
-      # not configurable).
-    ping:
-      # Broadcaster login -> chatter logins treated as broadcaster-tier
-      # (unlimited !ping, no cooldown) on that channel, despite their actual
-      # Twitch role there. For streamers who moderate each other's channels.
-      treatAsBroadcaster:
-        dj1a2n:
-          - itsjustatank
-        itsjustatank:
-          - dj1a2n
-    followage:
-      # Seconds a chatter must wait between handled !followage lookups;
-      # repeats inside the window are silently ignored (protects the shared
-      # Helix API rate budget from chat floods). Set 0 to disable.
-      cooldownSeconds: 10
-    wentlive:
-      # {streamer} and {timestamp} are substituted at send time.
-      template: "{streamer} has gone live at {timestamp}"
-      # UTC timestamp format: "iso" (2026-07-12T18:04:05Z) or "utc" (Sun, 12 Jul 2026 18:04:05 GMT).
-      timestampFormat: "iso"
-    streak:
-      # Where per-viewer attendance streaks are persisted (own store under ./data).
-      dataPath: ./data/streaks.json
-      # IANA timezone used for day boundaries (e.g. America/New_York). Default UTC.
-      timezone: UTC
-      # Only count days the stream was actually live (via the stream.online event
-      # or the admin open command). Set false to also count any check-in day.
-      requireStreamDay: true
-      # Pool streak state across every broadcaster configured above (useful when
-      # they're all the same streamer's channels). Set false to keep each
-      # channel's streaks fully independent. Note: when pooled, the broadcaster
-      # of ANY configured channel can !streakset / !streakreset viewers in the
-      # shared pool, affecting every channel.
-      shareAcrossChannels: true
-      # Seconds a chatter must wait between handled !checkin attempts; repeats
-      # inside the window are silently ignored (protects the store from chat
-      # floods). Set 0 to disable.
-      checkinCooldownSeconds: 10
-      # How long after a stream starts a check-in still counts toward that
-      # stream's day, so a stream that runs past midnight doesn't get cut off.
-      # Tune to roughly your longest typical stream length.
-      streamSessionHours: 18
-      # Optional: override trigger words (defaults shown).
-      # triggers:
-      #   checkin: checkin
-      #   streak: streak
-      #   reset: streakreset
-      #   set: streakset
-      #   open: streakopen
-      # Optional: override reply templates. Tokens: {user} {streak} {longest} {day}.
-      # messages:
-      #   extended: "@{user} checked in! Streak: {streak} days (best {longest})."
-    lurk:
-      # Seconds a chatter must wait between handled lurk/unlurk replies;
-      # repeats inside the window are silently ignored. Set 0 to disable.
-      cooldownSeconds: 10
-      messages:
-        lurk: "Thanks for the lurk, @{user}! We see you."
-        already_lurking: "@{user} is already lurking — we definitely see you."
-        unlurk: "Welcome back, @{user}!"
-        unlurk_unknown: "Welcome, @{user}!"
-    shoutout:
-      template: "Go check out @{display} at twitch.tv/{channel}! They were last seen playing {game}."
-      fallbackGame: "something awesome"
-      sendNativeShoutout: true
+    # Per-plugin configuration blocks, keyed by plugin name.
+    config:
+        nowplaying:
+            # Base URL of the local 1a2n-track-id overlay server (Traktor Pro 4
+            # deck/track tracker for DJ streams). Only reachable on the same
+            # machine; nothing here ever leaves 127.0.0.1.
+            baseUrl: http://127.0.0.1:8080
+            # Milliseconds to wait for the /state request before giving up.
+            requestTimeoutMs: 1500
+            # Broadcasters and moderators can use !nowplaying any time, unlimited.
+            # Everyone else is limited to once per user every 3 minutes (fixed,
+            # not configurable).
+        ping:
+            # Broadcaster login -> chatter logins treated as broadcaster-tier
+            # (unlimited !ping, no cooldown) on that channel, despite their actual
+            # Twitch role there. For streamers who moderate each other's channels.
+            treatAsBroadcaster:
+                dj1a2n:
+                    - itsjustatank
+                itsjustatank:
+                    - dj1a2n
+        followage:
+            # Seconds a chatter must wait between handled !followage lookups;
+            # repeats inside the window are silently ignored (protects the shared
+            # Helix API rate budget from chat floods). Set 0 to disable.
+            cooldownSeconds: 10
+        wentlive:
+            # {streamer} and {timestamp} are substituted at send time.
+            template: '{streamer} has gone live at {timestamp}'
+            # UTC timestamp format: "iso" (2026-07-12T18:04:05Z) or "utc" (Sun, 12 Jul 2026 18:04:05 GMT).
+            timestampFormat: 'iso'
+        streak:
+            # Where per-viewer attendance streaks are persisted (own store under ./data).
+            dataPath: ./data/streaks.json
+            # IANA timezone used for day boundaries (e.g. America/New_York). Default UTC.
+            timezone: UTC
+            # Only count days the stream was actually live (via the stream.online event
+            # or the admin open command). Set false to also count any check-in day.
+            requireStreamDay: true
+            # Pool streak state across every broadcaster configured above (useful when
+            # they're all the same streamer's channels). Set false to keep each
+            # channel's streaks fully independent. Note: when pooled, the broadcaster
+            # of ANY configured channel can !streakset / !streakreset viewers in the
+            # shared pool, affecting every channel.
+            shareAcrossChannels: true
+            # Seconds a chatter must wait between handled !checkin attempts; repeats
+            # inside the window are silently ignored (protects the store from chat
+            # floods). Set 0 to disable.
+            checkinCooldownSeconds: 10
+            # How long after a stream starts a check-in still counts toward that
+            # stream's day, so a stream that runs past midnight doesn't get cut off.
+            # Tune to roughly your longest typical stream length.
+            streamSessionHours: 18
+            # Optional: override trigger words (defaults shown).
+            # triggers:
+            #   checkin: checkin
+            #   streak: streak
+            #   reset: streakreset
+            #   set: streakset
+            #   open: streakopen
+            # Optional: override reply templates. Tokens: {user} {streak} {longest} {day}.
+            # messages:
+            #   extended: "@{user} checked in! Streak: {streak} days (best {longest})."
+        lurk:
+            # Seconds a chatter must wait between handled lurk/unlurk replies;
+            # repeats inside the window are silently ignored. Set 0 to disable.
+            cooldownSeconds: 10
+            messages:
+                lurk: 'Thanks for the lurk, @{user}! We see you.'
+                already_lurking: '@{user} is already lurking — we definitely see you.'
+                unlurk: 'Welcome back, @{user}!'
+                unlurk_unknown: 'Welcome, @{user}!'
+        shoutout:
+            template: 'Go check out @{display} at twitch.tv/{channel}! They were last seen playing {game}.'
+            fallbackGame: 'something awesome'
+            sendNativeShoutout: true

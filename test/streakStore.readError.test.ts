@@ -12,79 +12,79 @@ import { StreakStore } from '../src/plugins/streak/store.js';
 import { makeSpyLogger } from './helpers.js';
 
 vi.mock('node:fs/promises', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('node:fs/promises')>();
-  return { ...actual, readFile: vi.fn(actual.readFile) };
+    const actual = await importOriginal<typeof import('node:fs/promises')>();
+    return { ...actual, readFile: vi.fn(actual.readFile) };
 });
 
 const { readFile } = await import('node:fs/promises');
 const readFileMock = vi.mocked(readFile);
 
 describe('StreakStore.load read-error handling', () => {
-  let dir: string;
-  let dataPath: string;
+    let dir: string;
+    let dataPath: string;
 
-  beforeEach(async () => {
-    dir = await mkdtemp(join(tmpdir(), 'ghostclauf-streak-readerr-'));
-    dataPath = join(dir, 'streaks.json');
-    readFileMock.mockClear();
-  });
+    beforeEach(async () => {
+        dir = await mkdtemp(join(tmpdir(), 'ghostclauf-streak-readerr-'));
+        dataPath = join(dir, 'streaks.json');
+        readFileMock.mockClear();
+    });
 
-  afterEach(async () => {
-    await rm(dir, { recursive: true, force: true });
-  });
+    afterEach(async () => {
+        await rm(dir, { recursive: true, force: true });
+    });
 
-  it('rethrows a non-ENOENT read error instead of starting empty', async () => {
-    const eaccess = Object.assign(new Error('permission denied'), { code: 'EACCES' });
-    readFileMock.mockRejectedValueOnce(eaccess);
-    const spy = makeSpyLogger();
+    it('rethrows a non-ENOENT read error instead of starting empty', async () => {
+        const eaccess = Object.assign(new Error('permission denied'), { code: 'EACCES' });
+        readFileMock.mockRejectedValueOnce(eaccess);
+        const spy = makeSpyLogger();
 
-    const store = new StreakStore(dataPath, spy.logger);
-    await expect(store.load()).rejects.toBe(eaccess);
-    expect(spy.error).toHaveBeenCalled();
-    expect(store.getViewer('chan-1', 'viewer-1')).toBeUndefined();
-  });
+        const store = new StreakStore(dataPath, spy.logger);
+        await expect(store.load()).rejects.toBe(eaccess);
+        expect(spy.error).toHaveBeenCalled();
+        expect(store.getViewer('chan-1', 'viewer-1')).toBeUndefined();
+    });
 
-  it('still starts empty for a genuinely missing file (ENOENT)', async () => {
-    const store = new StreakStore(dataPath, makeSpyLogger().logger);
-    await expect(store.load()).resolves.toBeUndefined();
-    expect(store.hasStreamDay('chan-1', '2026-07-20')).toBe(false);
-  });
+    it('still starts empty for a genuinely missing file (ENOENT)', async () => {
+        const store = new StreakStore(dataPath, makeSpyLogger().logger);
+        await expect(store.load()).resolves.toBeUndefined();
+        expect(store.hasStreamDay('chan-1', '2026-07-20')).toBe(false);
+    });
 
-  it('never overwrites the real file after a read error is fixed and retried', async () => {
-    // Simulate real data already on disk from a previous run.
-    await realWriteFile(
-      dataPath,
-      JSON.stringify({
-        version: 1,
-        channels: {
-          'chan-1': {
-            streamDays: ['2026-07-19'],
-            activeStreamStartedAt: null,
-            viewers: {
-              'viewer-1': {
-                chatterName: 'viewer',
-                displayName: 'Viewer',
-                currentStreak: 5,
-                longestStreak: 5,
-                lastCheckinDay: '2026-07-19',
-                totalCheckins: 5,
-              },
-            },
-          },
-        },
-      }),
-      'utf8',
-    );
+    it('never overwrites the real file after a read error is fixed and retried', async () => {
+        // Simulate real data already on disk from a previous run.
+        await realWriteFile(
+            dataPath,
+            JSON.stringify({
+                version: 1,
+                channels: {
+                    'chan-1': {
+                        streamDays: ['2026-07-19'],
+                        activeStreamStartedAt: null,
+                        viewers: {
+                            'viewer-1': {
+                                chatterName: 'viewer',
+                                displayName: 'Viewer',
+                                currentStreak: 5,
+                                longestStreak: 5,
+                                lastCheckinDay: '2026-07-19',
+                                totalCheckins: 5,
+                            },
+                        },
+                    },
+                },
+            }),
+            'utf8',
+        );
 
-    const eio = Object.assign(new Error('input/output error'), { code: 'EIO' });
-    readFileMock.mockRejectedValueOnce(eio);
-    const first = new StreakStore(dataPath, makeSpyLogger().logger);
-    await expect(first.load()).rejects.toBe(eio);
+        const eio = Object.assign(new Error('input/output error'), { code: 'EIO' });
+        readFileMock.mockRejectedValueOnce(eio);
+        const first = new StreakStore(dataPath, makeSpyLogger().logger);
+        await expect(first.load()).rejects.toBe(eio);
 
-    // A fresh load (as pluginManager would retry on the next boot, once the
-    // transient error clears) sees the untouched real data.
-    const second = new StreakStore(dataPath, makeSpyLogger().logger);
-    await second.load();
-    expect(second.getViewer('chan-1', 'viewer-1')?.currentStreak).toBe(5);
-  });
+        // A fresh load (as pluginManager would retry on the next boot, once the
+        // transient error clears) sees the untouched real data.
+        const second = new StreakStore(dataPath, makeSpyLogger().logger);
+        await second.load();
+        expect(second.getViewer('chan-1', 'viewer-1')?.currentStreak).toBe(5);
+    });
 });

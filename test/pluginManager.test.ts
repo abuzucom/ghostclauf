@@ -10,152 +10,152 @@ import { makeMessage, makeSpyLogger, spySender } from './helpers.js';
 const fixturesRoot = join(dirname(fileURLToPath(import.meta.url)), 'fixtures', 'pluginManager');
 
 function baseFileConfig(overrides: Partial<FileConfig['plugins']>): FileConfig {
-  return {
-    broadcaster: { login: 'streamer' },
-    bot: { login: 'bot' },
-    chat: { commandPrefix: '!' },
-    plugins: {
-      directories: [],
-      disabled: [],
-      config: {},
-      ...overrides,
-    },
-  };
+    return {
+        broadcaster: { login: 'streamer' },
+        bot: { login: 'bot' },
+        chat: { commandPrefix: '!' },
+        plugins: {
+            directories: [],
+            disabled: [],
+            config: {},
+            ...overrides,
+        },
+    };
 }
 
 function setup(overrides: Partial<FileConfig['plugins']>) {
-  const registry = new CommandRegistry('!', makeSpyLogger().logger);
-  const bus = new EventBus(makeSpyLogger().logger);
-  const spy = makeSpyLogger();
-  const pm = new PluginManager({
-    file: baseFileConfig(overrides),
-    logger: spy.logger,
-    registry,
-    bus,
-    sender: spySender(),
-  });
-  return { pm, registry, spy };
+    const registry = new CommandRegistry('!', makeSpyLogger().logger);
+    const bus = new EventBus(makeSpyLogger().logger);
+    const spy = makeSpyLogger();
+    const pm = new PluginManager({
+        file: baseFileConfig(overrides),
+        logger: spy.logger,
+        registry,
+        bus,
+        sender: spySender(),
+    });
+    return { pm, registry, spy };
 }
 
 describe('PluginManager', () => {
-  it('skips a plugin whose init() throws and still initializes the other plugins', async () => {
-    const dir = join(fixturesRoot, 'plugins');
-    const { pm, spy } = setup({
-      directories: [dir],
-      enabled: ['fixture-good-a', 'fixture-throws-init'],
+    it('skips a plugin whose init() throws and still initializes the other plugins', async () => {
+        const dir = join(fixturesRoot, 'plugins');
+        const { pm, spy } = setup({
+            directories: [dir],
+            enabled: ['fixture-good-a', 'fixture-throws-init'],
+        });
+        await pm.loadAll();
+
+        expect(pm.active).toContain('fixture-good-a');
+        expect(pm.active).not.toContain('fixture-throws-init');
+        expect(spy.error).toHaveBeenCalledWith(
+            expect.objectContaining({ plugin: 'fixture-throws-init' }),
+            'plugin init threw, skipping',
+        );
     });
-    await pm.loadAll();
 
-    expect(pm.active).toContain('fixture-good-a');
-    expect(pm.active).not.toContain('fixture-throws-init');
-    expect(spy.error).toHaveBeenCalledWith(
-      expect.objectContaining({ plugin: 'fixture-throws-init' }),
-      'plugin init threw, skipping',
-    );
-  });
+    it('skips a module that does not export a valid Plugin', async () => {
+        const dir = join(fixturesRoot, 'plugins');
+        const { pm, spy } = setup({
+            directories: [dir],
+            enabled: ['fixture-good-a', 'fixture-invalid-export'],
+        });
+        await pm.loadAll();
 
-  it('skips a module that does not export a valid Plugin', async () => {
-    const dir = join(fixturesRoot, 'plugins');
-    const { pm, spy } = setup({
-      directories: [dir],
-      enabled: ['fixture-good-a', 'fixture-invalid-export'],
+        expect(pm.active).toEqual(['fixture-good-a']);
+        expect(spy.error).toHaveBeenCalledWith(
+            expect.objectContaining({
+                entryPath: expect.stringContaining('invalid-export'),
+            }),
+            'failed to import plugin, skipping',
+        );
     });
-    await pm.loadAll();
 
-    expect(pm.active).toEqual(['fixture-good-a']);
-    expect(spy.error).toHaveBeenCalledWith(
-      expect.objectContaining({
-        entryPath: expect.stringContaining('invalid-export'),
-      }),
-      'failed to import plugin, skipping',
-    );
-  });
+    it('skips the second of two plugins sharing the same name and warns', async () => {
+        const { pm, spy } = setup({
+            directories: [join(fixturesRoot, 'dup-a'), join(fixturesRoot, 'dup-b')],
+            enabled: ['fixture-dup'],
+        });
+        await pm.loadAll();
 
-  it('skips the second of two plugins sharing the same name and warns', async () => {
-    const { pm, spy } = setup({
-      directories: [join(fixturesRoot, 'dup-a'), join(fixturesRoot, 'dup-b')],
-      enabled: ['fixture-dup'],
+        expect(pm.active).toEqual(['fixture-dup']);
+        expect(spy.warn).toHaveBeenCalledWith(
+            expect.objectContaining({
+                plugin: 'fixture-dup',
+                entryPath: expect.stringContaining('dup-b'),
+            }),
+            'duplicate plugin name, skipping',
+        );
     });
-    await pm.loadAll();
 
-    expect(pm.active).toEqual(['fixture-dup']);
-    expect(spy.warn).toHaveBeenCalledWith(
-      expect.objectContaining({
-        plugin: 'fixture-dup',
-        entryPath: expect.stringContaining('dup-b'),
-      }),
-      'duplicate plugin name, skipping',
-    );
-  });
+    it('discovers but does not initialize a plugin absent from plugins.enabled', async () => {
+        const dir = join(fixturesRoot, 'plugins');
+        const { pm, registry } = setup({
+            directories: [dir],
+            enabled: ['fixture-good-a'],
+        });
+        await pm.loadAll();
 
-  it('discovers but does not initialize a plugin absent from plugins.enabled', async () => {
-    const dir = join(fixturesRoot, 'plugins');
-    const { pm, registry } = setup({
-      directories: [dir],
-      enabled: ['fixture-good-a'],
+        expect(pm.active).toEqual(['fixture-good-a']);
+        expect(registry.match(makeMessage('!fixture-b'))).toBeNull();
     });
-    await pm.loadAll();
 
-    expect(pm.active).toEqual(['fixture-good-a']);
-    expect(registry.match(makeMessage('!fixture-b'))).toBeNull();
-  });
+    it('warns when an enabled plugin name matches nothing discovered', async () => {
+        const dir = join(fixturesRoot, 'plugins');
+        const { pm, spy } = setup({
+            directories: [dir],
+            enabled: ['fixture-good-a', 'totally-unknown'],
+        });
+        await pm.loadAll();
 
-  it('warns when an enabled plugin name matches nothing discovered', async () => {
-    const dir = join(fixturesRoot, 'plugins');
-    const { pm, spy } = setup({
-      directories: [dir],
-      enabled: ['fixture-good-a', 'totally-unknown'],
+        expect(pm.active).toEqual(['fixture-good-a']);
+        expect(spy.warn).toHaveBeenCalledWith(
+            { plugin: 'totally-unknown' },
+            'enabled plugin was not found in any plugin directory',
+        );
     });
-    await pm.loadAll();
 
-    expect(pm.active).toEqual(['fixture-good-a']);
-    expect(spy.warn).toHaveBeenCalledWith(
-      { plugin: 'totally-unknown' },
-      'enabled plugin was not found in any plugin directory',
-    );
-  });
-
-  it('handles a missing plugin directory without throwing', async () => {
-    const { pm } = setup({
-      directories: [join(fixturesRoot, 'does-not-exist')],
-      enabled: ['fixture-good-a'],
+    it('handles a missing plugin directory without throwing', async () => {
+        const { pm } = setup({
+            directories: [join(fixturesRoot, 'does-not-exist')],
+            enabled: ['fixture-good-a'],
+        });
+        await expect(pm.loadAll()).resolves.toBeUndefined();
+        expect(pm.active).toEqual([]);
     });
-    await expect(pm.loadAll()).resolves.toBeUndefined();
-    expect(pm.active).toEqual([]);
-  });
 
-  it('initializes every discovered plugin when enabled/disabled are both unset', async () => {
-    const dir = join(fixturesRoot, 'plugins');
-    const { pm } = setup({ directories: [dir] });
-    await pm.loadAll();
+    it('initializes every discovered plugin when enabled/disabled are both unset', async () => {
+        const dir = join(fixturesRoot, 'plugins');
+        const { pm } = setup({ directories: [dir] });
+        await pm.loadAll();
 
-    expect(pm.active.sort()).toEqual(['fixture-good-a', 'fixture-good-b']);
-  });
-
-  it('skips only the plugins named in plugins.disabled', async () => {
-    const dir = join(fixturesRoot, 'plugins');
-    const { pm, registry } = setup({
-      directories: [dir],
-      disabled: ['fixture-good-b'],
+        expect(pm.active.sort()).toEqual(['fixture-good-a', 'fixture-good-b']);
     });
-    await pm.loadAll();
 
-    expect(pm.active).toEqual(['fixture-good-a']);
-    expect(registry.match(makeMessage('!fixture-b'))).toBeNull();
-  });
+    it('skips only the plugins named in plugins.disabled', async () => {
+        const dir = join(fixturesRoot, 'plugins');
+        const { pm, registry } = setup({
+            directories: [dir],
+            disabled: ['fixture-good-b'],
+        });
+        await pm.loadAll();
 
-  it('warns when a disabled plugin name matches nothing discovered', async () => {
-    const dir = join(fixturesRoot, 'plugins');
-    const { pm, spy } = setup({
-      directories: [dir],
-      disabled: ['totally-unknown'],
+        expect(pm.active).toEqual(['fixture-good-a']);
+        expect(registry.match(makeMessage('!fixture-b'))).toBeNull();
     });
-    await pm.loadAll();
 
-    expect(pm.active.sort()).toEqual(['fixture-good-a', 'fixture-good-b']);
-    expect(spy.warn).toHaveBeenCalledWith(
-      { plugin: 'totally-unknown' },
-      'disabled plugin was not found in any plugin directory',
-    );
-  });
+    it('warns when a disabled plugin name matches nothing discovered', async () => {
+        const dir = join(fixturesRoot, 'plugins');
+        const { pm, spy } = setup({
+            directories: [dir],
+            disabled: ['totally-unknown'],
+        });
+        await pm.loadAll();
+
+        expect(pm.active.sort()).toEqual(['fixture-good-a', 'fixture-good-b']);
+        expect(spy.warn).toHaveBeenCalledWith(
+            { plugin: 'totally-unknown' },
+            'disabled plugin was not found in any plugin directory',
+        );
+    });
 });
