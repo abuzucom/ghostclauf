@@ -67,8 +67,20 @@ plugins:
         streak:
             # Where per-viewer attendance streaks are persisted (own store under ./data).
             dataPath: ./data/streaks.json
+            # Separate audit journal for authoritative !streakset decisions.
+            decisionPath: ./data/streak-decisions.json
             # IANA timezone used for day boundaries (e.g. America/New_York). Default UTC.
             timezone: UTC
+            # Local hour when a new attendance day starts. Default 0.
+            dayBoundaryHour: 0
+            # Same-broadcaster reconnect grace. Default 0 preserves legacy behavior.
+            reconnectGraceMinutes: 0
+            # One uninterrupted session must reach this duration to count as missed.
+            # Viewers who check in during a shorter session still receive credit.
+            minimumQualifyingSessionMinutes: 0
+            # "previous-stream-day" preserves legacy behavior. "all-broadcasters"
+            # breaks only after the viewer misses every configured broadcaster.
+            streakBreakPolicy: previous-stream-day
             # Only count days the stream was actually live (via the stream.online event
             # or the admin open command). Set false to also count any check-in day.
             requireStreamDay: true
@@ -92,8 +104,10 @@ plugins:
             #   streak: streak
             #   reset: streakreset
             #   set: streakset
+            #   fix: fixstreak
+            #   undoSet: undostreakset
             #   open: streakopen
-            # Optional: override reply templates. Tokens: {user} {streak} {longest} {day}.
+            # Optional templates. Tokens: {user} {streak} {longest} {day} {amount}.
             # messages:
             #   extended: "@{user} checked in! Streak: {streak} days (best {longest})."
         lurk:

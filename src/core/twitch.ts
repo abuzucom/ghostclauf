@@ -16,6 +16,7 @@ import type {
 export interface TransportHandlers {
     onChatMessage(event: ChatMessageEvent): void | Promise<void>;
     onStreamOnline(event: StreamOnlineEvent): void | Promise<void>;
+    onStreamOfflinePending?(event: StreamOfflineEvent): void | Promise<void>;
     onStreamOffline(event: StreamOfflineEvent): void | Promise<void>;
 }
 
@@ -31,6 +32,10 @@ export interface TwitchTransportOptions {
     broadcasterUserIds?: string[];
     logger: Logger;
     handlers: TransportHandlers;
+    /** Internal/test override; production confirms offline after 60 seconds. */
+    offlineConfirmationMs?: number;
+    /** Internal/test override for the single failed-confirmation retry. */
+    offlineRetryMs?: number;
 }
 
 export interface TwitchTransport {
@@ -88,8 +93,19 @@ export async function createTwitchTransport(
 
     const listener = new EventSubWsListener({ apiClient: api });
     const rateLimiter = new ChatRateLimiter();
-    const liveStreamIds = new Map<string, string>();
+    const activeStreams = new Map<string, StreamOnlineEvent>();
+    const pendingOffline = new Map<
+        string,
+        {
+            event: StreamOfflineEvent;
+            active: StreamOnlineEvent;
+            timer: NodeJS.Timeout;
+            attempts: number;
+        }
+    >();
     const disconnectedUsers = new Set<string>();
+    const offlineConfirmationMs = opts.offlineConfirmationMs ?? 60_000;
+    const offlineRetryMs = opts.offlineRetryMs ?? 30_000;
 
     listener.onUserSocketConnect((userId) => {
         const wasDisconnected = disconnectedUsers.delete(userId);
@@ -124,15 +140,95 @@ export async function createTwitchTransport(
     });
 
     const emitStreamOnline = (event: StreamOnlineEvent): void => {
-        if (event.streamId && liveStreamIds.get(event.broadcasterId) === event.streamId) return;
-        if (event.streamId) liveStreamIds.set(event.broadcasterId, event.streamId);
+        const pending = pendingOffline.get(event.broadcasterId);
+        if (pending) {
+            clearTimeout(pending.timer);
+            pendingOffline.delete(event.broadcasterId);
+            if (pending.active.streamId === event.streamId) {
+                activeStreams.set(event.broadcasterId, event);
+                void handlers.onStreamOnline({ ...event, recovered: true });
+                return;
+            }
+            activeStreams.delete(event.broadcasterId);
+            void handlers.onStreamOffline({ ...pending.event, verified: true });
+        }
+        if (event.streamId && activeStreams.get(event.broadcasterId)?.streamId === event.streamId) {
+            return;
+        }
+        activeStreams.set(event.broadcasterId, event);
         void handlers.onStreamOnline(event);
     };
 
+    const finishOffline = (broadcasterId: string, verified: boolean): void => {
+        const pending = pendingOffline.get(broadcasterId);
+        if (!pending) return;
+        clearTimeout(pending.timer);
+        pendingOffline.delete(broadcasterId);
+        activeStreams.delete(broadcasterId);
+        void handlers.onStreamOffline({ ...pending.event, verified });
+    };
+
+    const recoverSameStream = (broadcasterId: string, event: StreamOnlineEvent): void => {
+        const pending = pendingOffline.get(broadcasterId);
+        if (!pending) return;
+        clearTimeout(pending.timer);
+        pendingOffline.delete(broadcasterId);
+        activeStreams.set(broadcasterId, event);
+        void handlers.onStreamOnline({ ...event, recovered: true });
+    };
+
+    const confirmOffline = async (broadcasterId: string): Promise<void> => {
+        const pending = pendingOffline.get(broadcasterId);
+        if (!pending) return;
+        try {
+            const stream = await api.streams.getStreamByUserId(broadcasterId);
+            if (!stream) {
+                finishOffline(broadcasterId, true);
+                return;
+            }
+            const online: StreamOnlineEvent = {
+                broadcasterId: stream.userId,
+                broadcasterName: stream.userName,
+                broadcasterDisplayName: stream.userDisplayName,
+                streamId: stream.id,
+                recovered: true,
+                startedAt: stream.startDate,
+            };
+            if (stream.id === pending.active.streamId) {
+                recoverSameStream(broadcasterId, online);
+                return;
+            }
+            finishOffline(broadcasterId, true);
+            emitStreamOnline(online);
+        } catch (error) {
+            if (pending.attempts === 0) {
+                pending.attempts += 1;
+                pending.timer = setTimeout(
+                    () => void confirmOffline(broadcasterId),
+                    offlineRetryMs,
+                );
+                return;
+            }
+            logger.warn({ err: error, broadcasterId }, 'could not confirm stream offline state');
+            finishOffline(broadcasterId, false);
+        }
+    };
+
     const emitStreamOffline = (event: StreamOfflineEvent): void => {
-        if (!liveStreamIds.has(event.broadcasterId)) return;
-        liveStreamIds.delete(event.broadcasterId);
-        void handlers.onStreamOffline(event);
+        const active = activeStreams.get(event.broadcasterId);
+        if (!active || pendingOffline.has(event.broadcasterId)) return;
+        const pendingEvent = { ...event, observedAt: new Date() };
+        const timer = setTimeout(
+            () => void confirmOffline(event.broadcasterId),
+            offlineConfirmationMs,
+        );
+        pendingOffline.set(event.broadcasterId, {
+            event: pendingEvent,
+            active,
+            timer,
+            attempts: 0,
+        });
+        void handlers.onStreamOfflinePending?.(pendingEvent);
     };
 
     async function reconcileLiveStreams(reason: string): Promise<void> {
@@ -154,6 +250,11 @@ export async function createTwitchTransport(
         for (const state of states) {
             if (!state) continue;
             if (!state.stream) {
+                const pending = pendingOffline.get(state.broadcaster.id);
+                if (pending) {
+                    finishOffline(state.broadcaster.id, true);
+                    continue;
+                }
                 emitStreamOffline({
                     broadcasterId: state.broadcaster.id,
                     broadcasterName: state.broadcaster.login,
@@ -319,6 +420,8 @@ export async function createTwitchTransport(
         },
         stop: () => {
             listener.stop();
+            for (const pending of pendingOffline.values()) clearTimeout(pending.timer);
+            pendingOffline.clear();
             rateLimiter.close();
             return Promise.resolve();
         },

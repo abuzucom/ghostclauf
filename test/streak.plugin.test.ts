@@ -40,10 +40,20 @@ describe('streak plugin', () => {
         return makeHarness('streak', { dataPath, timezone: 'UTC', ...extra });
     }
 
-    it('registers the five streak commands', async () => {
+    function modernHarness(extra: Record<string, unknown> = {}) {
+        return harness({
+            streakBreakPolicy: 'all-broadcasters',
+            shareAcrossChannels: true,
+            minimumQualifyingSessionMinutes: 0,
+            reconnectGraceMinutes: 60,
+            ...extra,
+        });
+    }
+
+    it('registers the seven streak commands', async () => {
         const { ctx, registry } = harness();
         await streak.init(ctx);
-        expect(registry.size).toBe(5);
+        expect(registry.size).toBe(7);
     });
 
     it('starts a streak on check-in after the stream is marked live', async () => {
@@ -320,5 +330,180 @@ describe('streak plugin', () => {
         // Channel '2' is its own independent scope and was never marked live.
         await registry.handle(makeMessage('!checkin', ['everyone'], { broadcasterId: '2' }));
         expect(say.mock.calls[0][0]).toContain('not open');
+    });
+
+    it('shares viewer streaks but gates check-in to the live broadcaster', async () => {
+        const now = new Date('2026-07-20T20:00:00Z');
+        const plugin = createStreakPlugin(() => now);
+        const { ctx, bus, say, registry } = modernHarness({ checkinCooldownSeconds: 0 });
+        await plugin.init(ctx);
+        bus.emit('streamOnline', onlineNow('1', now));
+        await flush();
+
+        await registry.handle(makeMessage('!checkin', ['everyone'], { broadcasterId: '2' }));
+        expect(say.mock.calls[0][0]).toContain('not open');
+        await registry.handle(makeMessage('!checkin', ['everyone'], { broadcasterId: '1' }));
+        expect(say.mock.calls[1][0]).toContain('Streak started');
+        await plugin.dispose?.(ctx);
+    });
+
+    it('extends after missing one broadcaster and resets after missing both', async () => {
+        let current = new Date('2026-07-20T20:00:00Z');
+        const plugin = createStreakPlugin(() => current);
+        const { ctx, bus, say, registry } = modernHarness({ checkinCooldownSeconds: 0 });
+        await plugin.init(ctx);
+
+        bus.emit('streamOnline', onlineNow('1', current));
+        await flush();
+        await registry.handle(makeMessage('!checkin', ['everyone'], { broadcasterId: '1' }));
+        bus.emit('streamOffline', { ...offlineNow('1'), observedAt: current, verified: true });
+        await flush();
+
+        current = new Date('2026-07-21T20:00:00Z');
+        bus.emit('streamOnline', onlineNow('1', current));
+        await flush();
+        bus.emit('streamOffline', { ...offlineNow('1'), observedAt: current, verified: true });
+        await flush();
+
+        current = new Date('2026-07-22T20:00:00Z');
+        bus.emit('streamOnline', onlineNow('2', current));
+        await flush();
+        await registry.handle(makeMessage('!checkin', ['everyone'], { broadcasterId: '2' }));
+        expect(say.mock.calls.at(-1)?.[0]).toContain('Streak: 2');
+        bus.emit('streamOffline', { ...offlineNow('2'), observedAt: current, verified: true });
+        await flush();
+
+        for (const [day, broadcasterId] of [
+            ['2026-07-23', '1'],
+            ['2026-07-24', '2'],
+        ] as const) {
+            current = new Date(`${day}T20:00:00Z`);
+            bus.emit('streamOnline', onlineNow(broadcasterId, current));
+            await flush();
+            bus.emit('streamOffline', {
+                ...offlineNow(broadcasterId),
+                observedAt: current,
+                verified: true,
+            });
+            await flush();
+        }
+
+        current = new Date('2026-07-25T20:00:00Z');
+        bus.emit('streamOnline', onlineNow('1', current));
+        await flush();
+        await registry.handle(makeMessage('!checkin', ['everyone'], { broadcasterId: '1' }));
+        expect(say.mock.calls.at(-1)?.[0]).toContain('Streak started: 1');
+        await plugin.dispose?.(ctx);
+    });
+
+    it('does not combine separate short sessions toward qualification', async () => {
+        let current = new Date('2026-07-20T20:00:00Z');
+        const plugin = createStreakPlugin(() => current);
+        const { ctx, bus, say, registry } = modernHarness({
+            minimumQualifyingSessionMinutes: 30,
+            checkinCooldownSeconds: 0,
+        });
+        await plugin.init(ctx);
+        bus.emit('streamOnline', onlineNow('1', current));
+        await flush();
+        await registry.handle(makeMessage('!checkin', ['everyone'], { broadcasterId: '1' }));
+
+        for (const broadcasterId of ['1', '2']) {
+            current = new Date(`2026-07-${broadcasterId === '1' ? '21' : '22'}T20:00:00Z`);
+            bus.emit('streamOnline', onlineNow(broadcasterId, current));
+            await flush();
+            current = new Date(current.getTime() + 29 * 60_000);
+            bus.emit('streamOffline', {
+                ...offlineNow(broadcasterId),
+                observedAt: current,
+                verified: true,
+            });
+            await flush();
+        }
+
+        current = new Date('2026-07-23T20:00:00Z');
+        bus.emit('streamOnline', onlineNow('1', current));
+        await flush();
+        await registry.handle(makeMessage('!checkin', ['everyone'], { broadcasterId: '1' }));
+        expect(say.mock.calls.at(-1)?.[0]).toContain('Streak: 2');
+        await plugin.dispose?.(ctx);
+    });
+
+    it('preserves the broadcaster logical day for a reconnect within grace', async () => {
+        let current = new Date('2026-07-20T10:40:00Z');
+        const plugin = createStreakPlugin(() => current);
+        const { ctx, bus, registry } = modernHarness({
+            timezone: 'America/Chicago',
+            dayBoundaryHour: 6,
+        });
+        await plugin.init(ctx);
+        bus.emit('streamOnline', { ...onlineNow('1', current), streamId: 'first' });
+        await flush();
+        current = new Date('2026-07-20T10:55:00Z');
+        bus.emit('streamOffline', { ...offlineNow('1'), observedAt: current, verified: true });
+        await flush();
+        current = new Date('2026-07-20T11:20:00Z');
+        bus.emit('streamOnline', { ...onlineNow('1', current), streamId: 'second' });
+        await flush();
+        await registry.handle(makeMessage('!checkin', ['everyone'], { broadcasterId: '1' }));
+
+        const persisted = JSON.parse(await readFile(dataPath, 'utf8'));
+        expect(persisted.channels.shared.viewers['100'].lastCheckinDay).toBe('2026-07-19');
+        await plugin.dispose?.(ctx);
+    });
+
+    it('repairs automatic penalties and can undo the latest canonical set', async () => {
+        let current = new Date('2026-07-20T20:00:00Z');
+        const plugin = createStreakPlugin(() => current);
+        const { ctx, bus, say, registry } = modernHarness({ checkinCooldownSeconds: 0 });
+        await plugin.init(ctx);
+        bus.emit('streamOnline', onlineNow('1', current));
+        await flush();
+        await registry.handle(makeMessage('!checkin', ['everyone'], { broadcasterId: '1' }));
+        await registry.handle(
+            makeMessage('!streakset @viewer 10', ['everyone', 'broadcaster'], {
+                broadcasterId: '1',
+            }),
+        );
+
+        for (const [day, broadcasterId] of [
+            ['2026-07-21', '1'],
+            ['2026-07-22', '2'],
+        ] as const) {
+            current = new Date(`${day}T20:00:00Z`);
+            bus.emit('streamOnline', onlineNow(broadcasterId, current));
+            await flush();
+            bus.emit('streamOffline', {
+                ...offlineNow(broadcasterId),
+                observedAt: current,
+                verified: true,
+            });
+            await flush();
+        }
+
+        current = new Date('2026-07-23T20:00:00Z');
+        bus.emit('streamOnline', onlineNow('1', current));
+        await flush();
+        await registry.handle(makeMessage('!checkin', ['everyone'], { broadcasterId: '1' }));
+        expect(say.mock.calls.at(-1)?.[0]).toContain('Streak started: 1');
+
+        current = new Date('2026-07-24T20:00:00Z');
+        bus.emit('streamOnline', onlineNow('2', current));
+        await flush();
+        await registry.handle(makeMessage('!checkin', ['everyone'], { broadcasterId: '2' }));
+        await registry.handle(
+            makeMessage('!fixstreak @viewer', ['everyone', 'broadcaster'], {
+                broadcasterId: '2',
+            }),
+        );
+        expect(say.mock.calls.at(-1)?.[0]).toContain('Current streak: 12');
+
+        await registry.handle(
+            makeMessage('!undostreakset @viewer', ['everyone', 'broadcaster'], {
+                broadcasterId: '1',
+            }),
+        );
+        expect(say.mock.calls.at(-1)?.[0]).toContain('Current streak: 3');
+        await plugin.dispose?.(ctx);
     });
 });

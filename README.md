@@ -47,30 +47,30 @@ larger worked example. All six built-in plugins live under `src/plugins/`.
 
 ## Attendance / watch streaks (`streak` plugin)
 
-Tracks regular viewers with a chat check-in. A streak counts **consecutive
-stream days** a viewer checked in: only calendar days on which the stream was
-live count, so off-days are skipped rather than breaking a streak; missing a
-check-in on a day the stream _was_ live resets the streak to 1.
+Tracks regular viewers with a chat check-in. Legacy mode counts consecutive
+recorded stream days. The `all-broadcasters` policy keeps one shared viewer
+streak while tracking each broadcaster's sessions independently: missing only
+one broadcaster is forgiven, and a streak breaks only after qualifying misses
+from every configured broadcaster. Days without streams never count.
 
-A day is marked "live" by the `stream.online` event, but recording the day
-alone isn't enough to keep check-in open: with the default
-`requireStreamDay: true`, the channel (or, when pooled, any channel in the
-shared pool) must also be live _right now_ — `!checkin` closes as soon as
-`stream.offline` fires, rather than staying open for the rest of the day. If
-the bot starts _after_ the stream already went live (so it missed the
-`stream.online` event), a broadcaster or moderator can run `!streakopen` to
-mark the day and mark that channel live. Set `requireStreamDay: false` to
-instead count any day a viewer checks in, with no live requirement at all.
+`dayBoundaryHour` moves the local attendance rollover away from midnight.
+`reconnectGraceMinutes` keeps a same-broadcaster restart on its original
+logical day. `minimumQualifyingSessionMinutes` protects absent viewers from
+brief failed streams; one uninterrupted session must reach that duration to
+become missable, while viewers who checked in during a shorter stream keep
+their credit.
 
-Check-ins are anchored to when the current stream actually started, not the
-wall-clock moment of the check-in — a viewer checking in at 1AM after an 11PM
-stream start still counts toward the 11PM stream's day, for up to
-`streamSessionHours` (default 18) after the stream began.
+Check-in is local to the channel receiving the command even when viewer streaks
+are shared. EventSub offline notifications are confirmed against Helix before
+continuity is broken. Ambiguous confirmation failures do not create viewer
+penalties. `!streakopen` manually starts the invoking broadcaster's session.
 
-Running multiple broadcasters in `config.yaml`? By default (`shareAcrossChannels:
-true`) all of them pool into one streak per viewer — handy when they're all the
-same streamer's channels. Set `shareAcrossChannels: false` to keep each
-channel's streaks fully independent instead.
+The primary JSON store keeps one previous `.bak` snapshot. Automatic penalties
+are auditable and repairable with `!fixstreak`; authoritative `!streakset`
+decisions use a separate journal and can be reversed latest-first with
+`!undostreakset`. Manual sets and undos use write-ahead transaction IDs in both
+files; startup reconciliation completes or aborts operations interrupted by a
+process crash.
 
 Commands (trigger words configurable):
 
@@ -79,12 +79,14 @@ Commands (trigger words configurable):
 | `!checkin`             | everyone          | Record attendance for today and extend the streak.                           |
 | `!streak`              | everyone          | Show your streak; `!streak @user` looks up another viewer.                   |
 | `!streakreset @user`   | broadcaster only  | Reset a viewer's streak to 0.                                                |
-| `!streakset @user <n>` | broadcaster / mod | Set a viewer's streak to a value.                                            |
+| `!streakset @user <n>` | broadcaster only  | Set a viewer's streak to a canonical value.                                  |
+| `!fixstreak @user`     | broadcaster only  | Restore the latest unrepaired automatic penalty.                             |
+| `!undostreakset @user` | broadcaster only  | Reverse the latest authoritative manual set.                                 |
 | `!streakopen`          | broadcaster / mod | Mark today a stream day and the channel live, if `stream.online` was missed. |
 
-State persists to `dataPath` (default `./data/streaks.json`). Day boundaries use
-the configured `timezone` (IANA name, default `UTC`). A channel-point redeem is
-planned; when added it will reuse the same check-in path. See
+State persists to `dataPath` (default `./data/streaks.json`) with a previous
+snapshot at `<dataPath>.bak`. Manual decisions persist to `decisionPath`. Day
+boundaries use the configured IANA `timezone`. See
 [`config.example.yaml`](config.example.yaml) for all options.
 
 ## Follow age (`followage` plugin)

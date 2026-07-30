@@ -1,14 +1,16 @@
-// Attendance / watch-streak plugin. Viewers "check in" while the stream is live
-// to build a streak of consecutive stream days attended. Only chat is used as
-// the trigger for now; a future channel-point redeem can call the same
-// StreakStore.checkIn path without changing this plugin's model.
-
-import type { CheckinOutcome, StreakConfig, StreakMessages, StreakTriggers } from './types.js';
-import type { BotContext, CommandHandler, Logger, Plugin } from '../../core/types.js';
+import type {
+    BotContext,
+    CommandHandler,
+    Logger,
+    Plugin,
+    StreamOnlineEvent,
+} from '../../core/types.js';
 import { CooldownGate } from '../../core/cooldown.js';
 import { parseLogin } from '../../core/logins.js';
+import { StreakDecisionStore } from './decisionStore.js';
 import { StreakStore } from './store.js';
 import {
+    attendanceDayKey,
     DEFAULT_DATA_PATH,
     DEFAULT_MESSAGES,
     DEFAULT_STREAM_SESSION_HOURS,
@@ -19,10 +21,23 @@ import {
     resolveCheckinDay,
     streamDayKey,
 } from './streak.js';
+import type {
+    BroadcasterSession,
+    CheckinOutcome,
+    StreakBreakPolicy,
+    StreakConfig,
+    StreakMessages,
+    StreakTriggers,
+} from './types.js';
 
 interface ResolvedConfig {
     dataPath: string;
+    decisionPath: string;
     timezone: string;
+    dayBoundaryHour: number;
+    reconnectGraceMinutes: number;
+    minimumQualifyingSessionMinutes: number;
+    streakBreakPolicy: StreakBreakPolicy;
     requireStreamDay: boolean;
     shareAcrossChannels: boolean;
     streamSessionHours: number;
@@ -31,17 +46,27 @@ interface ResolvedConfig {
     messages: StreakMessages;
 }
 
-/** Bound admin-set values to a sane range and reject non-numeric input. */
+interface Runtime {
+    store: StreakStore;
+    decisions: StreakDecisionStore;
+    cfg: ResolvedConfig;
+    now: () => Date;
+    liveBroadcasters: Set<string>;
+    requiredBroadcasterIds: ReadonlySet<string>;
+    qualificationTimers: Map<string, NodeJS.Timeout>;
+    logger: Logger;
+}
+
 const STREAK_VALUE_PATTERN = /^\d{1,6}$/;
-/** A key that can never collide with a real (numeric) Twitch broadcaster id. */
 const SHARED_SCOPE_KEY = 'shared';
 const MIN_SESSION_HOURS = 1;
 const MAX_SESSION_HOURS = 72;
 const DEFAULT_CHECKIN_COOLDOWN_SECONDS = 10;
 const MAX_CHECKIN_COOLDOWN_SECONDS = 3600;
+const MAX_MINUTES = 1440;
 const MS_PER_SECOND = 1000;
+const MS_PER_MINUTE = 60_000;
 
-/** Validate an optional integer config value within [min, max], else fall back. */
 function resolveBoundedInt(
     configured: number | undefined,
     min: number,
@@ -62,9 +87,39 @@ function resolveConfig(raw: StreakConfig, logger: Logger): ResolvedConfig {
     if (timezone !== configuredTz) {
         logger.warn({ configuredTz }, 'invalid streak timezone; falling back to UTC');
     }
+    const dataPath = raw.dataPath ?? DEFAULT_DATA_PATH;
     return {
-        dataPath: raw.dataPath ?? DEFAULT_DATA_PATH,
+        dataPath,
+        decisionPath: raw.decisionPath ?? `${dataPath}.decisions`,
         timezone,
+        dayBoundaryHour: resolveBoundedInt(
+            raw.dayBoundaryHour,
+            0,
+            23,
+            0,
+            'dayBoundaryHour',
+            logger,
+        ),
+        reconnectGraceMinutes: resolveBoundedInt(
+            raw.reconnectGraceMinutes,
+            0,
+            MAX_MINUTES,
+            0,
+            'reconnectGraceMinutes',
+            logger,
+        ),
+        minimumQualifyingSessionMinutes: resolveBoundedInt(
+            raw.minimumQualifyingSessionMinutes,
+            0,
+            MAX_MINUTES,
+            0,
+            'minimumQualifyingSessionMinutes',
+            logger,
+        ),
+        streakBreakPolicy:
+            raw.streakBreakPolicy === 'all-broadcasters'
+                ? 'all-broadcasters'
+                : 'previous-stream-day',
         requireStreamDay: raw.requireStreamDay ?? true,
         shareAcrossChannels: raw.shareAcrossChannels ?? true,
         streamSessionHours: resolveBoundedInt(
@@ -88,24 +143,12 @@ function resolveConfig(raw: StreakConfig, logger: Logger): ResolvedConfig {
     };
 }
 
-/** Resolve the store scope key for a channel: pooled when sharing is on. */
 function scopeKey(cfg: ResolvedConfig, broadcasterId: string): string {
     return cfg.shareAcrossChannels ? SHARED_SCOPE_KEY : broadcasterId;
 }
 
-/**
- * Whether the scope that `broadcasterId` maps to currently has a live
- * stream. When sharing across channels, any one broadcaster in the pool
- * being live is enough - the pool's check-in gate mirrors its shared
- * stream-day state. Otherwise the broadcaster's own live state applies.
- */
-function isScopeLive(
-    cfg: ResolvedConfig,
-    liveBroadcasters: ReadonlySet<string>,
-    broadcasterId: string,
-): boolean {
-    if (cfg.shareAcrossChannels) return liveBroadcasters.size > 0;
-    return liveBroadcasters.has(broadcasterId);
+function usesBroadcasterPolicy(cfg: ResolvedConfig): boolean {
+    return cfg.streakBreakPolicy === 'all-broadcasters' && cfg.shareAcrossChannels;
 }
 
 function parseStreakValue(token: string | undefined): number | null {
@@ -119,113 +162,255 @@ function pickCheckinTemplate(messages: StreakMessages, outcome: CheckinOutcome):
     return messages.started;
 }
 
-/**
- * Ensure today counts as a stream day, honoring the requireStreamDay policy.
- * When requireStreamDay is on, a day recorded earlier is not enough on its
- * own - the broadcaster's channel must currently be live, so check-ins close
- * once the stream ends instead of staying open for the rest of the day.
- */
-async function ensureOpen(
+function logicalDay(cfg: ResolvedConfig, instant: Date): string {
+    return attendanceDayKey(instant, cfg.timezone, cfg.dayBoundaryHour);
+}
+
+function emptySession(): BroadcasterSession {
+    return {
+        logicalDay: null,
+        logicalSessionStartedAt: null,
+        currentIntervalStartedAt: null,
+        currentStreamId: null,
+        lastOfflineAt: null,
+        pendingOfflineAt: null,
+        status: 'offline',
+    };
+}
+
+function isReconnect(
+    previous: BroadcasterSession,
+    event: StreamOnlineEvent,
+    graceMinutes: number,
+): boolean {
+    if (previous.currentStreamId && previous.currentStreamId === event.streamId) return true;
+    if (!previous.lastOfflineAt || graceMinutes === 0) return false;
+    const elapsed = event.startedAt.getTime() - new Date(previous.lastOfflineAt).getTime();
+    return elapsed >= 0 && elapsed <= graceMinutes * MS_PER_MINUTE;
+}
+
+async function qualifyCurrentInterval(runtime: Runtime, broadcasterId: string): Promise<void> {
+    const scope = scopeKey(runtime.cfg, broadcasterId);
+    const session = runtime.store.getSession(scope, broadcasterId);
+    if (!session?.logicalDay || !session.currentIntervalStartedAt) return;
+    const effectiveEnd = session.pendingOfflineAt
+        ? new Date(session.pendingOfflineAt)
+        : runtime.now();
+    const elapsed = effectiveEnd.getTime() - new Date(session.currentIntervalStartedAt).getTime();
+    const minimum = runtime.cfg.minimumQualifyingSessionMinutes * MS_PER_MINUTE;
+    if (elapsed < minimum || session.status === 'unverified-offline') return;
+    await runtime.store.recordQualifiedDay(scope, broadcasterId, session.logicalDay);
+}
+
+function scheduleQualification(runtime: Runtime, broadcasterId: string): void {
+    const existing = runtime.qualificationTimers.get(broadcasterId);
+    if (existing) clearTimeout(existing);
+    const scope = scopeKey(runtime.cfg, broadcasterId);
+    const session = runtime.store.getSession(scope, broadcasterId);
+    if (!session?.currentIntervalStartedAt) return;
+    const target =
+        new Date(session.currentIntervalStartedAt).getTime() +
+        runtime.cfg.minimumQualifyingSessionMinutes * MS_PER_MINUTE;
+    const delay = Math.max(0, target - runtime.now().getTime());
+    const timer = setTimeout(() => {
+        runtime.qualificationTimers.delete(broadcasterId);
+        void qualifyCurrentInterval(runtime, broadcasterId).catch((err: unknown) => {
+            runtime.logger.error({ err, broadcasterId }, 'failed to qualify streak stream day');
+        });
+    }, delay);
+    runtime.qualificationTimers.set(broadcasterId, timer);
+}
+
+async function handleOnline(runtime: Runtime, event: StreamOnlineEvent): Promise<void> {
+    const scope = scopeKey(runtime.cfg, event.broadcasterId);
+    const previous = runtime.store.getSession(scope, event.broadcasterId) ?? emptySession();
+    const reconnect = isReconnect(previous, event, runtime.cfg.reconnectGraceMinutes);
+    const sameStream =
+        previous.currentStreamId !== null && previous.currentStreamId === event.streamId;
+    const day =
+        reconnect && previous.logicalDay
+            ? previous.logicalDay
+            : logicalDay(runtime.cfg, event.startedAt);
+    const intervalStart =
+        sameStream && previous.currentIntervalStartedAt
+            ? previous.currentIntervalStartedAt
+            : event.startedAt.toISOString();
+    const session: BroadcasterSession = {
+        logicalDay: day,
+        logicalSessionStartedAt:
+            reconnect && previous.logicalSessionStartedAt
+                ? previous.logicalSessionStartedAt
+                : event.startedAt.toISOString(),
+        currentIntervalStartedAt: intervalStart,
+        currentStreamId: event.streamId ?? event.startedAt.toISOString(),
+        lastOfflineAt: previous.lastOfflineAt,
+        pendingOfflineAt: null,
+        status: 'live',
+    };
+    runtime.liveBroadcasters.add(event.broadcasterId);
+    await runtime.store.setSession(scope, event.broadcasterId, session);
+    await runtime.store.recordStreamDay(scope, day, event.startedAt);
+    scheduleQualification(runtime, event.broadcasterId);
+}
+
+async function handleLegacyOnline(runtime: Runtime, event: StreamOnlineEvent): Promise<void> {
+    runtime.liveBroadcasters.add(event.broadcasterId);
+    const scope = scopeKey(runtime.cfg, event.broadcasterId);
+    const day = streamDayKey(event.startedAt, runtime.cfg.timezone);
+    await runtime.store.recordStreamDay(scope, day, event.startedAt);
+}
+
+async function handlePendingOffline(
+    runtime: Runtime,
+    broadcasterId: string,
+    observedAt: Date,
+): Promise<void> {
+    const scope = scopeKey(runtime.cfg, broadcasterId);
+    const session = runtime.store.getSession(scope, broadcasterId);
+    if (!session) return;
+    session.status = 'pending-offline';
+    session.pendingOfflineAt = observedAt.toISOString();
+    await runtime.store.setSession(scope, broadcasterId, session);
+}
+
+async function handleOffline(
+    runtime: Runtime,
+    broadcasterId: string,
+    observedAt: Date,
+    verified: boolean,
+): Promise<void> {
+    const timer = runtime.qualificationTimers.get(broadcasterId);
+    if (timer) clearTimeout(timer);
+    runtime.qualificationTimers.delete(broadcasterId);
+    const scope = scopeKey(runtime.cfg, broadcasterId);
+    const session = runtime.store.getSession(scope, broadcasterId);
+    runtime.liveBroadcasters.delete(broadcasterId);
+    if (!session) return;
+    session.pendingOfflineAt = observedAt.toISOString();
+    if (verified) await qualifyCurrentInterval(runtime, broadcasterId);
+    session.status = verified ? 'offline' : 'unverified-offline';
+    session.lastOfflineAt = observedAt.toISOString();
+    session.pendingOfflineAt = null;
+    await runtime.store.setSession(scope, broadcasterId, session);
+}
+
+function checkinHandler(runtime: Runtime): CommandHandler {
+    const cooldown = new CooldownGate(runtime.cfg.checkinCooldownSeconds * MS_PER_SECOND);
+    return async (event, ctx) => {
+        const scope = scopeKey(runtime.cfg, event.broadcasterId);
+        const now = runtime.now();
+        if (cooldown.shouldThrottle(`${scope}:${event.chatterId}`, now.getTime())) return;
+        const modern = usesBroadcasterPolicy(runtime.cfg);
+        const session = runtime.store.getSession(scope, event.broadcasterId);
+        const open = modern
+            ? runtime.liveBroadcasters.has(event.broadcasterId) && session?.logicalDay !== null
+            : await ensureLegacyOpen(runtime, scope, event.broadcasterId, now);
+        if (!open) {
+            await ctx.say(
+                renderMessage(runtime.cfg.messages.notOpen, { user: event.chatterDisplayName }),
+                event.messageId,
+                event.broadcasterId,
+            );
+            return;
+        }
+        const day = modern
+            ? session!.logicalDay!
+            : resolveLegacyDay(runtime.store, runtime.cfg, scope, now);
+        if (modern) await qualifyCurrentInterval(runtime, event.broadcasterId);
+        const result = modern
+            ? await runtime.store.checkInBroadcaster(
+                  scope,
+                  event.chatterId,
+                  event.chatterName,
+                  event.chatterDisplayName,
+                  day,
+                  runtime.requiredBroadcasterIds,
+                  event.broadcasterId,
+                  now,
+              )
+            : await runtime.store.checkIn(
+                  scope,
+                  event.chatterId,
+                  event.chatterName,
+                  event.chatterDisplayName,
+                  day,
+              );
+        await ctx.say(
+            renderMessage(pickCheckinTemplate(runtime.cfg.messages, result.outcome), {
+                user: event.chatterDisplayName,
+                streak: result.viewer.currentStreak,
+                longest: result.viewer.longestStreak,
+                day,
+            }),
+            event.messageId,
+            event.broadcasterId,
+        );
+    };
+}
+
+function resolveLegacyDay(
     store: StreakStore,
     cfg: ResolvedConfig,
     scope: string,
-    today: string,
     now: Date,
-    isLive: boolean,
-): Promise<boolean> {
-    if (cfg.requireStreamDay) {
-        return store.hasStreamDay(scope, today) && isLive;
-    }
-    if (!store.hasStreamDay(scope, today)) {
-        await store.recordStreamDay(scope, today, now);
-    }
-    return true;
+): string {
+    return resolveCheckinDay(
+        now,
+        store.activeStreamStartedAt(scope),
+        cfg.timezone,
+        cfg.streamSessionHours,
+    );
 }
 
-function checkinHandler(
-    store: StreakStore,
-    cfg: ResolvedConfig,
-    now: () => Date,
-    liveBroadcasters: Set<string>,
-): CommandHandler {
-    // Throttled check-ins are dropped silently so the bot does not amplify a
-    // chat flood into store writes and replies.
-    const cooldown = new CooldownGate(cfg.checkinCooldownSeconds * MS_PER_SECOND);
-    return async (event, ctx) => {
-        const scope = scopeKey(cfg, event.broadcasterId);
-        const nowInstant = now();
-        const cooldownKey = `${scope}:${event.chatterId}`;
-        if (cooldown.shouldThrottle(cooldownKey, nowInstant.getTime())) {
-            return;
-        }
-        const activeStart = store.activeStreamStartedAt(scope);
-        const today = resolveCheckinDay(
-            nowInstant,
-            activeStart,
-            cfg.timezone,
-            cfg.streamSessionHours,
-        );
-        const isLive = isScopeLive(cfg, liveBroadcasters, event.broadcasterId);
-        const open = await ensureOpen(store, cfg, scope, today, nowInstant, isLive);
-        if (!open) {
-            const text = renderMessage(cfg.messages.notOpen, { user: event.chatterDisplayName });
-            await ctx.say(text, event.messageId, event.broadcasterId);
-            return;
-        }
-        const { outcome, viewer } = await store.checkIn(
-            scope,
-            event.chatterId,
-            event.chatterName,
-            event.chatterDisplayName,
-            today,
-        );
-        const text = renderMessage(pickCheckinTemplate(cfg.messages, outcome), {
-            user: event.chatterDisplayName,
-            streak: viewer.currentStreak,
-            longest: viewer.longestStreak,
-            day: today,
-        });
-        await ctx.say(text, event.messageId, event.broadcasterId);
-    };
+async function ensureLegacyOpen(
+    runtime: Runtime,
+    scope: string,
+    broadcasterId: string,
+    now: Date,
+): Promise<boolean> {
+    const day = resolveLegacyDay(runtime.store, runtime.cfg, scope, now);
+    if (runtime.cfg.requireStreamDay) {
+        const live = runtime.cfg.shareAcrossChannels
+            ? runtime.liveBroadcasters.size > 0
+            : runtime.liveBroadcasters.has(broadcasterId);
+        return runtime.store.hasStreamDay(scope, day) && live;
+    }
+    if (!runtime.store.hasStreamDay(scope, day))
+        await runtime.store.recordStreamDay(scope, day, now);
+    return true;
 }
 
 function lookupHandler(store: StreakStore, cfg: ResolvedConfig): CommandHandler {
     return async (event, ctx) => {
         const scope = scopeKey(cfg, event.broadcasterId);
         const login = parseLogin(event.args[0]);
-        if (login) {
-            const found = store.findViewerByName(scope, login);
-            const text = found
-                ? renderMessage(cfg.messages.lookupOther, {
-                      user: found.viewer.displayName,
-                      streak: found.viewer.currentStreak,
-                      longest: found.viewer.longestStreak,
-                  })
-                : renderMessage(cfg.messages.lookupNone, { user: login });
-            await ctx.say(text, event.messageId, event.broadcasterId);
-            return;
-        }
-        const viewer = store.getViewer(scope, event.chatterId);
-        const text = viewer
-            ? renderMessage(cfg.messages.lookupSelf, {
-                  user: event.chatterDisplayName,
-                  streak: viewer.currentStreak,
-                  longest: viewer.longestStreak,
-              })
-            : renderMessage(cfg.messages.lookupNone, { user: event.chatterDisplayName });
-        await ctx.say(text, event.messageId, event.broadcasterId);
+        const found = login ? store.findViewerByName(scope, login) : undefined;
+        const viewer = login ? found?.viewer : store.getViewer(scope, event.chatterId);
+        const user = login ? (found?.viewer.displayName ?? login) : event.chatterDisplayName;
+        const template = viewer
+            ? login
+                ? cfg.messages.lookupOther
+                : cfg.messages.lookupSelf
+            : cfg.messages.lookupNone;
+        await ctx.say(
+            renderMessage(template, {
+                user,
+                streak: viewer?.currentStreak,
+                longest: viewer?.longestStreak,
+            }),
+            event.messageId,
+            event.broadcasterId,
+        );
     };
 }
 
-/** Resolve an admin command's target viewer, replying with usage/not-found. */
 async function resolveAdminTarget(
     store: StreakStore,
     cfg: ResolvedConfig,
     event: Parameters<CommandHandler>[0],
     ctx: BotContext,
     usage: string,
-): Promise<{ chatterId: string; viewer: { displayName: string } } | null> {
-    const scope = scopeKey(cfg, event.broadcasterId);
+): Promise<{ chatterId: string; viewer: { displayName: string; chatterName?: string } } | null> {
     const login = parseLogin(event.args[0]);
     if (!login) {
         await ctx.say(
@@ -235,164 +420,324 @@ async function resolveAdminTarget(
         );
         return null;
     }
-    const found = store.findViewerByName(scope, login);
-    if (!found) {
+    const found = store.findViewerByName(scopeKey(cfg, event.broadcasterId), login);
+    if (found) return found;
+    await ctx.say(
+        renderMessage(cfg.messages.adminNotFound, { user: login }),
+        event.messageId,
+        event.broadcasterId,
+    );
+    return null;
+}
+
+function resetHandler(runtime: Runtime): CommandHandler {
+    return async (event, ctx) => {
+        const found = await resolveAdminTarget(
+            runtime.store,
+            runtime.cfg,
+            event,
+            ctx,
+            `!${runtime.cfg.triggers.reset} @user`,
+        );
+        if (!found) return;
+        const scope = scopeKey(runtime.cfg, event.broadcasterId);
+        await runtime.decisions.supersede(scope, found.chatterId, runtime.now());
+        await runtime.store.resetViewer(scope, found.chatterId, runtime.now());
         await ctx.say(
-            renderMessage(cfg.messages.adminNotFound, { user: login }),
+            renderMessage(runtime.cfg.messages.reset, { user: found.viewer.displayName }),
             event.messageId,
             event.broadcasterId,
         );
-        return null;
-    }
-    return found;
-}
-
-function resetHandler(store: StreakStore, cfg: ResolvedConfig): CommandHandler {
-    return async (event, ctx) => {
-        const found = await resolveAdminTarget(
-            store,
-            cfg,
-            event,
-            ctx,
-            `!${cfg.triggers.reset} @user`,
-        );
-        if (!found) return;
-        const scope = scopeKey(cfg, event.broadcasterId);
-        await store.resetViewer(scope, found.chatterId);
-        const text = renderMessage(cfg.messages.reset, { user: found.viewer.displayName });
-        await ctx.say(text, event.messageId, event.broadcasterId);
     };
 }
 
-function setHandler(store: StreakStore, cfg: ResolvedConfig): CommandHandler {
+function setHandler(runtime: Runtime): CommandHandler {
     return async (event, ctx) => {
         const value = parseStreakValue(event.args[1]);
         if (value === null) {
-            const usage = renderMessage(cfg.messages.adminUsage, {
-                user: `!${cfg.triggers.set} @user <number>`,
-            });
-            await ctx.say(usage, event.messageId, event.broadcasterId);
+            await ctx.say(
+                renderMessage(runtime.cfg.messages.adminUsage, {
+                    user: `!${runtime.cfg.triggers.set} @user <number>`,
+                }),
+                event.messageId,
+                event.broadcasterId,
+            );
             return;
         }
         const found = await resolveAdminTarget(
-            store,
-            cfg,
+            runtime.store,
+            runtime.cfg,
             event,
             ctx,
-            `!${cfg.triggers.set} @user <number>`,
+            `!${runtime.cfg.triggers.set} @user <number>`,
         );
         if (!found) return;
-        const scope = scopeKey(cfg, event.broadcasterId);
-        await store.setViewerStreak(scope, found.chatterId, value);
-        const text = renderMessage(cfg.messages.setDone, {
-            user: found.viewer.displayName,
-            streak: value,
-        });
-        await ctx.say(text, event.messageId, event.broadcasterId);
-    };
-}
-
-function openHandler(
-    store: StreakStore,
-    cfg: ResolvedConfig,
-    now: () => Date,
-    liveBroadcasters: Set<string>,
-): CommandHandler {
-    return async (event, ctx) => {
-        const nowInstant = now();
-        const scope = scopeKey(cfg, event.broadcasterId);
-        const today = streamDayKey(nowInstant, cfg.timezone);
-        await store.recordStreamDay(scope, today, nowInstant);
-        // A mod running this is asserting the stream is live right now - the
-        // command exists to unblock check-ins when the stream.online event was
-        // missed, so it must also clear the live gate.
-        liveBroadcasters.add(event.broadcasterId);
+        const scope = scopeKey(runtime.cfg, event.broadcasterId);
+        const before = runtime.store.getViewer(scope, found.chatterId)!;
+        const decision = await runtime.decisions.prepareSet(
+            scope,
+            found.chatterId,
+            before.chatterName,
+            before.currentStreak,
+            value,
+            before.longestStreak,
+            event.chatterId,
+            event.broadcasterId,
+            runtime.now(),
+        );
+        try {
+            await runtime.store.setViewerStreak(
+                scope,
+                found.chatterId,
+                value,
+                runtime.now(),
+                decision.id,
+            );
+        } catch (err) {
+            await runtime.decisions.abortSet(decision.id);
+            throw err;
+        }
+        await runtime.decisions.markSetApplied(decision.id);
         await ctx.say(
-            renderMessage(cfg.messages.opened, { day: today }),
+            renderMessage(runtime.cfg.messages.setDone, {
+                user: found.viewer.displayName,
+                streak: value,
+            }),
             event.messageId,
             event.broadcasterId,
         );
     };
 }
 
-/**
- * Build the streak plugin. `now` is injectable so check-in day resolution is
- * deterministically testable (the codebase has no fake-timer precedent);
- * production use relies on the default real clock.
- */
+function fixHandler(runtime: Runtime): CommandHandler {
+    return async (event, ctx) => {
+        const found = await resolveAdminTarget(
+            runtime.store,
+            runtime.cfg,
+            event,
+            ctx,
+            `!${runtime.cfg.triggers.fix} @user`,
+        );
+        if (!found) return;
+        const fixed = await runtime.store.fixLatestPenalty(
+            scopeKey(runtime.cfg, event.broadcasterId),
+            found.chatterId,
+            event.chatterId,
+            event.broadcasterId,
+            runtime.now(),
+        );
+        await ctx.say(
+            renderMessage(fixed ? runtime.cfg.messages.fixDone : runtime.cfg.messages.fixNone, {
+                user: found.viewer.displayName,
+                amount: fixed?.amount,
+                streak: fixed?.currentStreak,
+            }),
+            event.messageId,
+            event.broadcasterId,
+        );
+    };
+}
+
+function undoSetHandler(runtime: Runtime): CommandHandler {
+    return async (event, ctx) => {
+        const found = await resolveAdminTarget(
+            runtime.store,
+            runtime.cfg,
+            event,
+            ctx,
+            `!${runtime.cfg.triggers.undoSet} @user`,
+        );
+        if (!found) return;
+        const scope = scopeKey(runtime.cfg, event.broadcasterId);
+        const decision = runtime.decisions.latest(scope, found.chatterId);
+        if (!decision) {
+            await ctx.say(
+                renderMessage(runtime.cfg.messages.undoNone, { user: found.viewer.displayName }),
+                event.messageId,
+                event.broadcasterId,
+            );
+            return;
+        }
+        if (runtime.store.hasUnrepairedPenaltyAfter(scope, found.chatterId, decision.createdAt)) {
+            await ctx.say(
+                renderMessage(runtime.cfg.messages.undoBlocked, { user: found.viewer.displayName }),
+                event.messageId,
+                event.broadcasterId,
+            );
+            return;
+        }
+        const reversal = await runtime.decisions.prepareReverse(
+            scope,
+            found.chatterId,
+            event.chatterId,
+            event.broadcasterId,
+            runtime.now(),
+        );
+        if (!reversal) return;
+        let current: number | null;
+        try {
+            current = await runtime.store.applyStreakAdjustment(
+                scope,
+                found.chatterId,
+                reversal.adjustment,
+                reversal.previousLongest,
+                reversal.transactionId,
+                reversal.previousDecisionId,
+            );
+        } catch (err) {
+            await runtime.decisions.cancelReverse(reversal.transactionId);
+            throw err;
+        }
+        if (current === null) {
+            await runtime.decisions.cancelReverse(reversal.transactionId);
+            return;
+        }
+        await runtime.decisions.markReverseApplied(reversal.transactionId);
+        await ctx.say(
+            renderMessage(runtime.cfg.messages.undoDone, {
+                user: found.viewer.displayName,
+                streak: current,
+            }),
+            event.messageId,
+            event.broadcasterId,
+        );
+    };
+}
+
+function openHandler(runtime: Runtime): CommandHandler {
+    return async (event, ctx) => {
+        const now = runtime.now();
+        if (usesBroadcasterPolicy(runtime.cfg)) {
+            await handleOnline(runtime, {
+                broadcasterId: event.broadcasterId,
+                broadcasterName: event.broadcasterName,
+                broadcasterDisplayName: event.broadcasterName,
+                streamId: `manual:${now.toISOString()}`,
+                startedAt: now,
+            });
+        } else {
+            const scope = scopeKey(runtime.cfg, event.broadcasterId);
+            await runtime.store.recordStreamDay(
+                scope,
+                streamDayKey(now, runtime.cfg.timezone),
+                now,
+            );
+            runtime.liveBroadcasters.add(event.broadcasterId);
+        }
+        await ctx.say(
+            renderMessage(runtime.cfg.messages.opened, { day: logicalDay(runtime.cfg, now) }),
+            event.messageId,
+            event.broadcasterId,
+        );
+    };
+}
+
+function registerCommands(ctx: BotContext, runtime: Runtime): void {
+    const definitions: Array<{
+        trigger: string;
+        allow: Array<'everyone' | 'broadcaster' | 'moderator'>;
+        description: string;
+        handler: CommandHandler;
+    }> = [
+        {
+            trigger: runtime.cfg.triggers.checkin,
+            allow: ['everyone'],
+            description: 'Check in while live to build your attendance streak.',
+            handler: checkinHandler(runtime),
+        },
+        {
+            trigger: runtime.cfg.triggers.streak,
+            allow: ['everyone'],
+            description: 'Show a viewer streak.',
+            handler: lookupHandler(runtime.store, runtime.cfg),
+        },
+        {
+            trigger: runtime.cfg.triggers.reset,
+            allow: ['broadcaster'],
+            description: 'Reset a viewer streak.',
+            handler: resetHandler(runtime),
+        },
+        {
+            trigger: runtime.cfg.triggers.set,
+            allow: ['broadcaster'],
+            description: 'Set a canonical viewer streak.',
+            handler: setHandler(runtime),
+        },
+        {
+            trigger: runtime.cfg.triggers.fix,
+            allow: ['broadcaster'],
+            description: 'Repair the latest automatic streak penalty.',
+            handler: fixHandler(runtime),
+        },
+        {
+            trigger: runtime.cfg.triggers.undoSet,
+            allow: ['broadcaster'],
+            description: 'Reverse the latest manual streak set.',
+            handler: undoSetHandler(runtime),
+        },
+        {
+            trigger: runtime.cfg.triggers.open,
+            allow: ['broadcaster', 'moderator'],
+            description: 'Open check-in after a missed online event.',
+            handler: openHandler(runtime),
+        },
+    ];
+    for (const definition of definitions) ctx.command(definition);
+}
+
 export function createStreakPlugin(now: () => Date = () => new Date()): Plugin {
-    let store: StreakStore | undefined;
+    let runtime: Runtime | undefined;
     return {
         name: 'streak',
-        version: '1.0.0',
+        version: '1.1.0',
         async init(ctx) {
             const cfg = resolveConfig(ctx.config, ctx.logger);
-            const localStore = new StreakStore(cfg.dataPath, ctx.logger);
-            store = localStore;
-            await localStore.load();
-            // In-memory only: which broadcasters are currently live. Rebuilt from
-            // stream events (and the transport's startup reconciliation) on every
-            // boot, so it always reflects real-time state rather than "was today
-            // ever opened."
-            const liveBroadcasters = new Set<string>();
-
-            ctx.command({
-                trigger: cfg.triggers.checkin,
-                allow: ['everyone'],
-                description: 'Check in while live to build your attendance streak.',
-                handler: checkinHandler(localStore, cfg, now, liveBroadcasters),
-            });
-            ctx.command({
-                trigger: cfg.triggers.streak,
-                allow: ['everyone'],
-                description: "Show your streak, or another viewer's with @user.",
-                handler: lookupHandler(localStore, cfg),
-            });
-            ctx.command({
-                trigger: cfg.triggers.reset,
-                allow: ['broadcaster'],
-                description: "Reset a viewer's streak to 0. Broadcaster only.",
-                handler: resetHandler(localStore, cfg),
-            });
-            ctx.command({
-                trigger: cfg.triggers.set,
-                allow: ['broadcaster'],
-                description: "Set a viewer's streak to a specific value. Broadcaster only.",
-                handler: setHandler(localStore, cfg),
-            });
-            ctx.command({
-                trigger: cfg.triggers.open,
-                allow: ['broadcaster', 'moderator'],
-                description: 'Open check-in for today if the stream-live event was missed.',
-                handler: openHandler(localStore, cfg, now, liveBroadcasters),
-            });
-
-            ctx.on('streamOnline', async (event) => {
-                liveBroadcasters.add(event.broadcasterId);
-                const scope = scopeKey(cfg, event.broadcasterId);
-                const day = streamDayKey(event.startedAt, cfg.timezone);
-                const added = await localStore.recordStreamDay(scope, day, event.startedAt);
-                if (added) {
-                    ctx.logger.info(
-                        { broadcasterId: event.broadcasterId, day },
-                        'recorded stream day',
-                    );
-                }
-            });
-
-            ctx.on('streamOffline', (event) => {
-                liveBroadcasters.delete(event.broadcasterId);
-                ctx.logger.info(
-                    { broadcasterId: event.broadcasterId },
-                    'closed check-in for offline stream',
+            const required = new Set((ctx.broadcasters ?? []).map(({ id }) => id));
+            if (usesBroadcasterPolicy(cfg) && required.size < 2) {
+                throw new Error(
+                    'all-broadcasters streak policy requires configured broadcaster identities',
                 );
-            });
+            }
+            const store = new StreakStore(cfg.dataPath, ctx.logger);
+            const decisions = new StreakDecisionStore(cfg.decisionPath, ctx.logger);
+            await Promise.all([store.load(), decisions.load()]);
+            await decisions.reconcile((scope, chatterId) =>
+                store.getManualTransactionId(scope, chatterId),
+            );
+            runtime = {
+                store,
+                decisions,
+                cfg,
+                now,
+                liveBroadcasters: new Set(),
+                requiredBroadcasterIds: required,
+                qualificationTimers: new Map(),
+                logger: ctx.logger,
+            };
+            registerCommands(ctx, runtime);
+            ctx.on('streamOnline', (event) =>
+                usesBroadcasterPolicy(runtime!.cfg)
+                    ? handleOnline(runtime!, event)
+                    : handleLegacyOnline(runtime!, event),
+            );
+            ctx.on('streamOfflinePending', (event) =>
+                handlePendingOffline(runtime!, event.broadcasterId, event.observedAt ?? now()),
+            );
+            ctx.on('streamOffline', (event) =>
+                handleOffline(
+                    runtime!,
+                    event.broadcasterId,
+                    event.observedAt ?? now(),
+                    event.verified !== false,
+                ),
+            );
         },
         async dispose() {
-            await store?.flush();
+            if (!runtime) return;
+            for (const timer of runtime.qualificationTimers.values()) clearTimeout(timer);
+            await Promise.all([runtime.store.flush(), runtime.decisions.flush()]);
         },
     };
 }
 
-const plugin = createStreakPlugin();
-export default plugin;
+export default createStreakPlugin();

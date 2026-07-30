@@ -17,6 +17,8 @@ export const DEFAULT_TRIGGERS: StreakTriggers = {
     reset: 'streakreset',
     set: 'streakset',
     open: 'streakopen',
+    fix: 'fixstreak',
+    undoSet: 'undostreakset',
 };
 
 export const DEFAULT_MESSAGES: StreakMessages = {
@@ -30,6 +32,11 @@ export const DEFAULT_MESSAGES: StreakMessages = {
     reset: "Reset {user}'s streak to 0.",
     setDone: "Set {user}'s streak to {streak}.",
     opened: 'Check-in is now open for today ({day}).',
+    fixDone: "Restored {user}'s streak by {amount} days. Current streak: {streak}.",
+    fixNone: 'No unrepaired streak penalty found for {user}.',
+    undoDone: "Reversed {user}'s latest manual streak adjustment. Current streak: {streak}.",
+    undoNone: 'No reversible manual streak decision found for {user}.',
+    undoBlocked: 'Repair newer automatic penalties for {user} with !fixstreak first.',
     adminUsage: 'Usage: {user}',
     adminNotFound: 'No streak record found for {user}.',
 };
@@ -44,6 +51,19 @@ export function streamDayKey(date: Date, timeZone: string): string {
     if (key === null) {
         throw new Error(`invalid timezone "${timeZone}" for streak day boundaries`);
     }
+    return key;
+}
+
+/** Return the logical attendance date using a local, DST-safe rollover hour. */
+export function attendanceDayKey(date: Date, timeZone: string, boundaryHour: number): string {
+    const local = DateTime.fromJSDate(date, { zone: timeZone });
+    if (!local.isValid) {
+        throw new Error(`invalid timezone "${timeZone}" for streak day boundaries`);
+    }
+    const boundary = local.startOf('day').set({ hour: boundaryHour });
+    const attendanceDate = local < boundary ? local.minus({ days: 1 }) : local;
+    const key = attendanceDate.toISODate();
+    if (key === null) throw new Error('could not resolve streak attendance day');
     return key;
 }
 
@@ -107,6 +127,35 @@ export function applyCheckin(
     return { viewer: next, outcome: extends_ ? 'extended' : 'started' };
 }
 
+/** Apply the shared streak rule where every configured broadcaster must be missed. */
+export function applyBroadcasterCheckin(
+    viewer: ViewerRecord,
+    today: string,
+    missedBroadcasterIds: ReadonlySet<string>,
+    requiredBroadcasterIds: ReadonlySet<string>,
+): { viewer: ViewerRecord; outcome: CheckinOutcome; lostAmount: number } {
+    if (viewer.lastCheckinDay !== null && today <= viewer.lastCheckinDay) {
+        return { viewer, outcome: 'already', lostAmount: 0 };
+    }
+    const wasPenalized =
+        viewer.lastCheckinDay !== null &&
+        requiredBroadcasterIds.size > 0 &&
+        [...requiredBroadcasterIds].every((id) => missedBroadcasterIds.has(id));
+    const currentStreak = wasPenalized ? 1 : viewer.currentStreak + 1;
+    const next: ViewerRecord = {
+        ...viewer,
+        currentStreak,
+        longestStreak: Math.max(viewer.longestStreak, currentStreak),
+        lastCheckinDay: today,
+        totalCheckins: viewer.totalCheckins + 1,
+    };
+    return {
+        viewer: next,
+        outcome: viewer.lastCheckinDay === null || wasPenalized ? 'started' : 'extended',
+        lostAmount: wasPenalized ? viewer.currentStreak : 0,
+    };
+}
+
 /**
  * Resolve which stream day a check-in at `now` should count toward. Anchors
  * to the day the current stream started (rather than the wall-clock day of
@@ -136,6 +185,7 @@ export interface MessageTokens {
     streak?: number;
     longest?: number;
     day?: string;
+    amount?: number;
 }
 
 /** Substitute {user}/{streak}/{longest}/{day} tokens in a template. */
@@ -144,5 +194,6 @@ export function renderMessage(template: string, tokens: MessageTokens): string {
         .replaceAll('{user}', tokens.user ?? '')
         .replaceAll('{streak}', String(tokens.streak ?? ''))
         .replaceAll('{longest}', String(tokens.longest ?? ''))
-        .replaceAll('{day}', tokens.day ?? '');
+        .replaceAll('{day}', tokens.day ?? '')
+        .replaceAll('{amount}', String(tokens.amount ?? ''));
 }

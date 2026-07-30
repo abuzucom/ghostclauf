@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, readFile, readdir, rename, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { basename, dirname, join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -40,14 +40,100 @@ describe('StreakStore', () => {
         expect(viewer?.totalCheckins).toBe(1);
     });
 
-    it('writes valid pretty-printed JSON with version 1', async () => {
+    it('writes valid pretty-printed JSON with version 2', async () => {
         const store = new StreakStore(dataPath, makeSpyLogger().logger);
         await store.load();
         await store.recordStreamDay(BID, '2026-07-20', instantOn('2026-07-20'));
         const raw = await readFile(dataPath, 'utf8');
         const parsed = JSON.parse(raw);
-        expect(parsed.version).toBe(1);
+        expect(parsed.version).toBe(2);
         expect(raw).toBe(JSON.stringify(parsed, null, 2));
+    });
+
+    it('records qualified days by broadcaster and finds misses in an interval', async () => {
+        const store = new StreakStore(dataPath, makeSpyLogger().logger);
+        await store.load();
+        await store.recordQualifiedDay('shared', 'tank', '2026-07-21');
+        await store.recordQualifiedDay('shared', 'tank', '2026-07-22');
+        await store.recordQualifiedDay('shared', 'dj', '2026-07-23');
+
+        expect(
+            store.missedBroadcasters('shared', '2026-07-20', '2026-07-24', new Set(['tank', 'dj'])),
+        ).toEqual(new Set(['tank', 'dj']));
+        expect(
+            store.missedBroadcasters('shared', '2026-07-22', '2026-07-24', new Set(['tank', 'dj'])),
+        ).toEqual(new Set(['dj']));
+    });
+
+    it('records and repairs the latest automatic penalty without losing later check-ins', async () => {
+        const store = new StreakStore(dataPath, makeSpyLogger().logger);
+        await store.load();
+        await store.checkInBroadcaster(
+            'shared',
+            CID,
+            'viewer',
+            'Viewer',
+            '2026-07-20',
+            new Set(['tank', 'dj']),
+            'tank',
+            instantOn('2026-07-20'),
+        );
+        await store.setViewerStreak('shared', CID, 10);
+        await store.recordQualifiedDay('shared', 'tank', '2026-07-21');
+        await store.recordQualifiedDay('shared', 'dj', '2026-07-22');
+        const penalized = await store.checkInBroadcaster(
+            'shared',
+            CID,
+            'viewer',
+            'Viewer',
+            '2026-07-23',
+            new Set(['tank', 'dj']),
+            'dj',
+            instantOn('2026-07-23'),
+        );
+        expect(penalized.viewer.currentStreak).toBe(1);
+        await store.checkInBroadcaster(
+            'shared',
+            CID,
+            'viewer',
+            'Viewer',
+            '2026-07-24',
+            new Set(['tank', 'dj']),
+            'tank',
+            instantOn('2026-07-24'),
+        );
+
+        const fixed = await store.fixLatestPenalty(
+            'shared',
+            CID,
+            'owner',
+            'tank',
+            instantOn('2026-07-25'),
+        );
+        expect(fixed).toEqual({ amount: 10, currentStreak: 12 });
+        expect(await store.fixLatestPenalty('shared', CID, 'owner', 'tank')).toBeNull();
+    });
+
+    it('keeps the previous committed database as a backup', async () => {
+        const store = new StreakStore(dataPath, makeSpyLogger().logger);
+        await store.load();
+        await store.recordStreamDay(BID, '2026-07-20', instantOn('2026-07-20'));
+        await store.recordStreamDay(BID, '2026-07-21', instantOn('2026-07-21'));
+
+        const backup = JSON.parse(await readFile(`${dataPath}.bak`, 'utf8'));
+        expect(backup.channels[BID].streamDays).toEqual(['2026-07-20']);
+    });
+
+    it('loads the previous backup when the primary database is missing', async () => {
+        const first = new StreakStore(dataPath, makeSpyLogger().logger);
+        await first.load();
+        await first.recordStreamDay(BID, '2026-07-20', instantOn('2026-07-20'));
+        await first.recordStreamDay(BID, '2026-07-21', instantOn('2026-07-21'));
+        await rename(dataPath, `${dataPath}.missing-for-test`);
+
+        const recovered = new StreakStore(dataPath, makeSpyLogger().logger);
+        await recovered.load();
+        expect(recovered.streamDays(BID)).toEqual(['2026-07-20']);
     });
 
     it('dedupes and orders stream days, reporting whether newly added', async () => {

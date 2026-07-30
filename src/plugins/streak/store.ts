@@ -1,104 +1,229 @@
-// Persistent streak state. Mirrors the token-store pattern in core/auth.ts
-// (mkdir recursive + pretty JSON) but adds an atomic, serialized write so
-// concurrent check-ins from multiple viewers cannot lose updates.
-
-import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
+import { randomUUID } from 'node:crypto';
+import { copyFile, mkdir, readFile, rename, writeFile } from 'node:fs/promises';
 import { dirname } from 'node:path';
 import type { Logger } from '../../core/types.js';
-import { applyCheckin, newViewerRecord, previousStreamDay } from './streak.js';
-import type { ChannelRecord, CheckinOutcome, StreakData, ViewerRecord } from './types.js';
+import {
+    applyBroadcasterCheckin,
+    applyCheckin,
+    newViewerRecord,
+    previousStreamDay,
+} from './streak.js';
+import type {
+    BroadcasterSession,
+    ChannelRecord,
+    CheckinOutcome,
+    LegacyStreakData,
+    StreakData,
+    StreakPenaltyRecord,
+    ViewerRecord,
+} from './types.js';
+
+const SHARED_SCOPE_KEY = 'shared';
 
 function emptyData(): StreakData {
-    return { version: 1, channels: {} };
+    return { version: 2, channels: {} };
 }
 
-/** Shape guard for a single viewer record. */
+function emptyChannel(): ChannelRecord {
+    return {
+        streamDays: [],
+        activeStreamStartedAt: null,
+        qualifiedDaysByBroadcaster: {},
+        sessionsByBroadcaster: {},
+        viewers: {},
+        penalties: [],
+    };
+}
+
 function isViewerRecord(value: unknown): value is ViewerRecord {
     if (typeof value !== 'object' || value === null) return false;
-    const candidate = value as Partial<ViewerRecord>;
+    const record = value as Partial<ViewerRecord>;
     return (
-        typeof candidate.chatterName === 'string' &&
-        typeof candidate.displayName === 'string' &&
-        typeof candidate.currentStreak === 'number' &&
-        typeof candidate.longestStreak === 'number' &&
-        typeof candidate.totalCheckins === 'number' &&
-        (candidate.lastCheckinDay === null || typeof candidate.lastCheckinDay === 'string')
+        typeof record.chatterName === 'string' &&
+        typeof record.displayName === 'string' &&
+        Number.isFinite(record.currentStreak) &&
+        Number.isFinite(record.longestStreak) &&
+        Number.isFinite(record.totalCheckins) &&
+        (record.lastCheckinDay === null || typeof record.lastCheckinDay === 'string') &&
+        (record.missEvaluationAfterDay === undefined ||
+            record.missEvaluationAfterDay === null ||
+            typeof record.missEvaluationAfterDay === 'string') &&
+        (record.lastManualDecisionId === undefined ||
+            record.lastManualDecisionId === null ||
+            typeof record.lastManualDecisionId === 'string') &&
+        (record.lastManualTransactionId === undefined ||
+            record.lastManualTransactionId === null ||
+            typeof record.lastManualTransactionId === 'string')
     );
 }
 
-/** Shape guard for a single channel record, including its nested viewers. */
-function isChannelRecord(value: unknown): value is ChannelRecord {
+function isStringArrayRecord(value: unknown): value is Record<string, string[]> {
     if (typeof value !== 'object' || value === null) return false;
-    const candidate = value as Partial<ChannelRecord>;
-    if (
-        !Array.isArray(candidate.streamDays) ||
-        !candidate.streamDays.every((d) => typeof d === 'string')
-    ) {
-        return false;
-    }
-    if (
-        candidate.activeStreamStartedAt !== null &&
-        typeof candidate.activeStreamStartedAt !== 'string'
-    ) {
-        return false;
-    }
-    if (typeof candidate.viewers !== 'object' || candidate.viewers === null) return false;
-    return Object.values(candidate.viewers).every(isViewerRecord);
+    return Object.values(value).every(
+        (days) => Array.isArray(days) && days.every((day) => typeof day === 'string'),
+    );
 }
 
-/** Shape guard for a loaded data file, validating nested channel/viewer records. */
-function isStreakData(value: unknown): value is StreakData {
+function isSession(value: unknown): value is BroadcasterSession {
     if (typeof value !== 'object' || value === null) return false;
-    const candidate = value as Partial<StreakData>;
+    const session = value as Partial<BroadcasterSession>;
+    const nullableString = (candidate: unknown): boolean =>
+        candidate === null || typeof candidate === 'string';
+    return (
+        nullableString(session.logicalDay) &&
+        nullableString(session.logicalSessionStartedAt) &&
+        nullableString(session.currentIntervalStartedAt) &&
+        nullableString(session.currentStreamId) &&
+        nullableString(session.lastOfflineAt) &&
+        nullableString(session.pendingOfflineAt) &&
+        ['offline', 'live', 'pending-offline', 'unverified-offline'].includes(session.status ?? '')
+    );
+}
+
+function isPenalty(value: unknown): value is StreakPenaltyRecord {
+    if (typeof value !== 'object' || value === null) return false;
+    const penalty = value as Partial<StreakPenaltyRecord>;
+    return (
+        typeof penalty.id === 'string' &&
+        typeof penalty.chatterId === 'string' &&
+        typeof penalty.checkinDay === 'string' &&
+        typeof penalty.broadcasterId === 'string' &&
+        typeof penalty.recordedAt === 'string' &&
+        Number.isFinite(penalty.lostAmount) &&
+        isViewerRecord(penalty.before) &&
+        isViewerRecord(penalty.after)
+    );
+}
+
+function isChannelRecord(value: unknown): value is ChannelRecord {
+    if (typeof value !== 'object' || value === null) return false;
+    const channel = value as Partial<ChannelRecord>;
+    if (!Array.isArray(channel.streamDays) || !channel.streamDays.every(isString)) return false;
     if (
-        candidate.version !== 1 ||
-        typeof candidate.channels !== 'object' ||
-        candidate.channels === null
+        channel.activeStreamStartedAt !== null &&
+        typeof channel.activeStreamStartedAt !== 'string'
     ) {
         return false;
     }
-    return Object.values(candidate.channels).every(isChannelRecord);
+    if (!isStringArrayRecord(channel.qualifiedDaysByBroadcaster)) return false;
+    if (
+        typeof channel.sessionsByBroadcaster !== 'object' ||
+        channel.sessionsByBroadcaster === null
+    ) {
+        return false;
+    }
+    if (!Object.values(channel.sessionsByBroadcaster).every(isSession)) return false;
+    if (typeof channel.viewers !== 'object' || channel.viewers === null) return false;
+    if (!Object.values(channel.viewers).every(isViewerRecord)) return false;
+    return Array.isArray(channel.penalties) && channel.penalties.every(isPenalty);
+}
+
+function isString(value: unknown): value is string {
+    return typeof value === 'string';
+}
+
+function isStreakData(value: unknown): value is StreakData {
+    if (typeof value !== 'object' || value === null) return false;
+    const data = value as Partial<StreakData>;
+    return (
+        data.version === 2 &&
+        typeof data.channels === 'object' &&
+        data.channels !== null &&
+        Object.values(data.channels).every(isChannelRecord)
+    );
+}
+
+function isLegacyData(value: unknown): value is LegacyStreakData {
+    if (typeof value !== 'object' || value === null) return false;
+    const data = value as Partial<LegacyStreakData>;
+    if (data.version !== 1 || typeof data.channels !== 'object' || data.channels === null)
+        return false;
+    return Object.values(data.channels).every((candidate) => {
+        if (typeof candidate !== 'object' || candidate === null) return false;
+        const channel = candidate;
+        return (
+            Array.isArray(channel.streamDays) &&
+            channel.streamDays.every(isString) &&
+            (channel.activeStreamStartedAt === undefined ||
+                channel.activeStreamStartedAt === null ||
+                typeof channel.activeStreamStartedAt === 'string') &&
+            typeof channel.viewers === 'object' &&
+            channel.viewers !== null &&
+            Object.values(channel.viewers).every(isViewerRecord)
+        );
+    });
+}
+
+function migrateLegacy(data: LegacyStreakData): StreakData {
+    const migrated = emptyData();
+    for (const [scope, legacy] of Object.entries(data.channels)) {
+        const channel = emptyChannel();
+        channel.streamDays = [...new Set(legacy.streamDays)].sort();
+        channel.activeStreamStartedAt = legacy.activeStreamStartedAt ?? null;
+        channel.viewers = legacy.viewers;
+        if (scope !== SHARED_SCOPE_KEY) {
+            channel.qualifiedDaysByBroadcaster[scope] = [...channel.streamDays];
+        }
+        migrated.channels[scope] = channel;
+    }
+    return migrated;
+}
+
+function parseData(raw: string): StreakData {
+    const parsed: unknown = JSON.parse(raw);
+    if (isStreakData(parsed)) return parsed;
+    if (isLegacyData(parsed)) return migrateLegacy(parsed);
+    throw new Error('unexpected streak data shape');
+}
+
+function cloneViewer(viewer: ViewerRecord): ViewerRecord {
+    return { ...viewer };
 }
 
 export class StreakStore {
     private data: StreakData = emptyData();
-    /** Serializes disk writes so they can never overlap. */
     private saveChain: Promise<void> = Promise.resolve();
-    /** The scheduled-but-not-yet-started write; concurrent callers share it. */
     private pendingWrite: Promise<void> | null = null;
-    /** Makes each temp filename unique so writes can never share one. */
     private writeSeq = 0;
+    private hasPersistedPrimary = false;
 
     constructor(
         private readonly dataPath: string,
         private readonly logger: Logger,
     ) {}
 
-    /**
-     * Load state from disk. Missing file starts empty; corrupt file is backed
-     * up and started empty. Any other read failure (permissions, I/O) is
-     * logged and rethrown rather than treated as "empty," so a transient
-     * unreadable file can never be persisted over the real data.
-     */
     async load(): Promise<void> {
         let raw: string;
         try {
             raw = await readFile(this.dataPath, 'utf8');
         } catch (err) {
             if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
-                this.data = emptyData();
+                this.data = await this.loadPreviousBackup();
                 return;
             }
             this.logger.error({ err, dataPath: this.dataPath }, 'failed to read streak data file');
             throw err;
         }
         try {
-            const parsed: unknown = JSON.parse(raw);
-            if (!isStreakData(parsed)) throw new Error('unexpected streak data shape');
-            this.data = parsed;
+            this.data = parseData(raw);
+            this.hasPersistedPrimary = true;
         } catch (err) {
             await this.backupCorruptFile(err);
-            this.data = emptyData();
+            this.data = await this.loadPreviousBackup();
+        }
+    }
+
+    private async loadPreviousBackup(): Promise<StreakData> {
+        try {
+            const raw = await readFile(`${this.dataPath}.bak`, 'utf8');
+            const restored = parseData(raw);
+            this.logger.warn({ dataPath: this.dataPath }, 'loaded previous streak database backup');
+            return restored;
+        } catch (err) {
+            if ((err as NodeJS.ErrnoException).code !== 'ENOENT') {
+                this.logger.error({ err }, 'failed to load previous streak database backup');
+            }
+            return emptyData();
         }
     }
 
@@ -108,22 +233,21 @@ export class StreakStore {
             await rename(this.dataPath, backupPath);
             this.logger.error(
                 { err, backupPath },
-                'streak data file was unreadable; backed it up and starting empty',
+                'streak data file was unreadable; preserved it before recovery',
             );
         } catch (renameErr) {
-            this.logger.error({ err: renameErr }, 'failed to back up corrupt streak data file');
+            this.logger.error({ err: renameErr }, 'failed to preserve corrupt streak data file');
         }
     }
 
     private channel(channelKey: string): ChannelRecord {
         const existing = this.data.channels[channelKey];
         if (existing) return existing;
-        const created: ChannelRecord = { streamDays: [], activeStreamStartedAt: null, viewers: {} };
+        const created = emptyChannel();
         this.data.channels[channelKey] = created;
         return created;
     }
 
-    /** Recorded stream-day keys for a channel (ascending copy). */
     streamDays(channelKey: string): string[] {
         return [...(this.data.channels[channelKey]?.streamDays ?? [])];
     }
@@ -132,42 +256,67 @@ export class StreakStore {
         return this.data.channels[channelKey]?.streamDays.includes(day) ?? false;
     }
 
-    /**
-     * Mark `day` a stream day and record `startedAt` as the active session
-     * anchor if it's more recent than whatever's already stored (ISO instants
-     * compare chronologically as strings). Returns true iff `day` was newly
-     * added. Persists whenever either the day or the anchor changes.
-     */
     async recordStreamDay(channelKey: string, day: string, startedAt: Date): Promise<boolean> {
         const channel = this.channel(channelKey);
-        const isNewDay = !channel.streamDays.includes(day);
-        if (isNewDay) {
-            channel.streamDays.push(day);
-            channel.streamDays.sort();
-        }
+        const isNewDay = addSortedDay(channel.streamDays, day);
         const startedAtIso = startedAt.toISOString();
         const previousAnchor = channel.activeStreamStartedAt;
         const anchorChanged = previousAnchor === null || startedAtIso > previousAnchor;
-        if (anchorChanged) {
-            channel.activeStreamStartedAt = startedAtIso;
-        }
-        if (isNewDay || anchorChanged) {
-            await this.persist();
-        }
+        if (anchorChanged) channel.activeStreamStartedAt = startedAtIso;
+        if (isNewDay || anchorChanged) await this.persist();
         return isNewDay;
     }
 
-    /** The most recent recorded stream start for a channel, or null if none. */
     activeStreamStartedAt(channelKey: string): Date | null {
         const iso = this.data.channels[channelKey]?.activeStreamStartedAt;
         return iso ? new Date(iso) : null;
+    }
+
+    async recordQualifiedDay(scope: string, broadcasterId: string, day: string): Promise<boolean> {
+        const channel = this.channel(scope);
+        const days = (channel.qualifiedDaysByBroadcaster[broadcasterId] ??= []);
+        const added = addSortedDay(days, day);
+        if (added) await this.persist();
+        return added;
+    }
+
+    missedBroadcasters(
+        scope: string,
+        afterDay: string | null,
+        beforeDay: string,
+        requiredBroadcasterIds: ReadonlySet<string>,
+    ): Set<string> {
+        if (afterDay === null) return new Set();
+        const qualified = this.data.channels[scope]?.qualifiedDaysByBroadcaster ?? {};
+        return new Set(
+            [...requiredBroadcasterIds].filter((id) =>
+                (qualified[id] ?? []).some((day) => day > afterDay && day < beforeDay),
+            ),
+        );
+    }
+
+    getSession(scope: string, broadcasterId: string): BroadcasterSession | undefined {
+        const session = this.data.channels[scope]?.sessionsByBroadcaster[broadcasterId];
+        return session ? { ...session } : undefined;
+    }
+
+    async setSession(
+        scope: string,
+        broadcasterId: string,
+        session: BroadcasterSession,
+    ): Promise<void> {
+        this.channel(scope).sessionsByBroadcaster[broadcasterId] = { ...session };
+        await this.persist();
     }
 
     getViewer(channelKey: string, chatterId: string): ViewerRecord | undefined {
         return this.data.channels[channelKey]?.viewers[chatterId];
     }
 
-    /** Find a viewer by login (lowercased), for admin commands targeting @user. */
+    getManualTransactionId(scope: string, chatterId: string): string | null {
+        return this.data.channels[scope]?.viewers[chatterId]?.lastManualTransactionId ?? null;
+    }
+
     findViewerByName(
         channelKey: string,
         login: string,
@@ -180,7 +329,6 @@ export class StreakStore {
         return undefined;
     }
 
-    /** Apply a check-in on stream day `today` and persist the result. */
     async checkIn(
         channelKey: string,
         chatterId: string,
@@ -189,70 +337,240 @@ export class StreakStore {
         today: string,
     ): Promise<{ outcome: CheckinOutcome; viewer: ViewerRecord }> {
         const channel = this.channel(channelKey);
-        const current =
-            channel.viewers[chatterId] ?? newViewerRecord(chatterName.toLowerCase(), displayName);
+        const current = channel.viewers[chatterId] ?? newViewerRecord(chatterName, displayName);
         const previous = previousStreamDay(channel.streamDays, today);
-        const { viewer, outcome } = applyCheckin(current, today, previous);
-        const updated: ViewerRecord = {
-            ...viewer,
-            chatterName: chatterName.toLowerCase(),
-            displayName,
-        };
+        const result = applyCheckin(current, today, previous);
+        const updated = updateIdentity(result.viewer, chatterName, displayName);
+        if (result.outcome !== 'already') updated.missEvaluationAfterDay = today;
         channel.viewers[chatterId] = updated;
         await this.persist();
-        return { outcome, viewer: updated };
+        return { outcome: result.outcome, viewer: updated };
     }
 
-    /** Reset a viewer's current streak to 0, preserving their longest. Persists. */
-    async resetViewer(channelKey: string, chatterId: string): Promise<void> {
-        const viewer = this.data.channels[channelKey]?.viewers[chatterId];
-        if (!viewer) return;
+    async checkInBroadcaster(
+        scope: string,
+        chatterId: string,
+        chatterName: string,
+        displayName: string,
+        today: string,
+        requiredBroadcasterIds: ReadonlySet<string>,
+        broadcasterId: string,
+        recordedAt: Date = new Date(),
+    ): Promise<{ outcome: CheckinOutcome; viewer: ViewerRecord }> {
+        const channel = this.channel(scope);
+        const current = channel.viewers[chatterId] ?? newViewerRecord(chatterName, displayName);
+        const baseline = current.missEvaluationAfterDay ?? current.lastCheckinDay;
+        const missed = this.missedBroadcasters(scope, baseline, today, requiredBroadcasterIds);
+        const result = applyBroadcasterCheckin(current, today, missed, requiredBroadcasterIds);
+        const updated = updateIdentity(result.viewer, chatterName, displayName);
+        if (result.outcome !== 'already') updated.missEvaluationAfterDay = today;
+        channel.viewers[chatterId] = updated;
+        if (result.lostAmount > 0) {
+            channel.penalties.push(
+                createPenalty(
+                    chatterId,
+                    broadcasterId,
+                    today,
+                    recordedAt,
+                    current,
+                    updated,
+                    result.lostAmount,
+                ),
+            );
+        }
+        await this.persist();
+        return { outcome: result.outcome, viewer: updated };
+    }
+
+    async fixLatestPenalty(
+        scope: string,
+        chatterId: string,
+        restoredByChatterId: string,
+        restoredByBroadcasterId: string,
+        restoredAt: Date = new Date(),
+    ): Promise<{ amount: number; currentStreak: number } | null> {
+        const channel = this.data.channels[scope];
+        const viewer = channel?.viewers[chatterId];
+        if (!channel || !viewer) return null;
+        const penalty = [...channel.penalties]
+            .reverse()
+            .find(
+                (candidate) =>
+                    candidate.chatterId === chatterId &&
+                    candidate.restoredAt === null &&
+                    candidate.supersededAt === null,
+            );
+        if (!penalty) return null;
+        viewer.currentStreak += penalty.lostAmount;
+        viewer.longestStreak = Math.max(viewer.longestStreak, viewer.currentStreak);
+        penalty.restoredAt = restoredAt.toISOString();
+        penalty.restoredByChatterId = restoredByChatterId;
+        penalty.restoredByBroadcasterId = restoredByBroadcasterId;
+        await this.persist();
+        return { amount: penalty.lostAmount, currentStreak: viewer.currentStreak };
+    }
+
+    hasUnrepairedPenaltyAfter(scope: string, chatterId: string, afterIso: string): boolean {
+        return (
+            this.data.channels[scope]?.penalties.some(
+                (penalty) =>
+                    penalty.chatterId === chatterId &&
+                    penalty.recordedAt > afterIso &&
+                    penalty.restoredAt === null &&
+                    penalty.supersededAt === null,
+            ) ?? false
+        );
+    }
+
+    async applyStreakAdjustment(
+        scope: string,
+        chatterId: string,
+        adjustment: number,
+        previousLongest: number,
+        transactionId?: string,
+        previousDecisionId?: string | null,
+    ): Promise<number | null> {
+        const viewer = this.data.channels[scope]?.viewers[chatterId];
+        if (!viewer) return null;
+        const currentStreak = viewer.currentStreak - adjustment;
+        if (!Number.isSafeInteger(currentStreak) || currentStreak < 0) return null;
+        viewer.currentStreak = currentStreak;
+        viewer.longestStreak = Math.max(previousLongest, currentStreak);
+        if (transactionId !== undefined) {
+            viewer.lastManualTransactionId = transactionId;
+            viewer.lastManualDecisionId = previousDecisionId ?? null;
+        }
+        await this.persist();
+        return currentStreak;
+    }
+
+    async resetViewer(
+        channelKey: string,
+        chatterId: string,
+        now: Date = new Date(),
+    ): Promise<void> {
+        const channel = this.data.channels[channelKey];
+        const viewer = channel?.viewers[chatterId];
+        if (!channel || !viewer) return;
         viewer.currentStreak = 0;
         viewer.lastCheckinDay = null;
+        viewer.missEvaluationAfterDay = latestRecordedDay(channel);
+        viewer.lastManualDecisionId = null;
+        viewer.lastManualTransactionId = null;
+        supersedePenalties(channel, chatterId, now);
         await this.persist();
     }
 
-    /** Manually set a viewer's current streak, bumping longest if needed. Persists. */
-    async setViewerStreak(channelKey: string, chatterId: string, value: number): Promise<void> {
-        const viewer = this.data.channels[channelKey]?.viewers[chatterId];
-        if (!viewer) return;
+    async setViewerStreak(
+        channelKey: string,
+        chatterId: string,
+        value: number,
+        now: Date = new Date(),
+        transactionId?: string,
+    ): Promise<void> {
+        const channel = this.data.channels[channelKey];
+        const viewer = channel?.viewers[chatterId];
+        if (!channel || !viewer) return;
         viewer.currentStreak = value;
         viewer.longestStreak = Math.max(viewer.longestStreak, value);
+        viewer.missEvaluationAfterDay = latestRecordedDay(channel);
+        if (transactionId !== undefined) {
+            viewer.lastManualDecisionId = transactionId;
+            viewer.lastManualTransactionId = transactionId;
+        }
+        supersedePenalties(channel, chatterId, now);
         await this.persist();
     }
 
-    /**
-     * Write current state to disk. Every write is chained on `saveChain`, so
-     * two writes can never overlap. Coalescing: while a write is scheduled but
-     * not yet started, all callers share it, so a burst of N mutations costs at
-     * most two full-file writes instead of N. State is snapshotted when a write
-     * starts, so an awaited persist always covers the caller's mutation.
-     */
     private persist(): Promise<void> {
         if (this.pendingWrite) return this.pendingWrite;
-        const write = this.saveChain.then(() => {
+        const write = this.saveChain.then(async () => {
             this.pendingWrite = null;
-            return this.writeAtomic(JSON.stringify(this.data, null, 2));
+            await this.writeAtomic(JSON.stringify(this.data, null, 2));
         });
         this.pendingWrite = write;
-        // Keep the chain alive even if a write fails; the error still surfaces
-        // to every caller awaiting `write`.
         this.saveChain = write.catch(() => {});
         return write;
     }
 
     private async writeAtomic(json: string): Promise<void> {
         await mkdir(dirname(this.dataPath), { recursive: true });
-        // Unique per write, so even a scheduling bug cannot interleave two
-        // writes in one temp file.
         this.writeSeq += 1;
+        if (this.hasPersistedPrimary) {
+            const backupTemp = `${this.dataPath}.bak.${this.writeSeq}.tmp`;
+            await copyFile(this.dataPath, backupTemp);
+            await rename(backupTemp, `${this.dataPath}.bak`);
+        }
         const tempPath = `${this.dataPath}.${this.writeSeq}.tmp`;
         await writeFile(tempPath, json, 'utf8');
         await rename(tempPath, this.dataPath);
+        this.hasPersistedPrimary = true;
     }
 
-    /** Wait for all pending writes to complete. Call during shutdown. */
     async flush(): Promise<void> {
         await this.saveChain;
+    }
+}
+
+function addSortedDay(days: string[], day: string): boolean {
+    if (days.includes(day)) return false;
+    days.push(day);
+    days.sort();
+    return true;
+}
+
+function updateIdentity(
+    viewer: ViewerRecord,
+    chatterName: string,
+    displayName: string,
+): ViewerRecord {
+    return { ...viewer, chatterName: chatterName.toLowerCase(), displayName };
+}
+
+function createPenalty(
+    chatterId: string,
+    broadcasterId: string,
+    checkinDay: string,
+    recordedAt: Date,
+    before: ViewerRecord,
+    after: ViewerRecord,
+    lostAmount: number,
+): StreakPenaltyRecord {
+    return {
+        id: randomUUID(),
+        chatterId,
+        chatterName: after.chatterName,
+        displayName: after.displayName,
+        checkinDay,
+        broadcasterId,
+        recordedAt: recordedAt.toISOString(),
+        lostAmount,
+        before: cloneViewer(before),
+        after: cloneViewer(after),
+        restoredAt: null,
+        restoredByChatterId: null,
+        restoredByBroadcasterId: null,
+        supersededAt: null,
+    };
+}
+
+function latestRecordedDay(channel: ChannelRecord): string | null {
+    const days = [
+        ...channel.streamDays,
+        ...Object.values(channel.qualifiedDaysByBroadcaster).flat(),
+    ].sort();
+    return days.at(-1) ?? null;
+}
+
+function supersedePenalties(channel: ChannelRecord, chatterId: string, now: Date): void {
+    const timestamp = now.toISOString();
+    for (const penalty of channel.penalties) {
+        if (
+            penalty.chatterId === chatterId &&
+            penalty.restoredAt === null &&
+            penalty.supersededAt === null
+        ) {
+            penalty.supersededAt = timestamp;
+        }
     }
 }

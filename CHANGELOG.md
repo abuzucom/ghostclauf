@@ -27,6 +27,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `streak` plugin: optional shared-audience policy with broadcaster-local
+  sessions, a configurable local rollover hour, reconnect grace, and a minimum
+  uninterrupted duration before a stream can count against absent viewers.
+- `streak` plugin: viewer-friendly EventSub offline confirmation, automatic
+  penalty recovery through `!fixstreak`, and authoritative manual-set recovery
+  through `!undostreakset` and a separate decision journal.
+- `streak` plugin: version-2 persistence with version-1 migration and one
+  previous atomic JSON snapshot for both streak and decision data.
+- `streak` plugin: write-ahead manual-set and undo transactions reconcile the
+  decision journal with primary viewer state after an interrupted process.
+
 - `followage` plugin: `!followage` (everyone) replies with how long the
   caller (or `!followage @user`, another viewer) has followed the channel
   the command was typed in. Multi-channel aware: each configured channel
