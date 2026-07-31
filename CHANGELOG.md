@@ -16,16 +16,63 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   neither job pushes back to the repository.
 - CI: GitHub Actions are now pinned to full commit SHAs instead of mutable
   tags, ensuring workflow immutability.
+- macOS service template no longer defaults to world-writable
+  `/Users/Shared`, where any local account could read the OAuth token store
+  under `data/`. It now uses a `CHANGE_ME` home-directory path and sets
+  `Umask` to 0077.
+- systemd unit runs confined: `NoNewPrivileges`, `ProtectSystem=strict`,
+  `ProtectHome=read-only`, `RestrictAddressFamilies`, and a `ReadWritePaths`
+  limited to the data directory.
+- Both service templates run `node dist/index.js` directly instead of
+  `npm start`, so editing a `package.json` script cannot change what the
+  service executes.
+- `streak` plugin: the streak database, its `.bak` snapshot, and the decision
+  journal are written owner-only (0600); they hold viewer logins and IDs.
+- `config.yaml` bot and broadcaster logins are validated against Twitch's
+  login charset, since `run.sh` passes them to `npm run auth`. The
+  `config.example.yaml` placeholders are still accepted so `run.sh` can
+  replace them interactively.
 
 ### Added
 
+- Linux and macOS support: added POSIX shell scripts (`setup.sh`, `run.sh`) and service configurations (`scripts/ghostclauf.service` for systemd on Linux and `scripts/com.ghostclauf.bot.plist` for launchd on macOS).
+- CI workflow expansion: extended `.github/workflows/ci.yml` matrix to build and test on `ubuntu-latest`, `macos-latest`, and `windows-latest`.
+- `EventBus.drain()` & `BotContext.drain()`: introduced in-flight handler tracking in `EventBus` so plugins can await pending async event handlers before shutdown or store flushing.
 - CI lint tooling: ESLint (with `@typescript-eslint`) and Prettier are now
   configured and enforced, and devDependencies are strictly version-pinned.
 - Graceful shutdown lifecycle: `PluginManager.disposeAll()` cleans up plugins
   in reverse-init order, and `StreakStore.flush()` ensures in-flight disk
   writes finish before exit.
 
-### Added
+### Fixed
+
+- `streak` plugin: fixed a race condition in `handleOffline` by committing `lastOfflineAt` to session state before yielding to `qualifyCurrentInterval()`, preventing rapid reconnects from failing `isReconnect` checks.
+- Prettier line ending compatibility: configured `endOfLine: "auto"` in `.prettierrc` to support cross-platform line endings across POSIX and Windows checkouts in CI.
+- `setup.sh` and `run.sh` are committed executable, so the documented
+  `./setup.sh` entry point works on a fresh clone.
+- `streak` plugin: penalty records are validated on their nullable audit
+  fields. A record missing `restoredAt` previously loaded as valid and read as
+  "already repaired", hiding the penalty from `!fixstreak`.
+- `streak` plugin: resolved penalties and decisions are trimmed to the 50 most
+  recent per viewer at startup, bounding two journals that grew forever and
+  were rewritten in full on every check-in. Unrepaired penalties and
+  reversible sets are never trimmed.
+- `streak` plugin: `!checkin` reports check-in closed when a broadcaster is
+  live but has no persisted logical day, instead of relying on non-null
+  assertions that would write an undefined day key into viewer records.
+- `wentlive` plugin: an invalid stream start timestamp now throws instead of
+  announcing the string "null".
+
+- `streak` plugin: optional shared-audience policy with broadcaster-local
+  sessions, a configurable local rollover hour, reconnect grace, and a minimum
+  uninterrupted duration before a stream can count against absent viewers.
+- `streak` plugin: viewer-friendly EventSub offline confirmation, automatic
+  penalty recovery through `!fixstreak`, and authoritative manual-set recovery
+  through `!undostreakset` and a separate decision journal.
+- `streak` plugin: version-2 persistence with version-1 migration and one
+  previous atomic JSON snapshot for both streak and decision data.
+- `streak` plugin: write-ahead manual-set and undo transactions reconcile the
+  decision journal with primary viewer state after an interrupted process.
 
 - `followage` plugin: `!followage` (everyone) replies with how long the
   caller (or `!followage @user`, another viewer) has followed the channel

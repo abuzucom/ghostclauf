@@ -1,0 +1,36 @@
+[Unit]
+Description=ghostclauf Twitch Chat Bot
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/ghostclauf
+# Run node directly: npm as supervisor means whoever can edit package.json
+# scripts controls what this service executes on the next restart.
+ExecStart=/usr/bin/node dist/index.js
+Restart=on-failure
+RestartSec=10
+Environment=NODE_ENV=production
+
+# Hardening. The service holds live OAuth tokens under ./data, so keep it
+# confined to that directory and drop everything it does not need.
+# If you move WorkingDirectory under $HOME, drop ProtectHome and point
+# ReadWritePaths at the new data directory, or the bot cannot persist tokens.
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=read-only
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+RestrictNamespaces=true
+RestrictSUIDSGID=true
+LockPersonality=true
+MemoryDenyWriteExecute=true
+UMask=0077
+ReadWritePaths=/opt/ghostclauf/data
+
+[Install]
+WantedBy=default.target

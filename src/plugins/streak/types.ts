@@ -1,7 +1,3 @@
-// Internal types for the streak (attendance / watch-streak) plugin.
-// These are NOT part of the public BotContext contract; they describe this
-// plugin's own config block and on-disk state.
-
 /** Configurable trigger words (without the command prefix). */
 export interface StreakTriggers {
     checkin: string;
@@ -9,9 +5,11 @@ export interface StreakTriggers {
     reset: string;
     set: string;
     open: string;
+    fix: string;
+    undoSet: string;
 }
 
-/** Message templates. Tokens: {user}, {streak}, {longest}, {day}. */
+/** Message templates. Tokens include user, streak, longest, day, and amount. */
 export interface StreakMessages {
     started: string;
     extended: string;
@@ -23,57 +21,103 @@ export interface StreakMessages {
     reset: string;
     setDone: string;
     opened: string;
+    fixDone: string;
+    fixNone: string;
+    undoDone: string;
+    undoNone: string;
+    undoBlocked: string;
     adminUsage: string;
     adminNotFound: string;
 }
 
+export type StreakBreakPolicy = 'previous-stream-day' | 'all-broadcasters';
+
 /** The plugin's config block (`plugins.config.streak`), all optional. */
 export interface StreakConfig {
     dataPath?: string;
+    decisionPath?: string;
     timezone?: string;
+    dayBoundaryHour?: number;
+    reconnectGraceMinutes?: number;
+    minimumQualifyingSessionMinutes?: number;
+    streakBreakPolicy?: StreakBreakPolicy;
     requireStreamDay?: boolean;
-    /** Pool streak state across every configured broadcaster. Default true. */
     shareAcrossChannels?: boolean;
-    /** How long after a stream starts a check-in still anchors to that stream's
-     *  day, so overnight streams don't get cut off at midnight. Default 18. */
     streamSessionHours?: number;
-    /** Seconds a chatter must wait between handled check-in attempts; repeats
-     *  inside the window are silently ignored. 0 disables. Default 10. */
     checkinCooldownSeconds?: number;
     triggers?: Partial<StreakTriggers>;
     messages?: Partial<StreakMessages>;
 }
 
-/** Per-viewer streak record, keyed by chatterId within a channel. */
 export interface ViewerRecord {
-    /** Chatter login (lowercase), kept so admin commands can target @user. */
     chatterName: string;
-    /** Most recent display name, for friendly replies. */
     displayName: string;
     currentStreak: number;
     longestStreak: number;
-    /** Stream-day key (YYYY-MM-DD) of the last counted check-in, or null. */
     lastCheckinDay: string | null;
+    /** Ignore qualified misses on or before this canonical admin baseline. */
+    missEvaluationAfterDay?: string | null;
+    /** Last authoritative set still represented by this viewer's value. */
+    lastManualDecisionId?: string | null;
+    /** Last cross-file transaction committed to the primary database. */
+    lastManualTransactionId?: string | null;
     totalCheckins: number;
 }
 
-/** Per-channel state, keyed by a channel scope (a broadcasterId, or the
- *  shared-pool key when shareAcrossChannels is enabled). */
-export interface ChannelRecord {
-    /** Ordered, deduped stream-day keys (ascending). */
-    streamDays: string[];
-    /** ISO instant of the most recent recorded stream start, or null. Read as
-     *  null for files written before this field existed. */
-    activeStreamStartedAt: string | null;
-    /** Viewer records keyed by chatterId. */
-    viewers: Record<string, ViewerRecord>;
+export type SessionStatus = 'offline' | 'live' | 'pending-offline' | 'unverified-offline';
+
+export interface BroadcasterSession {
+    logicalDay: string | null;
+    logicalSessionStartedAt: string | null;
+    currentIntervalStartedAt: string | null;
+    currentStreamId: string | null;
+    lastOfflineAt: string | null;
+    pendingOfflineAt: string | null;
+    status: SessionStatus;
 }
 
-/** Versioned on-disk shape. */
+export interface StreakPenaltyRecord {
+    id: string;
+    chatterId: string;
+    chatterName: string;
+    displayName: string;
+    checkinDay: string;
+    broadcasterId: string;
+    recordedAt: string;
+    lostAmount: number;
+    before: ViewerRecord;
+    after: ViewerRecord;
+    restoredAt: string | null;
+    restoredByChatterId: string | null;
+    restoredByBroadcasterId: string | null;
+    supersededAt: string | null;
+}
+
+export interface ChannelRecord {
+    /** Legacy union retained for compatibility and independent-channel mode. */
+    streamDays: string[];
+    activeStreamStartedAt: string | null;
+    qualifiedDaysByBroadcaster: Record<string, string[]>;
+    sessionsByBroadcaster: Record<string, BroadcasterSession>;
+    viewers: Record<string, ViewerRecord>;
+    penalties: StreakPenaltyRecord[];
+}
+
 export interface StreakData {
-    version: 1;
+    version: 2;
     channels: Record<string, ChannelRecord>;
 }
 
-/** Outcome of applying a check-in to a viewer record. */
+export interface LegacyStreakData {
+    version: 1;
+    channels: Record<
+        string,
+        {
+            streamDays: string[];
+            activeStreamStartedAt?: string | null;
+            viewers: Record<string, ViewerRecord>;
+        }
+    >;
+}
+
 export type CheckinOutcome = 'started' | 'extended' | 'already';

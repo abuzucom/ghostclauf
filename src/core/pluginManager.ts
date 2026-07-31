@@ -5,7 +5,14 @@ import { createContext } from './context.js';
 import type { CommandRegistry } from './commands.js';
 import type { EventBus } from './eventBus.js';
 import type { FileConfig } from './config.js';
-import type { BotContext, HelixClient, Logger, MessageSender, Plugin } from './types.js';
+import type {
+    BotContext,
+    BroadcasterIdentity,
+    HelixClient,
+    Logger,
+    MessageSender,
+    Plugin,
+} from './types.js';
 
 export interface PluginManagerDeps {
     file: FileConfig;
@@ -14,6 +21,7 @@ export interface PluginManagerDeps {
     bus: EventBus;
     sender: MessageSender;
     helix: HelixClient;
+    broadcasters: readonly BroadcasterIdentity[];
 }
 
 /**
@@ -105,7 +113,7 @@ export class PluginManager {
     }
 
     private async loadOne(entryPath: string, isAllowed: (name: string) => boolean): Promise<void> {
-        const { logger, file, bus, registry, sender, helix } = this.deps;
+        const { logger, file, bus, registry, sender, helix, broadcasters } = this.deps;
         let plugin: Plugin;
         try {
             const mod = (await import(pathToFileURL(entryPath).href)) as {
@@ -137,6 +145,7 @@ export class PluginManager {
             registry,
             sender,
             helix,
+            broadcasters,
         });
 
         try {

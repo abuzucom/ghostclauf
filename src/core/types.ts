@@ -55,6 +55,15 @@ export interface StreamOfflineEvent {
     broadcasterDisplayName: string;
     /** True when the event was synthesized during live-state recovery. */
     recovered?: boolean;
+    /** When the transport first observed the offline state. */
+    observedAt?: Date;
+    /** False when transport verification failed and viewers must not be penalized. */
+    verified?: boolean;
+}
+
+export interface BroadcasterIdentity {
+    id: string;
+    login: string;
 }
 
 /** A chat message that matched a registered command, with parsed args. */
@@ -71,6 +80,7 @@ export interface ChatCommandEvent extends ChatMessageEvent {
 export interface BotEvents {
     chatMessage: ChatMessageEvent;
     streamOnline: StreamOnlineEvent;
+    streamOfflinePending: StreamOfflineEvent;
     streamOffline: StreamOfflineEvent;
 }
 
@@ -152,6 +162,8 @@ export interface HelixLookup {
 export interface BotContext {
     /** This plugin's config block (may be empty). */
     readonly config: PluginConfig;
+    /** Configured broadcaster identities, when supplied by the host. */
+    readonly broadcasters?: readonly BroadcasterIdentity[];
     /** Logger scoped to this plugin. */
     readonly logger: Logger;
     /** Narrow Helix API client for plugins that need Twitch data lookups. */
@@ -165,6 +177,11 @@ export interface BotContext {
         event: E,
         handler: (payload: BotEvents[E]) => void | Promise<void>,
     ): void;
+    /**
+     * Resolve once all in-flight event handlers have settled. Call this in
+     * `dispose()` before flushing stores to avoid orphaned async writes.
+     */
+    drain(): Promise<void>;
 }
 
 /** A plugin module's default export. */

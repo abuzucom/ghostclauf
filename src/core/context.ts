@@ -1,6 +1,13 @@
 import type { CommandRegistry } from './commands.js';
 import type { EventBus } from './eventBus.js';
-import type { BotContext, HelixClient, Logger, MessageSender, PluginConfig } from './types.js';
+import type {
+    BotContext,
+    BroadcasterIdentity,
+    HelixClient,
+    Logger,
+    MessageSender,
+    PluginConfig,
+} from './types.js';
 
 export interface ContextDeps {
     pluginName: string;
@@ -10,6 +17,7 @@ export interface ContextDeps {
     registry: CommandRegistry;
     sender: MessageSender;
     helix: HelixClient;
+    broadcasters?: readonly BroadcasterIdentity[];
 }
 
 /**
@@ -18,10 +26,11 @@ export interface ContextDeps {
  * this plugin's own config and logger.
  */
 export function createContext(deps: ContextDeps): BotContext {
-    const { pluginName, config, logger, bus, registry, sender, helix } = deps;
+    const { pluginName, config, logger, bus, registry, sender, helix, broadcasters } = deps;
 
     const ctx: BotContext = {
         config,
+        broadcasters,
         logger,
         helix,
         say: (text, replyToId, broadcasterId) => {
@@ -31,6 +40,7 @@ export function createContext(deps: ContextDeps): BotContext {
         },
         command: (def) => registry.register(pluginName, def, ctx),
         on: (event, handler) => bus.on(event, handler),
+        drain: () => bus.drain(),
     };
 
     return ctx;

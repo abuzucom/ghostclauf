@@ -1,3 +1,4 @@
+import { DateTime } from 'luxon';
 import type { Plugin } from '../../core/types.js';
 
 type TimestampFormat = 'iso' | 'utc';
@@ -12,7 +13,14 @@ interface WentLiveConfig {
 const DEFAULT_TEMPLATE = '{streamer} has gone live at {timestamp}';
 
 export function formatTimestamp(date: Date, format: TimestampFormat): string {
-    return format === 'utc' ? date.toUTCString() : date.toISOString();
+    const dt = DateTime.fromJSDate(date).toUTC();
+    // Luxon returns null for an invalid DateTime. Fail loudly rather than
+    // letting the string "null" reach a live announcement.
+    const formatted = format === 'utc' ? dt.toHTTP() : dt.toISO();
+    if (formatted === null) {
+        throw new Error(`invalid stream start timestamp: ${String(date)}`);
+    }
+    return formatted;
 }
 
 export function renderAnnouncement(

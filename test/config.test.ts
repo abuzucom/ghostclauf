@@ -34,6 +34,24 @@ describe('loadFileConfig', () => {
         );
     });
 
+    it('rejects a login that is not a valid Twitch login', () => {
+        // run.sh feeds broadcaster logins to `npm run auth --`, so reject
+        // anything outside Twitch's own login charset at the config boundary.
+        expect(() => loadFileConfig(join(fixturesRoot, 'invalid-login.yaml'))).toThrow(
+            /Invalid config/,
+        );
+        expect(() => loadFileConfig(join(fixturesRoot, 'invalid-login.yaml'))).toThrow(
+            /broadcaster.login/,
+        );
+    });
+
+    it('accepts the config.example.yaml placeholder logins', () => {
+        // checkTokens detects these and run.sh replaces them; loading must not
+        // fail before that repair can happen.
+        const config = loadFileConfig(join(fixturesRoot, 'placeholder-login.yaml'));
+        expect(config.bot.login).toBe('your_bot_login');
+    });
+
     it('applies chat and plugins defaults when omitted', () => {
         const config = loadFileConfig(join(fixturesRoot, 'minimal.yaml'));
         expect(config.chat).toEqual({ commandPrefix: '!' });

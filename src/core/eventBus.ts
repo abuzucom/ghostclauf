@@ -12,6 +12,8 @@ export type EventHandler<E extends keyof BotEvents> = (
  */
 export class EventBus {
     private readonly emitter = new EventEmitter();
+    // Tracks every in-flight handler promise so drain() can await them all.
+    private readonly inflight = new Set<Promise<void>>();
 
     constructor(private readonly logger: Logger) {
         // Plugins may register many listeners; don't warn.
@@ -20,15 +22,27 @@ export class EventBus {
 
     on<E extends keyof BotEvents>(event: E, handler: EventHandler<E>): void {
         this.emitter.on(event, (payload: BotEvents[E]) => {
-            Promise.resolve()
+            const p: Promise<void> = Promise.resolve()
                 .then(() => handler(payload))
                 .catch((err: unknown) => {
                     this.logger.error({ err, event }, 'event handler threw');
+                })
+                .finally(() => {
+                    this.inflight.delete(p);
                 });
+            this.inflight.add(p);
         });
     }
 
     emit<E extends keyof BotEvents>(event: E, payload: BotEvents[E]): void {
         this.emitter.emit(event, payload);
+    }
+
+    /**
+     * Resolve once every in-flight handler that was running at call time has
+     * settled. Use before flushing stores so no pending write is orphaned.
+     */
+    async drain(): Promise<void> {
+        await Promise.allSettled([...this.inflight]);
     }
 }

@@ -59,6 +59,10 @@ async function main(): Promise<void> {
         bus,
         sender: senderRef,
         helix: helixRef,
+        broadcasters: broadcasterTargets.map((target) => ({
+            id: target.userId!,
+            login: target.login,
+        })),
     });
     await plugins.loadAll();
 
@@ -82,6 +86,9 @@ async function main(): Promise<void> {
             },
             onStreamOffline: (event) => {
                 bus.emit('streamOffline', event);
+            },
+            onStreamOfflinePending: (event) => {
+                bus.emit('streamOfflinePending', event);
             },
         },
     });

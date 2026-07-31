@@ -20,6 +20,14 @@ describe('wentlive helpers', () => {
         expect(formatTimestamp(STARTED_AT, 'utc')).toBe(STARTED_AT.toUTCString());
     });
 
+    it('throws on an invalid date rather than announcing "null"', () => {
+        // Luxon returns null for an invalid DateTime; surface it instead of
+        // interpolating the string "null" into a live announcement.
+        const invalid = new Date(Number.NaN);
+        expect(() => formatTimestamp(invalid, 'iso')).toThrow(/invalid/i);
+        expect(() => formatTimestamp(invalid, 'utc')).toThrow(/invalid/i);
+    });
+
     it('substitutes template tokens', () => {
         expect(renderAnnouncement('{streamer} up at {timestamp}', 'Foo', STARTED_AT, 'iso')).toBe(
             'Foo up at 2026-07-12T18:04:05.000Z',

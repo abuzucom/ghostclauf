@@ -10,6 +10,7 @@ import type {
     HelixLookup,
     PluginConfig,
     Role,
+    BroadcasterIdentity,
 } from '../src/core/types.js';
 
 /** Silent logger for tests. */
@@ -49,6 +50,10 @@ export function makeHarness(
     pluginName: string,
     config: PluginConfig = {},
     helixOverride: Partial<HelixClient> | HelixClient | HelixLookup = {},
+    broadcasters: readonly BroadcasterIdentity[] = [
+        { id: '1', login: 'streamer' },
+        { id: '2', login: 'streamer2' },
+    ],
 ): {
     registry: CommandRegistry;
     bus: EventBus;
@@ -68,6 +73,7 @@ export function makeHarness(
         registry,
         sender: say,
         helix,
+        broadcasters,
     });
     return { registry, bus, say, ctx, helix };
 }

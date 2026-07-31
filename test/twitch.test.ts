@@ -230,14 +230,22 @@ describe('twitch transport', () => {
     });
 
     it('forwards stream online/offline events', async () => {
+        vi.useFakeTimers();
         const onStreamOnline = vi.fn();
         const onStreamOffline = vi.fn();
+        const onStreamOfflinePending = vi.fn();
         const transport = await createTwitchTransport({
             authProvider: dummyAuthProvider,
             botUserId: 'bot-id',
             broadcasters: [{ login: 'streamer' }],
             logger: testLogger,
-            handlers: { onChatMessage: vi.fn(), onStreamOnline, onStreamOffline },
+            offlineConfirmationMs: 100,
+            handlers: {
+                onChatMessage: vi.fn(),
+                onStreamOnline,
+                onStreamOffline,
+                onStreamOfflinePending,
+            },
         });
 
         await transport.start();
@@ -261,10 +269,105 @@ describe('twitch transport', () => {
             broadcasterId: 'channel-id',
             broadcasterName: 'streamer',
         });
+        expect(onStreamOfflinePending).toHaveBeenCalledOnce();
+        expect(onStreamOffline).not.toHaveBeenCalled();
+        getStreamByUserIdSpy.mockResolvedValueOnce(null);
+        await vi.advanceTimersByTimeAsync(100);
         expect(onStreamOffline).toHaveBeenCalledWith(
-            expect.objectContaining({ broadcasterId: 'channel-id' }),
+            expect.objectContaining({ broadcasterId: 'channel-id', verified: true }),
         );
 
         await transport.stop();
+        vi.useRealTimers();
+    });
+
+    it('suppresses a false offline when Helix reports the same stream', async () => {
+        vi.useFakeTimers();
+        try {
+            const onStreamOnline = vi.fn();
+            const onStreamOffline = vi.fn();
+            const transport = await createTwitchTransport({
+                authProvider: dummyAuthProvider,
+                botUserId: 'bot-id',
+                broadcasters: [{ login: 'streamer' }],
+                logger: testLogger,
+                offlineConfirmationMs: 100,
+                handlers: { onChatMessage: vi.fn(), onStreamOnline, onStreamOffline },
+            });
+            await transport.start();
+            const listener = listenerInstances[0] as any;
+            const startDate = new Date('2026-07-21T10:00:00Z');
+            listener.onStreamOnline.mock.calls[0][1]({
+                broadcasterId: 'channel-id',
+                broadcasterName: 'streamer',
+                broadcasterDisplayName: 'Streamer',
+                id: 'stream-123',
+                startDate,
+            });
+            listener.onStreamOffline.mock.calls[0][1]({
+                broadcasterId: 'channel-id',
+                broadcasterName: 'streamer',
+                broadcasterDisplayName: 'Streamer',
+            });
+            getStreamByUserIdSpy.mockResolvedValueOnce({
+                id: 'stream-123',
+                userId: 'channel-id',
+                userName: 'streamer',
+                userDisplayName: 'Streamer',
+                startDate,
+            });
+
+            await vi.advanceTimersByTimeAsync(100);
+            expect(onStreamOffline).not.toHaveBeenCalled();
+            expect(onStreamOnline).toHaveBeenLastCalledWith(
+                expect.objectContaining({ streamId: 'stream-123', recovered: true }),
+            );
+            await transport.stop();
+        } finally {
+            vi.useRealTimers();
+        }
+    });
+
+    it('fails soft when offline confirmation repeatedly fails', async () => {
+        vi.useFakeTimers();
+        try {
+            const onStreamOffline = vi.fn();
+            const transport = await createTwitchTransport({
+                authProvider: dummyAuthProvider,
+                botUserId: 'bot-id',
+                broadcasters: [{ login: 'streamer' }],
+                logger: testLogger,
+                offlineConfirmationMs: 100,
+                offlineRetryMs: 50,
+                handlers: {
+                    onChatMessage: vi.fn(),
+                    onStreamOnline: vi.fn(),
+                    onStreamOffline,
+                },
+            });
+            await transport.start();
+            const listener = listenerInstances[0] as any;
+            listener.onStreamOnline.mock.calls[0][1]({
+                broadcasterId: 'channel-id',
+                broadcasterName: 'streamer',
+                broadcasterDisplayName: 'Streamer',
+                id: 'stream-123',
+                startDate: new Date('2026-07-21T10:00:00Z'),
+            });
+            listener.onStreamOffline.mock.calls[0][1]({
+                broadcasterId: 'channel-id',
+                broadcasterName: 'streamer',
+                broadcasterDisplayName: 'Streamer',
+            });
+            getStreamByUserIdSpy.mockRejectedValue(new Error('unavailable'));
+
+            await vi.advanceTimersByTimeAsync(150);
+            expect(onStreamOffline).toHaveBeenCalledWith(
+                expect.objectContaining({ broadcasterId: 'channel-id', verified: false }),
+            );
+            await transport.stop();
+        } finally {
+            vi.useRealTimers();
+        }
     });
 });

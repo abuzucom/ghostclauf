@@ -1,0 +1,4 @@
+broadcaster:
+  login: "bad login; rm -rf /"
+bot:
+  login: valid_bot

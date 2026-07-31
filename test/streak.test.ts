@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
+    applyBroadcasterCheckin,
     applyCheckin,
+    attendanceDayKey,
     newViewerRecord,
     previousStreamDay,
     renderMessage,
@@ -33,6 +35,35 @@ describe('streamDayKey', () => {
 
     it('rolls Feb 28 to Mar 1 in a non-leap year (no Feb 29 to land on)', () => {
         expect(streamDayKey(new Date('2029-03-01T00:30:00.000Z'), 'UTC')).toBe('2029-03-01');
+    });
+});
+
+describe('attendanceDayKey', () => {
+    it('uses a 6AM America/Chicago boundary', () => {
+        expect(attendanceDayKey(new Date('2026-07-20T10:59:59Z'), 'America/Chicago', 6)).toBe(
+            '2026-07-19',
+        );
+        expect(attendanceDayKey(new Date('2026-07-20T11:00:00Z'), 'America/Chicago', 6)).toBe(
+            '2026-07-20',
+        );
+    });
+
+    it('handles the standard-time UTC offset', () => {
+        expect(attendanceDayKey(new Date('2026-01-20T11:59:59Z'), 'America/Chicago', 6)).toBe(
+            '2026-01-19',
+        );
+        expect(attendanceDayKey(new Date('2026-01-20T12:00:00Z'), 'America/Chicago', 6)).toBe(
+            '2026-01-20',
+        );
+    });
+
+    it('uses calendar boundaries across DST transitions', () => {
+        expect(attendanceDayKey(new Date('2026-03-08T10:30:00Z'), 'America/Chicago', 6)).toBe(
+            '2026-03-07',
+        );
+        expect(attendanceDayKey(new Date('2026-03-08T11:00:00Z'), 'America/Chicago', 6)).toBe(
+            '2026-03-08',
+        );
     });
 });
 
@@ -129,6 +160,55 @@ describe('applyCheckin', () => {
         applyCheckin(start, '2026-07-20', '2026-07-18');
         expect(start.currentStreak).toBe(1);
         expect(start.lastCheckinDay).toBe('2026-07-18');
+    });
+});
+
+describe('applyBroadcasterCheckin', () => {
+    function viewer(overrides: Partial<ViewerRecord> = {}): ViewerRecord {
+        return { ...newViewerRecord('foo', 'Foo'), ...overrides };
+    }
+
+    const established = viewer({
+        currentStreak: 5,
+        longestStreak: 5,
+        lastCheckinDay: '2026-07-20',
+        totalCheckins: 5,
+    });
+
+    it('extends after missing only one configured broadcaster', () => {
+        const result = applyBroadcasterCheckin(
+            established,
+            '2026-07-22',
+            new Set(['tank']),
+            new Set(['tank', 'dj']),
+        );
+        expect(result.outcome).toBe('extended');
+        expect(result.viewer.currentStreak).toBe(6);
+    });
+
+    it('restarts after missing every configured broadcaster', () => {
+        const result = applyBroadcasterCheckin(
+            established,
+            '2026-07-23',
+            new Set(['tank', 'dj']),
+            new Set(['tank', 'dj']),
+        );
+        expect(result.outcome).toBe('started');
+        expect(result.viewer.currentStreak).toBe(1);
+        expect(result.lostAmount).toBe(5);
+    });
+
+    it('treats same-day and older logical-day check-ins as already satisfied', () => {
+        for (const day of ['2026-07-20', '2026-07-19']) {
+            const result = applyBroadcasterCheckin(
+                established,
+                day,
+                new Set(),
+                new Set(['tank', 'dj']),
+            );
+            expect(result.outcome).toBe('already');
+            expect(result.viewer).toBe(established);
+        }
     });
 });
 
