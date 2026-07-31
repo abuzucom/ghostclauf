@@ -1,23 +1,32 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+    Replace CHANGE_ME with your macOS account's short user name before loading.
+    Keep the bot out of /Users/Shared: that directory is world-writable, so any
+    local account could read the OAuth token store under data/ or claim the
+    directory first. launchd does not expand "~", so these paths are absolute.
+-->
 <plist version="1.0">
 <dict>
     <key>Label</key>
     <string>com.ghostclauf.bot</string>
     <key>ProgramArguments</key>
     <array>
-        <string>/usr/local/bin/npm</string>
-        <string>start</string>
+        <string>/usr/local/bin/node</string>
+        <string>dist/index.js</string>
     </array>
     <key>WorkingDirectory</key>
-    <string>/Users/Shared/ghostclauf</string>
+    <string>/Users/CHANGE_ME/ghostclauf</string>
     <key>RunAtLoad</key>
     <true/>
     <key>KeepAlive</key>
     <true/>
+    <!-- 63 is 0o077: keep the log and token store owner-only. -->
+    <key>Umask</key>
+    <integer>63</integer>
     <key>StandardOutPath</key>
-    <string>/Users/Shared/ghostclauf/data/ghostclauf.log</string>
+    <string>/Users/CHANGE_ME/ghostclauf/data/ghostclauf.log</string>
     <key>StandardErrorPath</key>
-    <string>/Users/Shared/ghostclauf/data/ghostclauf.log</string>
+    <string>/Users/CHANGE_ME/ghostclauf/data/ghostclauf.log</string>
 </dict>
 </plist>

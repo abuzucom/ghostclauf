@@ -303,15 +303,25 @@ docker compose up -d
 
 **Running as a service:**
 
-- **Linux (Ubuntu - systemd):** Copy `scripts/ghostclauf.service` to `~/.config/systemd/user/ghostclauf.service`, update `WorkingDirectory`, then enable and start it:
+Both templates run `node dist/index.js` directly rather than `npm start`, so
+editing a `package.json` script cannot change what the service executes.
+
+- **Linux (Ubuntu - systemd):** Copy `scripts/ghostclauf.service` to `~/.config/systemd/user/ghostclauf.service`, update `WorkingDirectory` and `ReadWritePaths`, then enable and start it:
     ```bash
     systemctl --user daemon-reload
     systemctl --user enable --now ghostclauf
     ```
-- **macOS (launchd):** Copy `scripts/com.ghostclauf.bot.plist` to `~/Library/LaunchAgents/com.ghostclauf.bot.plist`, update `WorkingDirectory` and log paths, then load it:
+    The unit ships with `ProtectSystem=strict`, `ProtectHome=read-only`, and
+    `NoNewPrivileges`, and can only write `ReadWritePaths`. If you move
+    `WorkingDirectory` under `$HOME`, drop `ProtectHome` and repoint
+    `ReadWritePaths`, or the bot cannot persist its OAuth tokens.
+- **macOS (launchd):** Copy `scripts/com.ghostclauf.bot.plist` to `~/Library/LaunchAgents/com.ghostclauf.bot.plist`, replace every `CHANGE_ME` with your short user name, then load it:
     ```bash
     launchctl load ~/Library/LaunchAgents/com.ghostclauf.bot.plist
     ```
+    Install the bot under your own home directory, not `/Users/Shared`: that
+    directory is world-writable, so any local account could read the token
+    store under `data/` or claim the install path first.
 
 ## Configuration
 
