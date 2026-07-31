@@ -1,8 +1,8 @@
 import { randomUUID } from 'node:crypto';
-import { copyFile, mkdir, readFile, rename, writeFile } from 'node:fs/promises';
-import { dirname } from 'node:path';
+import { readFile, rename } from 'node:fs/promises';
 import { DateTime } from 'luxon';
 import type { Logger } from '../../core/types.js';
+import { AtomicJsonFile } from './atomicFile.js';
 
 function toIsoString(date: Date): string {
     return DateTime.fromJSDate(date).toUTC().toISO()!;
@@ -24,6 +24,12 @@ import type {
 } from './types.js';
 
 const SHARED_SCOPE_KEY = 'shared';
+
+/**
+ * Resolved penalties retained per viewer, per channel. Keeps the audit trail
+ * useful while bounding a file that is rewritten in full on every check-in.
+ */
+const MAX_RESOLVED_PENALTIES_PER_VIEWER = 50;
 
 function emptyData(): StreakData {
     return { version: 2, channels: {} };
@@ -85,6 +91,10 @@ function isSession(value: unknown): value is BroadcasterSession {
     );
 }
 
+function isNullableString(value: unknown): boolean {
+    return value === null || typeof value === 'string';
+}
+
 function isPenalty(value: unknown): value is StreakPenaltyRecord {
     if (typeof value !== 'object' || value === null) return false;
     const penalty = value as Partial<StreakPenaltyRecord>;
@@ -95,6 +105,13 @@ function isPenalty(value: unknown): value is StreakPenaltyRecord {
         typeof penalty.broadcasterId === 'string' &&
         typeof penalty.recordedAt === 'string' &&
         Number.isFinite(penalty.lostAmount) &&
+        // Every reader tests these against null. An absent field would read as
+        // "already repaired" and hide the penalty from !fixstreak, so require
+        // them to be present rather than defaulting them.
+        isNullableString(penalty.restoredAt) &&
+        isNullableString(penalty.restoredByChatterId) &&
+        isNullableString(penalty.restoredByBroadcasterId) &&
+        isNullableString(penalty.supersededAt) &&
         isViewerRecord(penalty.before) &&
         isViewerRecord(penalty.after)
     );
@@ -189,13 +206,14 @@ export class StreakStore {
     private data: StreakData = emptyData();
     private saveChain: Promise<void> = Promise.resolve();
     private pendingWrite: Promise<void> | null = null;
-    private writeSeq = 0;
-    private hasPersistedPrimary = false;
+    private readonly file: AtomicJsonFile;
 
     constructor(
         private readonly dataPath: string,
         private readonly logger: Logger,
-    ) {}
+    ) {
+        this.file = new AtomicJsonFile(dataPath);
+    }
 
     async load(): Promise<void> {
         let raw: string;
@@ -211,11 +229,28 @@ export class StreakStore {
         }
         try {
             this.data = parseData(raw);
-            this.hasPersistedPrimary = true;
+            this.file.markExisting();
         } catch (err) {
             await this.backupCorruptFile(err);
             this.data = await this.loadPreviousBackup();
         }
+        await this.prunePenaltyHistory();
+    }
+
+    /**
+     * Trim resolved penalty history at startup, when no command is mid-flight.
+     * Unrepaired penalties are never dropped, so !fixstreak still reaches them.
+     */
+    private async prunePenaltyHistory(): Promise<void> {
+        let removed = 0;
+        for (const channel of Object.values(this.data.channels)) {
+            const pruned = pruneResolvedPenalties(channel.penalties);
+            removed += channel.penalties.length - pruned.length;
+            channel.penalties = pruned;
+        }
+        if (removed === 0) return;
+        this.logger.info({ removed }, 'pruned resolved streak penalties');
+        await this.persist();
     }
 
     private async loadPreviousBackup(): Promise<StreakData> {
@@ -491,25 +526,11 @@ export class StreakStore {
         if (this.pendingWrite) return this.pendingWrite;
         const write = this.saveChain.then(async () => {
             this.pendingWrite = null;
-            await this.writeAtomic(JSON.stringify(this.data, null, 2));
+            await this.file.write(JSON.stringify(this.data, null, 2));
         });
         this.pendingWrite = write;
         this.saveChain = write.catch(() => {});
         return write;
-    }
-
-    private async writeAtomic(json: string): Promise<void> {
-        await mkdir(dirname(this.dataPath), { recursive: true });
-        this.writeSeq += 1;
-        if (this.hasPersistedPrimary) {
-            const backupTemp = `${this.dataPath}.bak.${this.writeSeq}.tmp`;
-            await copyFile(this.dataPath, backupTemp);
-            await rename(backupTemp, `${this.dataPath}.bak`);
-        }
-        const tempPath = `${this.dataPath}.${this.writeSeq}.tmp`;
-        await writeFile(tempPath, json, 'utf8');
-        await rename(tempPath, this.dataPath);
-        this.hasPersistedPrimary = true;
     }
 
     async flush(): Promise<void> {
@@ -565,6 +586,28 @@ function latestRecordedDay(channel: ChannelRecord): string | null {
         ...Object.values(channel.qualifiedDaysByBroadcaster).flat(),
     ].sort();
     return days.at(-1) ?? null;
+}
+
+/**
+ * Drop the oldest repaired or superseded penalties per viewer once they exceed
+ * MAX_RESOLVED_PENALTIES_PER_VIEWER. Unrepaired penalties are always kept.
+ */
+function pruneResolvedPenalties(penalties: StreakPenaltyRecord[]): StreakPenaltyRecord[] {
+    const seen = new Map<string, number>();
+    const keep = new Set<StreakPenaltyRecord>();
+    for (let i = penalties.length - 1; i >= 0; i -= 1) {
+        const penalty = penalties[i]!;
+        if (penalty.restoredAt === null && penalty.supersededAt === null) {
+            keep.add(penalty);
+            continue;
+        }
+        const count = seen.get(penalty.chatterId) ?? 0;
+        if (count < MAX_RESOLVED_PENALTIES_PER_VIEWER) {
+            keep.add(penalty);
+            seen.set(penalty.chatterId, count + 1);
+        }
+    }
+    return penalties.filter((penalty) => keep.has(penalty));
 }
 
 function supersedePenalties(channel: ChannelRecord, chatterId: string, now: Date): void {

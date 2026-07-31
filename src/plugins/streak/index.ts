@@ -314,11 +314,13 @@ function checkinHandler(runtime: Runtime): CommandHandler {
         const now = runtime.now();
         if (cooldown.shouldThrottle(`${scope}:${event.chatterId}`, now.getTime())) return;
         const modern = usesBroadcasterPolicy(runtime.cfg);
-        const session = runtime.store.getSession(scope, event.broadcasterId);
-        const open = modern
-            ? runtime.liveBroadcasters.has(event.broadcasterId) && session?.logicalDay !== null
-            : await ensureLegacyOpen(runtime, scope, event.broadcasterId, now);
-        if (!open) {
+        // Resolve the day check-in would count toward, or null when check-in
+        // is closed. Deriving both from one value keeps the open test and the
+        // day it implies from ever disagreeing.
+        const day = modern
+            ? resolveModernDay(runtime, scope, event.broadcasterId)
+            : await resolveOpenLegacyDay(runtime, scope, event.broadcasterId, now);
+        if (day === null) {
             await ctx.say(
                 renderMessage(runtime.cfg.messages.notOpen, { user: event.chatterDisplayName }),
                 event.messageId,
@@ -326,9 +328,6 @@ function checkinHandler(runtime: Runtime): CommandHandler {
             );
             return;
         }
-        const day = modern
-            ? session!.logicalDay!
-            : resolveLegacyDay(runtime.store, runtime.cfg, scope, now);
         if (modern) await qualifyCurrentInterval(runtime, event.broadcasterId);
         const result = modern
             ? await runtime.store.checkInBroadcaster(
@@ -359,6 +358,28 @@ function checkinHandler(runtime: Runtime): CommandHandler {
             event.broadcasterId,
         );
     };
+}
+
+/**
+ * The logical day an all-broadcasters check-in counts toward, or null when
+ * check-in is closed. A broadcaster in the live set with no persisted logical
+ * day means the in-memory set and the session store have diverged; report
+ * closed rather than writing an undefined day key into viewer records.
+ */
+function resolveModernDay(runtime: Runtime, scope: string, broadcasterId: string): string | null {
+    if (!runtime.liveBroadcasters.has(broadcasterId)) return null;
+    return runtime.store.getSession(scope, broadcasterId)?.logicalDay ?? null;
+}
+
+/** The legacy check-in day, or null when check-in is closed. */
+async function resolveOpenLegacyDay(
+    runtime: Runtime,
+    scope: string,
+    broadcasterId: string,
+    now: Date,
+): Promise<string | null> {
+    const open = await ensureLegacyOpen(runtime, scope, broadcasterId, now);
+    return open ? resolveLegacyDay(runtime.store, runtime.cfg, scope, now) : null;
 }
 
 function resolveLegacyDay(

@@ -84,8 +84,19 @@ Commands (trigger words configurable):
 | `!undostreakset @user` | broadcaster only  | Reverse the latest authoritative manual set.                                 |
 | `!streakopen`          | broadcaster / mod | Mark today a stream day and the channel live, if `stream.online` was missed. |
 
+**Pooled channels share one administrative trust boundary.** With
+`shareAcrossChannels: true` (the default) the admin commands above act on the
+shared pool, so the broadcaster of _any_ configured channel can reset, set,
+repair, or undo streaks that every pooled channel sees. This is intended - the
+pool exists for one streamer's own channels - so only pool broadcasters you
+trust equally. Set `shareAcrossChannels: false` to give each channel its own
+independent streaks and its own administrators.
+
 State persists to `dataPath` (default `./data/streaks.json`) with a previous
-snapshot at `<dataPath>.bak`. Manual decisions persist to `decisionPath`. Day
+snapshot at `<dataPath>.bak`. Both files are written owner-only (0600), since
+they hold viewer logins and IDs. Manual decisions persist to `decisionPath`.
+Resolved penalties and decisions are trimmed to the 50 most recent per viewer
+at startup; unrepaired penalties and reversible sets are never trimmed. Day
 boundaries use the configured IANA `timezone`. See
 [`config.example.yaml`](config.example.yaml) for all options.
 

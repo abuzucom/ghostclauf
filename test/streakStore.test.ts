@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, readdir, rename, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, readdir, rename, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { basename, dirname, join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -7,6 +7,24 @@ import { makeSpyLogger } from './helpers.js';
 
 const BID = 'chan-1';
 const CID = 'viewer-1';
+
+/** A minimal valid viewer record, for building on-disk fixtures. */
+function newViewer(): Record<string, unknown> {
+    return {
+        chatterName: 'viewer',
+        displayName: 'Viewer',
+        currentStreak: 0,
+        longestStreak: 0,
+        lastCheckinDay: null,
+        totalCheckins: 0,
+    };
+}
+
+/** The YYYY-MM-DD key `days` after 2026-01-01, for building long histories. */
+function dayOffset(days: number): string {
+    const date = new Date(Date.UTC(2026, 0, 1) + days * 86_400_000);
+    return date.toISOString().slice(0, 10);
+}
 
 /** A UTC instant on the given YYYY-MM-DD day, for recordStreamDay's startedAt. */
 function instantOn(day: string, hour = 20): Date {
@@ -48,6 +66,62 @@ describe('StreakStore', () => {
         const parsed = JSON.parse(raw);
         expect(parsed.version).toBe(2);
         expect(raw).toBe(JSON.stringify(parsed, null, 2));
+    });
+
+    it('writes the database and its backup owner-readable only', async () => {
+        if (process.platform === 'win32') return;
+        const store = new StreakStore(dataPath, makeSpyLogger().logger);
+        await store.load();
+        // Two writes: the second produces the .bak snapshot of the first.
+        await store.recordStreamDay(BID, '2026-07-20', instantOn('2026-07-20'));
+        await store.recordStreamDay(BID, '2026-07-21', instantOn('2026-07-21'));
+
+        // The files hold viewer chatter IDs and logins; keep other local
+        // accounts out of them.
+        expect((await stat(dataPath)).mode & 0o077).toBe(0);
+        expect((await stat(`${dataPath}.bak`)).mode & 0o077).toBe(0);
+    });
+
+    it('rejects a penalty record whose nullable audit fields are missing', async () => {
+        // A partially written or hand-edited penalty must not load as valid:
+        // reading `restoredAt === null` on an absent field silently marks the
+        // penalty repaired, so !fixstreak would refuse to restore it.
+        await mkdir(dirname(dataPath), { recursive: true });
+        const malformed = {
+            version: 2,
+            channels: {
+                shared: {
+                    streamDays: [],
+                    activeStreamStartedAt: null,
+                    qualifiedDaysByBroadcaster: {},
+                    sessionsByBroadcaster: {},
+                    viewers: {},
+                    penalties: [
+                        {
+                            id: 'p1',
+                            chatterId: CID,
+                            chatterName: 'viewer',
+                            displayName: 'Viewer',
+                            checkinDay: '2026-07-20',
+                            broadcasterId: 'tank',
+                            recordedAt: '2026-07-20T20:00:00.000Z',
+                            lostAmount: 4,
+                            before: newViewer(),
+                            after: newViewer(),
+                            // restoredAt / supersededAt deliberately absent.
+                        },
+                    ],
+                },
+            },
+        };
+        await writeFile(dataPath, JSON.stringify(malformed), 'utf8');
+        const spy = makeSpyLogger();
+
+        const store = new StreakStore(dataPath, spy.logger);
+        await store.load();
+
+        expect(store.hasUnrepairedPenaltyAfter('shared', CID, '2026-07-01')).toBe(false);
+        expect(spy.error).toHaveBeenCalled();
     });
 
     it('records qualified days by broadcaster and finds misses in an interval', async () => {
@@ -280,5 +354,44 @@ describe('StreakStore', () => {
         await store.flush();
         expect(writeFinished).toBe(true);
         await writePromise; // Ensure we clean up the promise
+    });
+
+    it('prunes resolved penalties beyond the retention cap but keeps unrepaired ones', async () => {
+        const store = new StreakStore(dataPath, makeSpyLogger().logger);
+        await store.load();
+        const required = new Set(['tank', 'dj']);
+        // Check in every other day, with both broadcasters qualifying on the
+        // day between, so each check-in after the first breaks the streak and
+        // records a penalty.
+        for (let i = 0; i <= 60; i += 1) {
+            const day = dayOffset(i * 2);
+            await store.checkInBroadcaster(
+                'shared',
+                CID,
+                'viewer',
+                'Viewer',
+                day,
+                required,
+                'tank',
+                instantOn('2026-01-01'),
+            );
+            await store.recordQualifiedDay('shared', 'tank', dayOffset(i * 2 + 1));
+            await store.recordQualifiedDay('shared', 'dj', dayOffset(i * 2 + 1));
+            // Repair all but the most recent, leaving one live penalty.
+            if (i < 60) await store.fixLatestPenalty('shared', CID, 'owner', 'tank');
+        }
+        await store.flush();
+        const before = JSON.parse(await readFile(dataPath, 'utf8'));
+        expect(before.channels.shared.penalties.length).toBeGreaterThan(50);
+
+        const reloaded = new StreakStore(dataPath, makeSpyLogger().logger);
+        await reloaded.load();
+        await reloaded.flush();
+        const after = JSON.parse(await readFile(dataPath, 'utf8'));
+
+        expect(after.channels.shared.penalties.length).toBe(51);
+        // The unrepaired penalty survives pruning and is still repairable.
+        expect(reloaded.hasUnrepairedPenaltyAfter('shared', CID, '2026-01-01')).toBe(true);
+        expect(await reloaded.fixLatestPenalty('shared', CID, 'owner', 'tank')).not.toBeNull();
     });
 });

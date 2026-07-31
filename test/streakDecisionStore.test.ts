@@ -91,4 +91,26 @@ describe('StreakDecisionStore', () => {
         await cancelled.reconcile(() => null);
         expect(cancelled.latest('shared', 'viewer-1')).not.toBeNull();
     });
+
+    it('prunes resolved decisions beyond the retention cap but keeps live ones', async () => {
+        const store = new StreakDecisionStore(path, makeSpyLogger().logger);
+        await store.load();
+        // 60 resolved decisions (each set is superseded by the next) plus one
+        // live decision left at the end.
+        for (let i = 0; i < 60; i += 1) {
+            await store.recordSet('shared', 'viewer-1', 'viewer', i, i + 1, 0, 'owner', 'tank');
+            await store.supersede('shared', 'viewer-1');
+        }
+        await store.recordSet('shared', 'viewer-1', 'viewer', 60, 61, 0, 'owner', 'tank');
+        await store.flush();
+
+        const reloaded = new StreakDecisionStore(path, makeSpyLogger().logger);
+        await reloaded.load();
+        await reloaded.flush();
+        const persisted = JSON.parse(await readFile(path, 'utf8'));
+
+        expect(persisted.decisions.length).toBe(51);
+        // The live decision survives and is still reversible.
+        expect(reloaded.latest('shared', 'viewer-1')?.afterStreak).toBe(61);
+    });
 });

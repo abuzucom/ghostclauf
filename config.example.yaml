@@ -87,8 +87,10 @@ plugins:
             # Pool streak state across every broadcaster configured above (useful when
             # they're all the same streamer's channels). Set false to keep each
             # channel's streaks fully independent. Note: when pooled, the broadcaster
-            # of ANY configured channel can !streakset / !streakreset viewers in the
-            # shared pool, affecting every channel.
+            # of ANY configured channel can run every admin command (!streakset,
+            # !streakreset, !fixstreak, !undostreakset) against viewers in the shared
+            # pool, affecting every channel. Pooled channels are one administrative
+            # trust boundary: only pool broadcasters you trust equally.
             shareAcrossChannels: true
             # Seconds a chatter must wait between handled !checkin attempts; repeats
             # inside the window are silently ignored (protects the store from chat

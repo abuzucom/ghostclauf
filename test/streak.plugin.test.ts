@@ -506,4 +506,39 @@ describe('streak plugin', () => {
         expect(say.mock.calls.at(-1)?.[0]).toContain('Current streak: 3');
         await plugin.dispose?.(ctx);
     });
+
+    it('lets only the broadcaster repair a penalty or undo a set', async () => {
+        const now = new Date('2026-07-20T20:00:00.000Z');
+        const plugin = createStreakPlugin(() => now);
+        const { ctx, bus, say, registry } = harness();
+        await plugin.init(ctx);
+        bus.emit('streamOnline', onlineNow('1', now));
+        await flush();
+        await registry.handle(makeMessage('!checkin', ['everyone']));
+        say.mockClear();
+
+        // Both commands mutate persisted streak values, so the gate must hold
+        // for plain viewers and moderators alike.
+        for (const trigger of ['!fixstreak @viewer', '!undostreakset @viewer']) {
+            await registry.handle(makeMessage(trigger, ['everyone']));
+            expect(say).not.toHaveBeenCalled();
+
+            await registry.handle(makeMessage(trigger, ['everyone', 'moderator']));
+            expect(say).not.toHaveBeenCalled();
+
+            await registry.handle(makeMessage(trigger, ['everyone', 'vip']));
+            expect(say).not.toHaveBeenCalled();
+
+            await registry.handle(makeMessage(trigger, ['everyone', 'subscriber']));
+            expect(say).not.toHaveBeenCalled();
+
+            // The broadcaster reaches the handler: no penalty and no manual
+            // set exist yet, so each reports "none" rather than staying silent.
+            await registry.handle(makeMessage(trigger, ['everyone', 'broadcaster']));
+            expect(say).toHaveBeenCalledTimes(1);
+            say.mockClear();
+        }
+
+        await plugin.dispose?.(ctx);
+    });
 });
