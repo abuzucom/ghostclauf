@@ -14,7 +14,7 @@ const DEFAULT_TEMPLATE = '{streamer} has gone live at {timestamp}';
 
 export function formatTimestamp(date: Date, format: TimestampFormat): string {
     const dt = DateTime.fromJSDate(date).toUTC();
-    return format === 'utc' ? dt.toHTTP() ?? date.toUTCString() : dt.toISO() ?? date.toISOString();
+    return format === 'utc' ? dt.toHTTP()! : dt.toISO()!;
 }
 
 export function renderAnnouncement(

@@ -1,7 +1,12 @@
 import { randomUUID } from 'node:crypto';
 import { copyFile, mkdir, readFile, rename, writeFile } from 'node:fs/promises';
 import { dirname } from 'node:path';
+import { DateTime } from 'luxon';
 import type { Logger } from '../../core/types.js';
+
+function toIsoString(date: Date): string {
+    return DateTime.fromJSDate(date).toUTC().toISO()!;
+}
 
 export interface StreakDecision {
     id: string;
@@ -173,7 +178,7 @@ export class StreakDecisionStore {
             afterStreak,
             previousLongest,
             adjustment: afterStreak - beforeStreak,
-            createdAt: now.toISOString(),
+            createdAt: toIsoString(now),
             createdByChatterId,
             createdInBroadcasterId,
             status: 'pending',
@@ -257,7 +262,7 @@ export class StreakDecisionStore {
         const transactionId = randomUUID();
         decision.pendingReversal = {
             id: transactionId,
-            createdAt: now.toISOString(),
+            createdAt: toIsoString(now),
             reversedByChatterId,
             reversedInBroadcasterId,
         };
@@ -318,7 +323,7 @@ export class StreakDecisionStore {
     }
 
     async supersede(scope: string, chatterId: string, now: Date = new Date()): Promise<void> {
-        const timestamp = now.toISOString();
+        const timestamp = toIsoString(now);
         let changed = false;
         for (const decision of this.data.decisions) {
             if (

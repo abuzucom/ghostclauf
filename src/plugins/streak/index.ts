@@ -68,6 +68,10 @@ const MAX_MINUTES = 1440;
 const MS_PER_SECOND = 1000;
 const MS_PER_MINUTE = 60_000;
 
+function toIsoString(date: Date): string {
+    return DateTime.fromJSDate(date).toUTC().toISO()!;
+}
+
 function resolveBoundedInt(
     configured: number | undefined,
     min: number,
@@ -239,15 +243,15 @@ async function handleOnline(runtime: Runtime, event: StreamOnlineEvent): Promise
     const intervalStart =
         sameStream && previous.currentIntervalStartedAt
             ? previous.currentIntervalStartedAt
-            : event.startedAt.toISOString();
+            : toIsoString(event.startedAt);
     const session: BroadcasterSession = {
         logicalDay: day,
         logicalSessionStartedAt:
             reconnect && previous.logicalSessionStartedAt
                 ? previous.logicalSessionStartedAt
-                : event.startedAt.toISOString(),
+                : toIsoString(event.startedAt),
         currentIntervalStartedAt: intervalStart,
-        currentStreamId: event.streamId ?? event.startedAt.toISOString(),
+        currentStreamId: event.streamId ?? toIsoString(event.startedAt),
         lastOfflineAt: previous.lastOfflineAt,
         pendingOfflineAt: null,
         status: 'live',
@@ -274,7 +278,7 @@ async function handlePendingOffline(
     const session = runtime.store.getSession(scope, broadcasterId);
     if (!session) return;
     session.status = 'pending-offline';
-    session.pendingOfflineAt = observedAt.toISOString();
+    session.pendingOfflineAt = toIsoString(observedAt);
     await runtime.store.setSession(scope, broadcasterId, session);
 }
 
@@ -292,8 +296,8 @@ async function handleOffline(
     runtime.liveBroadcasters.delete(broadcasterId);
     if (!session) return;
     session.status = verified ? 'offline' : 'unverified-offline';
-    session.lastOfflineAt = observedAt.toISOString();
-    session.pendingOfflineAt = observedAt.toISOString();
+    session.lastOfflineAt = toIsoString(observedAt);
+    session.pendingOfflineAt = toIsoString(observedAt);
     await runtime.store.setSession(scope, broadcasterId, session);
     if (verified) await qualifyCurrentInterval(runtime, broadcasterId);
     const currentSession = runtime.store.getSession(scope, broadcasterId);
@@ -621,7 +625,7 @@ function openHandler(runtime: Runtime): CommandHandler {
                 broadcasterId: event.broadcasterId,
                 broadcasterName: event.broadcasterName,
                 broadcasterDisplayName: event.broadcasterName,
-                streamId: `manual:${now.toISOString()}`,
+                streamId: `manual:${toIsoString(now)}`,
                 startedAt: now,
             });
         } else {

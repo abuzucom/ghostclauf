@@ -1,7 +1,12 @@
 import { randomUUID } from 'node:crypto';
 import { copyFile, mkdir, readFile, rename, writeFile } from 'node:fs/promises';
 import { dirname } from 'node:path';
+import { DateTime } from 'luxon';
 import type { Logger } from '../../core/types.js';
+
+function toIsoString(date: Date): string {
+    return DateTime.fromJSDate(date).toUTC().toISO()!;
+}
 import {
     applyBroadcasterCheckin,
     applyCheckin,
@@ -259,7 +264,7 @@ export class StreakStore {
     async recordStreamDay(channelKey: string, day: string, startedAt: Date): Promise<boolean> {
         const channel = this.channel(channelKey);
         const isNewDay = addSortedDay(channel.streamDays, day);
-        const startedAtIso = startedAt.toISOString();
+        const startedAtIso = toIsoString(startedAt);
         const previousAnchor = channel.activeStreamStartedAt;
         const anchorChanged = previousAnchor === null || startedAtIso > previousAnchor;
         if (anchorChanged) channel.activeStreamStartedAt = startedAtIso;
@@ -403,7 +408,7 @@ export class StreakStore {
         if (!penalty) return null;
         viewer.currentStreak += penalty.lostAmount;
         viewer.longestStreak = Math.max(viewer.longestStreak, viewer.currentStreak);
-        penalty.restoredAt = restoredAt.toISOString();
+        penalty.restoredAt = toIsoString(restoredAt);
         penalty.restoredByChatterId = restoredByChatterId;
         penalty.restoredByBroadcasterId = restoredByBroadcasterId;
         await this.persist();
@@ -543,7 +548,7 @@ function createPenalty(
         displayName: after.displayName,
         checkinDay,
         broadcasterId,
-        recordedAt: recordedAt.toISOString(),
+        recordedAt: toIsoString(recordedAt),
         lostAmount,
         before: cloneViewer(before),
         after: cloneViewer(after),
@@ -563,7 +568,7 @@ function latestRecordedDay(channel: ChannelRecord): string | null {
 }
 
 function supersedePenalties(channel: ChannelRecord, chatterId: string, now: Date): void {
-    const timestamp = now.toISOString();
+    const timestamp = toIsoString(now);
     for (const penalty of channel.penalties) {
         if (
             penalty.chatterId === chatterId &&
