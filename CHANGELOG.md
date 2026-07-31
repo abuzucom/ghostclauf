@@ -19,13 +19,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Linux and macOS support: added POSIX shell scripts (`setup.sh`, `run.sh`) and service configurations (`scripts/ghostclauf.service` for systemd on Linux and `scripts/com.ghostclauf.bot.plist` for launchd on macOS).
+- CI workflow expansion: extended `.github/workflows/ci.yml` matrix to build and test on `ubuntu-latest`, `macos-latest`, and `windows-latest`.
+- `EventBus.drain()` & `BotContext.drain()`: introduced in-flight handler tracking in `EventBus` so plugins can await pending async event handlers before shutdown or store flushing.
 - CI lint tooling: ESLint (with `@typescript-eslint`) and Prettier are now
   configured and enforced, and devDependencies are strictly version-pinned.
 - Graceful shutdown lifecycle: `PluginManager.disposeAll()` cleans up plugins
   in reverse-init order, and `StreakStore.flush()` ensures in-flight disk
   writes finish before exit.
 
-### Added
+### Fixed
+
+- `streak` plugin: fixed a race condition in `handleOffline` by committing `lastOfflineAt` to session state before yielding to `qualifyCurrentInterval()`, preventing rapid reconnects from failing `isReconnect` checks.
+- Prettier line ending compatibility: configured `endOfLine: "auto"` in `.prettierrc` to support cross-platform line endings across POSIX and Windows checkouts in CI.
 
 - `streak` plugin: optional shared-audience policy with broadcaster-local
   sessions, a configurable local rollover hour, reconnect grace, and a minimum

@@ -286,14 +286,13 @@ async function handleOffline(
     const session = runtime.store.getSession(scope, broadcasterId);
     runtime.liveBroadcasters.delete(broadcasterId);
     if (!session) return;
-    // Commit lastOfflineAt before yielding so a concurrent handleOnline
-    // triggered by a rapid reconnect sees the correct value for isReconnect.
-    const observedAtIso = observedAt.toISOString();
-    session.pendingOfflineAt = observedAtIso;
-    session.lastOfflineAt = observedAtIso;
     session.status = verified ? 'offline' : 'unverified-offline';
+    session.lastOfflineAt = observedAt.toISOString();
+    session.pendingOfflineAt = observedAt.toISOString();
     await runtime.store.setSession(scope, broadcasterId, session);
     if (verified) await qualifyCurrentInterval(runtime, broadcasterId);
+    session.pendingOfflineAt = null;
+    await runtime.store.setSession(scope, broadcasterId, session);
 }
 
 function checkinHandler(runtime: Runtime): CommandHandler {
