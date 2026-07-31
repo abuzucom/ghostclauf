@@ -286,12 +286,14 @@ async function handleOffline(
     const session = runtime.store.getSession(scope, broadcasterId);
     runtime.liveBroadcasters.delete(broadcasterId);
     if (!session) return;
-    session.pendingOfflineAt = observedAt.toISOString();
-    if (verified) await qualifyCurrentInterval(runtime, broadcasterId);
+    // Commit lastOfflineAt before yielding so a concurrent handleOnline
+    // triggered by a rapid reconnect sees the correct value for isReconnect.
+    const observedAtIso = observedAt.toISOString();
+    session.pendingOfflineAt = observedAtIso;
+    session.lastOfflineAt = observedAtIso;
     session.status = verified ? 'offline' : 'unverified-offline';
-    session.lastOfflineAt = observedAt.toISOString();
-    session.pendingOfflineAt = null;
     await runtime.store.setSession(scope, broadcasterId, session);
+    if (verified) await qualifyCurrentInterval(runtime, broadcasterId);
 }
 
 function checkinHandler(runtime: Runtime): CommandHandler {
@@ -732,9 +734,12 @@ export function createStreakPlugin(now: () => Date = () => new Date()): Plugin {
                 ),
             );
         },
-        async dispose() {
+        async dispose(ctx) {
             if (!runtime) return;
             for (const timer of runtime.qualificationTimers.values()) clearTimeout(timer);
+            // Drain all in-flight event handlers before flushing so no write is
+            // orphaned after the store chain resolves (especially on Windows).
+            await ctx.drain();
             await Promise.all([runtime.store.flush(), runtime.decisions.flush()]);
         },
     };

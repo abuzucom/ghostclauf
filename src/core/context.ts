@@ -40,6 +40,7 @@ export function createContext(deps: ContextDeps): BotContext {
         },
         command: (def) => registry.register(pluginName, def, ctx),
         on: (event, handler) => bus.on(event, handler),
+        drain: () => bus.drain(),
     };
 
     return ctx;

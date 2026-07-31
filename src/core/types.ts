@@ -177,6 +177,11 @@ export interface BotContext {
         event: E,
         handler: (payload: BotEvents[E]) => void | Promise<void>,
     ): void;
+    /**
+     * Resolve once all in-flight event handlers have settled. Call this in
+     * `dispose()` before flushing stores to avoid orphaned async writes.
+     */
+    drain(): Promise<void>;
 }
 
 /** A plugin module's default export. */
