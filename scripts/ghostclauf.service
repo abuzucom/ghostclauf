@@ -1,0 +1,14 @@
+[Unit]
+Description=ghostclauf Twitch Chat Bot
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/ghostclauf
+ExecStart=/usr/bin/npm start
+Restart=on-failure
+RestartSec=10
+Environment=NODE_ENV=production
+
+[Install]
+WantedBy=default.target

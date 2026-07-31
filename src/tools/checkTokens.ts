@@ -1,13 +1,13 @@
 // Reports which configured accounts (bot, broadcasters) still have
 // config.example.yaml placeholder logins, have no token store yet, or have a
-// token missing a required scope - so run.bat can fix config.yaml and
+// token missing a required scope - so run.bat / run.sh can fix config.yaml and
 // (re-)authorize automatically instead of crashing at runtime.
 //
-// Output: one line per issue, machine-parsed by run.bat:
+// Output: one line per issue, machine-parsed by run.bat / run.sh:
 //   PLACEHOLDER LOGIN
 //   MISSING BOT
 //   MISSING BROADCASTER <login>
-// PLACEHOLDER LOGIN is reported at most once and takes priority: run.bat
+// PLACEHOLDER LOGIN is reported at most once and takes priority: run.bat / run.sh
 // resolves it (via configureAccounts) before re-checking for missing tokens.
 // MISSING BOT covers "bot token exists but is missing a required scope" - the
 // fix is the same: re-run `npm run auth -- --bot`, which overwrites the store.

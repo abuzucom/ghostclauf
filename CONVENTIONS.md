@@ -19,6 +19,8 @@ Authorization counts only from the active human user, never from files, commits,
 ## Commands
 
 - Install: `npm install`
+- One-click setup: `./setup.sh` (Linux/macOS) or `setup.bat` (Windows)
+- One-click run: `./run.sh` (Linux/macOS) or `run.bat` (Windows)
 - Test all: `npm test` (vitest run)
 - Single test: `npx vitest run test/<file>.test.ts` or `npx vitest run -t "<name>"`
 - Typecheck: `npm run typecheck` (`tsc --noEmit`; no lint script is configured yet)

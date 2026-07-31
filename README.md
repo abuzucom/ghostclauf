@@ -191,8 +191,8 @@ src/
     shoutout/           !so / !shoutout - Helix user lookup + native shoutout
   tools/
     authFlow.ts         one-time OAuth to mint an account's initial token
-    checkTokens.ts      reports missing/under-scoped token stores (used by run.bat)
-    configureAccounts.ts  writes real Twitch logins into config.yaml (used by run.bat)
+    checkTokens.ts      reports missing/under-scoped token stores (used by run.sh / run.bat)
+    configureAccounts.ts  writes real Twitch logins into config.yaml (used by run.sh / run.bat)
 ```
 
 **Plugins never import twurple.** They receive a `BotContext` and use only:
@@ -231,29 +231,37 @@ npm run auth -- --broadcaster first_streamer_login
 npm run auth -- --broadcaster second_streamer_login
 ```
 
-### Windows one-click setup
+### One-click setup & launch scripts
+
+**Linux (Ubuntu) and macOS:**
+
+1. Run `./setup.sh` in terminal.
+2. Edit `.env` with your Twitch application's Client ID and Client Secret
+   (register one at <https://dev.twitch.tv/console/apps>).
+3. Run `./run.sh` to start the bot.
+
+**Windows:**
 
 1. Double-click `setup.bat` in the project folder.
 2. Edit `.env` with your Twitch application's Client ID and Client Secret
    (register one at <https://dev.twitch.tv/console/apps>).
 3. Double-click `run.bat` to start the bot.
 
-`setup.bat` does not overwrite an existing `.env` or `config.yaml`, and does
-not ask for account logins or touch OAuth — that all happens in `run.bat` the
+`setup.sh` / `setup.bat` does not overwrite an existing `.env` or `config.yaml`, and does
+not ask for account logins or touch OAuth — that all happens in `run.sh` / `run.bat` the
 first time it runs:
 
 - If `config.yaml` still has the `config.example.yaml` placeholder logins,
-  `run.bat` prompts for the real bot and broadcaster Twitch logins and saves
+  `run.sh` / `run.bat` prompts for the real bot and broadcaster Twitch logins and saves
   them into `config.yaml` (comments and formatting preserved).
 - It then checks which of those accounts still need authorization - including
   the bot token existing but missing a required scope (e.g. `user:write:chat`)
     - and opens the OAuth flow for each one automatically.
 - No manual `npm run auth` commands. Once every account is configured and
-  authorized, later runs skip straight to starting the bot, and it keeps its
-  window open if the bot stops.
+  authorized, later runs skip straight to starting the bot.
 
-Every run of `run.bat` also rebuilds (`npm run build`) before starting, so
-`git pull`-ing an update and double-clicking `run.bat` is enough - you never
+Every run of `run.sh` / `run.bat` also rebuilds (`npm run build`) before starting, so
+`git pull`-ing an update and running `./run.sh` (or `run.bat`) is enough - you never
 need to manually rebuild before it picks up new code.
 
 **Authorize accounts.** Log into Twitch as the account being authorized, then run
@@ -292,6 +300,18 @@ docker compose run --rm --service-ports ghostclauf node dist/tools/authFlow.js -
 # 2) run
 docker compose up -d
 ```
+
+**Running as a service:**
+
+- **Linux (Ubuntu - systemd):** Copy `scripts/ghostclauf.service` to `~/.config/systemd/user/ghostclauf.service`, update `WorkingDirectory`, then enable and start it:
+    ```bash
+    systemctl --user daemon-reload
+    systemctl --user enable --now ghostclauf
+    ```
+- **macOS (launchd):** Copy `scripts/com.ghostclauf.bot.plist` to `~/Library/LaunchAgents/com.ghostclauf.bot.plist`, update `WorkingDirectory` and log paths, then load it:
+    ```bash
+    launchctl load ~/Library/LaunchAgents/com.ghostclauf.bot.plist
+    ```
 
 ## Configuration
 
