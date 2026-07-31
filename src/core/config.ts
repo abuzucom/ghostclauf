@@ -1,10 +1,22 @@
 import { readFileSync } from 'node:fs';
 import { parse as parseYaml } from 'yaml';
 import { z } from 'zod';
+import { isPlaceholderLogin, LOGIN_PATTERN } from './logins.js';
 
 // ── File config (config.yaml) — non-secret ──────────────────────────────────
+// Logins reach a command line (run.sh passes them to `npm run auth --`), so
+// constrain them to Twitch's own login charset here rather than trusting the
+// file. The example config's `your_*_login` placeholders still parse;
+// checkTokens reports them so run.sh can replace them interactively.
+const LoginSchema = z
+    .string()
+    .min(1)
+    .refine((login) => LOGIN_PATTERN.test(login) || isPlaceholderLogin(login), {
+        message: 'must be a Twitch login: 1-25 lowercase letters, digits, or underscores',
+    });
+
 const BroadcasterSchema = z.object({
-    login: z.string().min(1),
+    login: LoginSchema,
     tokenStorePath: z.string().min(1).default('./data/broadcaster-tokens.json'),
 });
 
@@ -14,7 +26,7 @@ const RawFileConfigSchema = z
         broadcaster: BroadcasterSchema.optional(),
         broadcasters: z.array(BroadcasterSchema).min(1).optional(),
         bot: z.object({
-            login: z.string().min(1),
+            login: LoginSchema,
         }),
         chat: z
             .object({

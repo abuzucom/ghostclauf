@@ -19,16 +19,15 @@ import 'dotenv/config';
 import { existsSync } from 'node:fs';
 import { BOT_SCOPES, BROADCASTER_SCOPES, readTokenStore } from '../core/auth.js';
 import { loadFileConfig, loadSecrets } from '../core/config.js';
-
-const PLACEHOLDER_LOGIN = /^your[_-].*login$/i;
+import { isPlaceholderLogin } from '../core/logins.js';
 
 async function main(): Promise<void> {
     const file = loadFileConfig();
     const secrets = loadSecrets();
 
     const hasPlaceholderLogin =
-        PLACEHOLDER_LOGIN.test(file.bot.login) ||
-        file.broadcasters.some((broadcaster) => PLACEHOLDER_LOGIN.test(broadcaster.login));
+        isPlaceholderLogin(file.bot.login) ||
+        file.broadcasters.some((broadcaster) => isPlaceholderLogin(broadcaster.login));
     if (hasPlaceholderLogin) {
         console.log('PLACEHOLDER LOGIN');
         return;

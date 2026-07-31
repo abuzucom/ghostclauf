@@ -1,0 +1,5 @@
+broadcasters:
+  - login: your_first_streamer_login
+  - login: your_second_streamer_login
+bot:
+  login: your_bot_login
