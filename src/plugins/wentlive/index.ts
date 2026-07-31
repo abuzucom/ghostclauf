@@ -1,3 +1,4 @@
+import { DateTime } from 'luxon';
 import type { Plugin } from '../../core/types.js';
 
 type TimestampFormat = 'iso' | 'utc';
@@ -12,7 +13,8 @@ interface WentLiveConfig {
 const DEFAULT_TEMPLATE = '{streamer} has gone live at {timestamp}';
 
 export function formatTimestamp(date: Date, format: TimestampFormat): string {
-    return format === 'utc' ? date.toUTCString() : date.toISOString();
+    const dt = DateTime.fromJSDate(date).toUTC();
+    return format === 'utc' ? dt.toHTTP() ?? date.toUTCString() : dt.toISO() ?? date.toISOString();
 }
 
 export function renderAnnouncement(

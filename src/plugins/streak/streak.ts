@@ -171,7 +171,9 @@ export function resolveCheckinDay(
     sessionHours: number,
 ): string {
     if (activeStreamStartedAt) {
-        const elapsedHours = (now.getTime() - activeStreamStartedAt.getTime()) / 3_600_000;
+        const start = DateTime.fromJSDate(activeStreamStartedAt);
+        const current = DateTime.fromJSDate(now);
+        const elapsedHours = current.diff(start, 'hours').hours;
         if (elapsedHours >= 0 && elapsedHours <= sessionHours) {
             return streamDayKey(activeStreamStartedAt, timeZone);
         }

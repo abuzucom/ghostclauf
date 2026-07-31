@@ -1,3 +1,4 @@
+import { DateTime } from 'luxon';
 import type {
     BotContext,
     CommandHandler,
@@ -185,8 +186,11 @@ function isReconnect(
 ): boolean {
     if (previous.currentStreamId && previous.currentStreamId === event.streamId) return true;
     if (!previous.lastOfflineAt || graceMinutes === 0) return false;
-    const elapsed = event.startedAt.getTime() - new Date(previous.lastOfflineAt).getTime();
-    return elapsed >= 0 && elapsed <= graceMinutes * MS_PER_MINUTE;
+    const offlineAt = DateTime.fromISO(previous.lastOfflineAt).toUTC();
+    const onlineAt = DateTime.fromJSDate(event.startedAt).toUTC();
+    const elapsedMs = onlineAt.toMillis() - offlineAt.toMillis();
+    const graceMs = graceMinutes * MS_PER_MINUTE;
+    return elapsedMs >= 0 && elapsedMs <= graceMs;
 }
 
 async function qualifyCurrentInterval(runtime: Runtime, broadcasterId: string): Promise<void> {
@@ -194,11 +198,12 @@ async function qualifyCurrentInterval(runtime: Runtime, broadcasterId: string): 
     const session = runtime.store.getSession(scope, broadcasterId);
     if (!session?.logicalDay || !session.currentIntervalStartedAt) return;
     const effectiveEnd = session.pendingOfflineAt
-        ? new Date(session.pendingOfflineAt)
-        : runtime.now();
-    const elapsed = effectiveEnd.getTime() - new Date(session.currentIntervalStartedAt).getTime();
-    const minimum = runtime.cfg.minimumQualifyingSessionMinutes * MS_PER_MINUTE;
-    if (elapsed < minimum || session.status === 'unverified-offline') return;
+        ? DateTime.fromISO(session.pendingOfflineAt).toUTC()
+        : DateTime.fromJSDate(runtime.now()).toUTC();
+    const intervalStart = DateTime.fromISO(session.currentIntervalStartedAt).toUTC();
+    const elapsedMs = effectiveEnd.toMillis() - intervalStart.toMillis();
+    const minimumMs = runtime.cfg.minimumQualifyingSessionMinutes * MS_PER_MINUTE;
+    if (elapsedMs < minimumMs || session.status === 'unverified-offline') return;
     await runtime.store.recordQualifiedDay(scope, broadcasterId, session.logicalDay);
 }
 
@@ -208,10 +213,10 @@ function scheduleQualification(runtime: Runtime, broadcasterId: string): void {
     const scope = scopeKey(runtime.cfg, broadcasterId);
     const session = runtime.store.getSession(scope, broadcasterId);
     if (!session?.currentIntervalStartedAt) return;
-    const target =
-        new Date(session.currentIntervalStartedAt).getTime() +
-        runtime.cfg.minimumQualifyingSessionMinutes * MS_PER_MINUTE;
-    const delay = Math.max(0, target - runtime.now().getTime());
+    const start = DateTime.fromISO(session.currentIntervalStartedAt).toUTC();
+    const target = start.plus({ minutes: runtime.cfg.minimumQualifyingSessionMinutes });
+    const nowDt = DateTime.fromJSDate(runtime.now()).toUTC();
+    const delay = Math.max(0, target.toMillis() - nowDt.toMillis());
     const timer = setTimeout(() => {
         runtime.qualificationTimers.delete(broadcasterId);
         void qualifyCurrentInterval(runtime, broadcasterId).catch((err: unknown) => {
@@ -291,8 +296,11 @@ async function handleOffline(
     session.pendingOfflineAt = observedAt.toISOString();
     await runtime.store.setSession(scope, broadcasterId, session);
     if (verified) await qualifyCurrentInterval(runtime, broadcasterId);
-    session.pendingOfflineAt = null;
-    await runtime.store.setSession(scope, broadcasterId, session);
+    const currentSession = runtime.store.getSession(scope, broadcasterId);
+    if (currentSession && currentSession.status !== 'live') {
+        currentSession.pendingOfflineAt = null;
+        await runtime.store.setSession(scope, broadcasterId, currentSession);
+    }
 }
 
 function checkinHandler(runtime: Runtime): CommandHandler {
