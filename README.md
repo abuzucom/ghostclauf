@@ -196,11 +196,11 @@ server's own auto-shutdown.
 | `!nowplaying` | everyone | Posts the track(s) currently on air, if any. |
 
 The broadcaster and moderators can use it any time, unlimited. Everyone else
-is limited to once every 3 minutes per chatter (fixed, not configurable). If
-the overlay server is unreachable or nothing is on air, the command replies
-with nothing rather than an error. `baseUrl` (default
-`http://127.0.0.1:8080`) is only ever contacted on the same machine the bot
-runs on. See the `nowplaying:` block in
+is limited to once every 3 minutes per chatter per channel (fixed, not
+configurable). If the overlay server is unreachable or nothing is on air, the
+command replies with nothing rather than an error. `baseUrl` defaults to
+`http://127.0.0.1:8080` (same machine as the bot) but can be pointed anywhere
+reachable. See the `nowplaying:` block in
 [`config.example.yaml`](config.example.yaml).
 
 ## How it talks to Twitch
