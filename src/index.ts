@@ -126,9 +126,26 @@ async function main(): Promise<void> {
 
     const shutdown = async (signal: string): Promise<void> => {
         logger.info({ signal }, 'shutting down');
-        await plugins.disposeAll();
-        await transport.stop();
-        await healthServer?.close();
+        // Each step runs independently so one failure (e.g. a plugin's
+        // dispose() throwing) cannot skip the rest of cleanup or leave the
+        // process hanging without calling exit.
+        const steps: Array<[string, () => Promise<void>]> = [
+            ['dispose plugins', () => plugins.disposeAll()],
+            ['stop transport', () => transport.stop()],
+            [
+                'close health server',
+                async () => {
+                    await healthServer?.close();
+                },
+            ],
+        ];
+        for (const [label, step] of steps) {
+            try {
+                await step();
+            } catch (error) {
+                logger.error({ err: error, step: label }, 'error during shutdown step');
+            }
+        }
         process.exit(0);
     };
     process.on('SIGINT', () => void shutdown('SIGINT'));

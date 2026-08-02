@@ -250,6 +250,11 @@ Token-refresh failures and EventSub subscription revocations also emit a
 structured, greppable log line (`{ alert: true, kind: ... }`) so an ops log
 pipeline can alert on them without polling `/readyz`.
 
+Both endpoints bind loopback-only (`127.0.0.1`) by default, since `/readyz`'s
+metrics snapshot is operational data that should not be reachable off-box
+just because a container publishes the port - a same-host healthcheck
+(`docker exec`, systemd) reaches loopback fine.
+
 ## Architecture
 
 ```

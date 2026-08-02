@@ -39,4 +39,23 @@ describe('fireAlert', () => {
             'alert: eventsub_subscription_revoked',
         );
     });
+
+    it('does not let a detail field override the real alert/kind markers', () => {
+        const spy = makeSpyLogger();
+
+        fireAlert(spy.logger, 'token_refresh_failure', {
+            alert: false,
+            kind: 'spoofed_kind',
+            userId: 'user-1',
+        });
+
+        expect(spy.error).toHaveBeenCalledWith(
+            expect.objectContaining({
+                alert: true,
+                kind: 'token_refresh_failure',
+                userId: 'user-1',
+            }),
+            'alert: token_refresh_failure',
+        );
+    });
 });

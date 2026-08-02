@@ -8,8 +8,18 @@ import { createServer, type Server } from 'node:http';
 import type { Metrics } from './metrics.js';
 import type { Logger } from './types.js';
 
+/**
+ * Binds loopback-only by default. `/readyz` exposes an operational metrics
+ * snapshot, so it must not be reachable off-box just because Docker publishes
+ * the port; a Docker `HEALTHCHECK`/systemd probe runs on the same host and
+ * reaches loopback fine. Pass '0.0.0.0' explicitly to expose it externally.
+ */
+const DEFAULT_HOST = '127.0.0.1';
+
 export interface HealthServerOptions {
     port: number;
+    /** Bind address. Defaults to loopback-only; see DEFAULT_HOST above. */
+    host?: string;
     logger: Logger;
     metrics: Metrics;
     /** True once the transport has started and no broadcaster is in a revoked state. */
@@ -19,12 +29,14 @@ export interface HealthServerOptions {
 export interface HealthServer {
     /** The actual listening port (useful when `port: 0` requests an ephemeral one). */
     port: number;
+    /** The bind address actually used (see `host` above). */
+    host: string;
     close(): Promise<void>;
 }
 
 /** Starts listening immediately; /healthz is 200 as soon as this resolves. */
 export function startHealthServer(opts: HealthServerOptions): Promise<HealthServer> {
-    const { port, logger, metrics, isReady } = opts;
+    const { port, host = DEFAULT_HOST, logger, metrics, isReady } = opts;
 
     const server: Server = createServer((req, res) => {
         const path = new URL(req.url ?? '/', 'http://localhost').pathname;
@@ -46,12 +58,13 @@ export function startHealthServer(opts: HealthServerOptions): Promise<HealthServ
 
     return new Promise((resolve, reject) => {
         server.once('error', reject);
-        server.listen(port, () => {
+        server.listen(port, host, () => {
             server.removeListener('error', reject);
             const actualPort = (server.address() as { port: number }).port;
-            logger.info({ port: actualPort }, 'health server listening');
+            logger.info({ port: actualPort, host }, 'health server listening');
             resolve({
                 port: actualPort,
+                host,
                 close: () =>
                     new Promise<void>((resolveClose, rejectClose) => {
                         server.close((err) => (err ? rejectClose(err) : resolveClose()));

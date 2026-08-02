@@ -468,4 +468,25 @@ describe('twitch transport', () => {
         await transport.sender('rate limited');
         expect(metrics.snapshot().rate_limit_drops).toBe(1);
     });
+
+    it('does not match a drop reason that merely contains "rate_limit"', async () => {
+        const metrics = createMetrics();
+        sendChatMessageSpy.mockResolvedValueOnce({
+            isSent: false,
+            id: '',
+            dropReasonCode: 'pirate_limit_exceeded',
+            dropReasonMessage: 'unrelated code sharing the substring',
+        });
+        const transport = await createTwitchTransport({
+            authProvider: dummyAuthProvider,
+            botUserId: 'bot-id',
+            broadcasters: [{ login: 'streamer' }],
+            logger: testLogger,
+            metrics,
+            handlers: { onChatMessage: vi.fn(), onStreamOnline: vi.fn(), onStreamOffline: vi.fn() },
+        });
+
+        await transport.sender('not actually rate limited');
+        expect(metrics.snapshot().rate_limit_drops).toBeUndefined();
+    });
 });

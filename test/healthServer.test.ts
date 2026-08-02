@@ -47,4 +47,25 @@ describe('health server', () => {
         const res = await fetch(`http://127.0.0.1:${srv.port}/unknown`);
         expect(res.status).toBe(404);
     });
+
+    it('binds loopback-only by default', async () => {
+        const { server: srv } = await start(() => true);
+        // Confirms the fix for accidental exposure via a published container
+        // port: without an explicit host, the server only listens on 127.0.0.1.
+        expect(srv.host).toBe('127.0.0.1');
+    });
+
+    it('honors an explicit host override', async () => {
+        const metrics = createMetrics();
+        server = await startHealthServer({
+            port: 0,
+            host: '0.0.0.0',
+            logger: testLogger,
+            metrics,
+            isReady: () => true,
+        });
+        expect(server.host).toBe('0.0.0.0');
+        const res = await fetch(`http://127.0.0.1:${server.port}/healthz`);
+        expect(res.status).toBe(200);
+    });
 });
