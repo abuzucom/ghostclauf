@@ -8,7 +8,8 @@ services:
             # Token store lives on the named volume so it survives restarts.
             TOKEN_STORE_PATH: /data/tokens.json
         ports:
-            # Only needed while running the one-time auth flow (see README).
+            # Used by the one-time auth flow, then reused by the bot's
+            # /healthz and /readyz endpoints once it is running (see README).
             - '3000:3000'
         volumes:
             - ./config.yaml:/app/config.yaml:ro

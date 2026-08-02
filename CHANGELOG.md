@@ -35,6 +35,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Operational visibility: `GET /healthz` (liveness) and `GET /readyz`
+  (readiness, `503` while any configured broadcaster's EventSub subscription
+  is revoked) HTTP endpoints, reusing the port already opened for the
+  one-time OAuth callback. `/readyz` includes an in-process counter
+  snapshot (`eventsub_reconnects`, `eventsub_revocations`,
+  `chat_send_failures`, `rate_limit_drops`, `token_refresh_failures`).
+  Token-refresh failures and EventSub revocations now also emit a
+  structured, greppable `{ alert: true, kind: ... }` log line instead of a
+  plain log message. No new dependency; built on `node:http` the same way
+  `tools/authFlow.ts` already builds its OAuth callback server.
 - `nowplaying` plugin: `!nowplaying` (everyone) reports the track(s)
   currently on air by polling a local `1a2n-track-id` overlay server
   (Traktor Pro 4 deck/track tracker for DJ streams) on demand. Never holds a

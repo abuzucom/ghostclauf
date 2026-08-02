@@ -232,6 +232,24 @@ Plugins subscribe to either event via `ctx.on(...)` (see
 fires when a channel goes live, `streamOffline` (`BotEvents.streamOffline`)
 when it ends.
 
+## Operational visibility
+
+The bot serves two HTTP endpoints for external supervisors (systemd, Docker
+healthcheck, uptime monitors), reusing the port opened for the one-time OAuth
+callback (`AUTH_REDIRECT_URI`, default `3000` - the OAuth flow and the running
+bot never listen at the same time):
+
+- `GET /healthz` - always `200` once the process is listening (liveness).
+- `GET /readyz` - `200` once the EventSub transport has started and no
+  configured broadcaster's token has been revoked, `503` otherwise
+  (readiness). The response body also includes a snapshot of in-process
+  counters: `eventsub_reconnects`, `eventsub_revocations`,
+  `chat_send_failures`, `rate_limit_drops`, `token_refresh_failures`.
+
+Token-refresh failures and EventSub subscription revocations also emit a
+structured, greppable log line (`{ alert: true, kind: ... }`) so an ops log
+pipeline can alert on them without polling `/readyz`.
+
 ## Architecture
 
 ```
@@ -248,6 +266,9 @@ src/
     pluginManager.ts    discover / import / validate / init plugins
     auth.ts             RefreshingAuthProvider + token persistence
     twitch.ts           EventSub WS + Helix sender (the only twurple code)
+    metrics.ts          in-process counter registry
+    alerts.ts           structured alert log helper
+    healthServer.ts     /healthz + /readyz HTTP endpoints
   plugins/
     ping/               !ping -> pong!
     wentlive/           stream.online -> announcement
