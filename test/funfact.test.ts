@@ -272,6 +272,76 @@ describe('funfact plugin', () => {
         });
     });
 
+    describe('config validation', () => {
+        async function addAsDjInTankChannel(config: PluginConfig) {
+            const { registry, say } = await setup(config);
+            await registry.handle(
+                makeMessage('!addfunfact dj fact', ['everyone', 'moderator'], {
+                    chatterId: '20',
+                    chatterName: 'dj1a2n',
+                    chatterDisplayName: 'dj1a2n',
+                    broadcasterName: 'itsjustatank',
+                }),
+            );
+            return say;
+        }
+
+        const malformedCuratorMaps: ReadonlyArray<[string, unknown]> = [
+            ['a bare string instead of a list', { itsjustatank: 'dj1a2n' }],
+            ['a non-login channel key', { 'not a login!': ['dj1a2n'] }],
+            ['a non-login curator', { itsjustatank: ['not a login!'] }],
+            ['a list of non-strings', { itsjustatank: [42] }],
+            ['a non-object value', 'itsjustatank'],
+        ];
+
+        it.each(malformedCuratorMaps)(
+            'denies curation when treatAsBroadcaster has %s',
+            async (_label, treatAsBroadcaster) => {
+                const say = await addAsDjInTankChannel({ treatAsBroadcaster });
+                expect(say).not.toHaveBeenCalled();
+            },
+        );
+
+        it('trims a padded dataPath instead of writing to a spaced path', async () => {
+            const { registry } = await setup({ dataPath: `  ${dataPath}  ` });
+            await registry.handle(broadcasterMessage('!addfunfact padded path fact'));
+            const store = new FunFactStore(dataPath, testLogger);
+            await store.load();
+            expect(store.count(SHARED_SCOPE_KEY)).toBe(1);
+        });
+
+        it('falls back to the default cooldown when cooldownSeconds is invalid', async () => {
+            const { registry, say } = await setup({ cooldownSeconds: -5 });
+            await registry.handle(broadcasterMessage('!addfunfact a fact'));
+            say.mockClear();
+
+            await registry.handle(viewerMessage('!funfact'));
+            advance(COOLDOWN_MS - 1);
+            await registry.handle(viewerMessage('!funfact'));
+            expect(say).toHaveBeenCalledTimes(1);
+
+            advance(1);
+            await registry.handle(viewerMessage('!funfact'));
+            expect(say).toHaveBeenCalledTimes(2);
+        });
+
+        it('falls back to a shared pool when shareAcrossChannels is invalid', async () => {
+            const { registry, say } = await setup({ shareAcrossChannels: 'yes' });
+            await registry.handle(broadcasterMessage('!addfunfact shared fact'));
+            await registry.handle(
+                makeMessage('!funfact', ['everyone'], {
+                    broadcasterId: '2',
+                    broadcasterName: 'dj1a2n',
+                }),
+            );
+            expect(say).toHaveBeenLastCalledWith(
+                'Fun fact #1: shared fact (added by itsjustatank)',
+                'msg-1',
+                '2',
+            );
+        });
+    });
+
     describe('scoping', () => {
         it('shares the pool across channels by default', async () => {
             const { registry, say } = await setup();

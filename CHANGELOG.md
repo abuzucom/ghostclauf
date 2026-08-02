@@ -42,7 +42,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the size with `!funfactcount`. Reads are rate limited to one reply per
   chatter per channel every `cooldownSeconds` (default 30), with broadcasters
   and moderators exempt. Facts are pooled across channels by default
-  (`shareAcrossChannels`).
+  (`shareAcrossChannels`). Submitted text, the plugin's config block, and the
+  on-disk pool are all validated at runtime against bounded zod schemas; an
+  invalid config field falls back to its default, and an invalid curator map
+  falls back to empty so only the broadcaster can curate.
 - `AtomicJsonFile` moved from the `streak` plugin to `src/core/atomicFile.ts`
   so plugins can share the crash-safe writer. The old module path still
   re-exports it.

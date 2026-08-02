@@ -136,14 +136,62 @@ describe('FunFactStore', () => {
         expect(spy.error).toHaveBeenCalled();
     });
 
-    it('rejects a file whose facts have the wrong shape', async () => {
-        await writeFile(
-            dataPath,
-            JSON.stringify({ version: 1, scopes: { shared: { nextId: 1, facts: [{ id: 1 }] } } }),
-            'utf8',
-        );
+    function storedFact(overrides: Record<string, unknown> = {}) {
+        return {
+            id: 1,
+            text: 'a stored fact',
+            addedByChatterId: '10',
+            addedByDisplayName: 'Tank',
+            addedInBroadcasterId: '1',
+            addedAt: '2026-08-02T18:04:05.000Z',
+            ...overrides,
+        };
+    }
+
+    function storedFile(scope: Record<string, unknown>) {
+        return JSON.stringify({
+            version: 1,
+            scopes: { shared: { nextId: 2, facts: [], ...scope } },
+        });
+    }
+
+    const invalidFiles: ReadonlyArray<[string, string]> = [
+        ['a fact missing fields', storedFile({ facts: [{ id: 1 }] })],
+        [
+            'text past the length cap',
+            storedFile({ facts: [storedFact({ text: 'x'.repeat(301) })] }),
+        ],
+        ['empty text', storedFile({ facts: [storedFact({ text: '' })] })],
+        ['a non-integer id', storedFile({ facts: [storedFact({ id: 1.5 })] })],
+        [
+            'a timestamp that is not ISO 8601',
+            storedFile({ facts: [storedFact({ addedAt: 'now' })] }),
+        ],
+        [
+            'duplicate ids',
+            storedFile({ nextId: 3, facts: [storedFact(), storedFact({ text: 'other' })] }),
+        ],
+        ['an id at or past nextId', storedFile({ nextId: 1, facts: [storedFact()] })],
+        ['a wrong version', JSON.stringify({ version: 2, scopes: {} })],
+    ];
+
+    it.each(invalidFiles)('rejects a file with %s', async (_label, contents) => {
+        await writeFile(dataPath, contents, 'utf8');
         const store = new FunFactStore(dataPath, testLogger);
         await store.load();
         expect(store.count(SHARED_SCOPE_KEY)).toBe(0);
+    });
+
+    it('never resolves a scope key to an inherited object member', async () => {
+        const store = await makeStore();
+        await add(store, 'a fact');
+        await store.flush();
+
+        const reloaded = await makeStore();
+        for (const key of ['constructor', 'toString', '__proto__']) {
+            expect(reloaded.count(key)).toBe(0);
+            expect(reloaded.pick(key, 0)).toBeUndefined();
+            expect(reloaded.get(key, 1)).toBeUndefined();
+        }
     });
 });

@@ -6,18 +6,26 @@
 // because the registry enforces `allow` before the handler runs; the handler
 // then narrows to broadcasters plus the configured cross-channel curators.
 
+import { z } from 'zod';
 import type { BotContext, ChatCommandEvent, Plugin } from '../../core/types.js';
 import { CooldownGate } from '../../core/cooldown.js';
 import { LOGIN_PATTERN } from '../../core/logins.js';
 import { MAX_FACT_LENGTH, parseFactId, renderFact, validateFactText } from './fact.js';
 import type { FactRejection } from './fact.js';
 import { FunFactStore, MAX_FACTS, SHARED_SCOPE_KEY } from './store.js';
-import type { FunFactConfig } from './types.js';
 
 const DEFAULT_DATA_PATH = './data/funfacts.json';
 const DEFAULT_COOLDOWN_SECONDS = 30;
 const MAX_COOLDOWN_SECONDS = 3600;
 const MS_PER_SECOND = 1000;
+const MAX_PATH_LENGTH = 4096;
+const MAX_CURATORS_PER_CHANNEL = 50;
+
+/**
+ * Twitch logins as they may appear in config: the same 1-25 character
+ * allow-list as LOGIN_PATTERN, accepting either case before lowercasing.
+ */
+const LOGIN_ARGUMENT_PATTERN = /^[A-Za-z0-9_]{1,25}$/;
 
 const REJECTION_MESSAGES: Readonly<Record<FactRejection, string>> = {
     empty: 'Usage: addfunfact <text>',
@@ -34,10 +42,9 @@ const BAD_ID_MESSAGE = 'That is not a fun fact id.';
  * object so a chatter or channel login can never be interpreted as an
  * inherited `Object.prototype` member (e.g. "constructor").
  */
-function buildElevationMap(config: FunFactConfig): Map<string, Set<string>> {
-    const entries = Object.entries(config.treatAsBroadcaster ?? {});
+function buildElevationMap(validated: Record<string, string[]>): Map<string, Set<string>> {
     return new Map(
-        entries.map(([broadcasterLogin, chatterLogins]) => [
+        Object.entries(validated).map(([broadcasterLogin, chatterLogins]) => [
             broadcasterLogin.toLowerCase(),
             new Set(chatterLogins.map((login) => login.toLowerCase())),
         ]),
@@ -53,33 +60,38 @@ function isElevated(
     return elevationMap.get(broadcasterName)?.has(chatterName) ?? false;
 }
 
-/** Resolve the read cooldown, bounding invalid config to the default. */
-function resolveCooldownSeconds(configured: unknown, logger: BotContext['logger']): number {
-    if (configured === undefined) return DEFAULT_COOLDOWN_SECONDS;
-    if (
-        typeof configured === 'number' &&
-        Number.isInteger(configured) &&
-        configured >= 0 &&
-        configured <= MAX_COOLDOWN_SECONDS
-    ) {
-        return configured;
-    }
-    logger.warn({ configured }, 'invalid funfact cooldownSeconds; falling back to default');
-    return DEFAULT_COOLDOWN_SECONDS;
-}
+/**
+ * The config block is untrusted at runtime: the core hands plugins the raw
+ * `plugins.config.<name>` record without a schema, so every field is validated
+ * here before use. Each field falls back to its default independently, and a
+ * malformed curator map falls back to empty, which is fail-closed: only the
+ * broadcaster can curate.
+ */
+const CONFIG_FIELD_SCHEMAS = {
+    dataPath: z.string().trim().min(1).max(MAX_PATH_LENGTH),
+    shareAcrossChannels: z.boolean(),
+    cooldownSeconds: z.number().int().min(0).max(MAX_COOLDOWN_SECONDS),
+    treatAsBroadcaster: z.record(
+        z.string().regex(LOGIN_ARGUMENT_PATTERN),
+        z.array(z.string().regex(LOGIN_ARGUMENT_PATTERN)).max(MAX_CURATORS_PER_CHANNEL),
+    ),
+} as const;
 
-function resolveDataPath(configured: unknown, logger: BotContext['logger']): string {
-    if (configured === undefined) return DEFAULT_DATA_PATH;
-    if (typeof configured === 'string' && configured.trim().length > 0) return configured;
-    logger.warn('invalid funfact dataPath; falling back to default');
-    return DEFAULT_DATA_PATH;
-}
-
-function resolveShareAcrossChannels(configured: unknown, logger: BotContext['logger']): boolean {
-    if (configured === undefined) return true;
-    if (typeof configured === 'boolean') return configured;
-    logger.warn({ configured }, 'invalid funfact shareAcrossChannels; falling back to default');
-    return true;
+/** Validate one config field, warning and falling back when it is invalid. */
+function resolveField<K extends keyof typeof CONFIG_FIELD_SCHEMAS>(
+    field: K,
+    configured: unknown,
+    fallback: z.infer<(typeof CONFIG_FIELD_SCHEMAS)[K]>,
+    logger: BotContext['logger'],
+): z.infer<(typeof CONFIG_FIELD_SCHEMAS)[K]> {
+    if (configured === undefined) return fallback;
+    const result = CONFIG_FIELD_SCHEMAS[field].safeParse(configured);
+    if (result.success) return result.data;
+    logger.warn(
+        { field, configured, issues: result.error.issues },
+        'invalid funfact config value; falling back to default',
+    );
+    return fallback;
 }
 
 /** Shared state handed to each command binding. */
@@ -116,7 +128,7 @@ function registerAddCommand(ctx: BotContext, runtime: FunFactRuntime): void {
     ctx.command({
         trigger: 'addfunfact',
         allow: ['moderator', 'broadcaster'],
-        description: 'Add a fun fact to the pool (broadcasters only).',
+        description: 'Add a fun fact to the pool (broadcaster and configured curators).',
         handler: async (event, ctx) => {
             if (!canCurate(runtime, event)) return;
             const validation = validateFactText(event.argString);
@@ -153,7 +165,7 @@ function registerDeleteCommand(ctx: BotContext, runtime: FunFactRuntime): void {
     ctx.command({
         trigger: 'delfunfact',
         allow: ['moderator', 'broadcaster'],
-        description: 'Delete a fun fact by id (broadcasters only).',
+        description: 'Delete a fun fact by id (broadcaster and configured curators).',
         handler: async (event, ctx) => {
             if (!canCurate(runtime, event)) return;
             const id = parseFactId(event.args[0]);
@@ -220,18 +232,31 @@ export function createFunFactPlugin(
         name: 'funfact',
         version: '1.0.0',
         async init(ctx: BotContext): Promise<void> {
-            const config = (ctx.config ?? {}) as FunFactConfig;
-            const dataPath = resolveDataPath(config.dataPath, ctx.logger);
+            const config = ctx.config ?? {};
+            const dataPath = resolveField(
+                'dataPath',
+                config.dataPath,
+                DEFAULT_DATA_PATH,
+                ctx.logger,
+            );
             store = new FunFactStore(dataPath, ctx.logger);
             await store.load();
+            const cooldownSeconds = resolveField(
+                'cooldownSeconds',
+                config.cooldownSeconds,
+                DEFAULT_COOLDOWN_SECONDS,
+                ctx.logger,
+            );
             const runtime: FunFactRuntime = {
                 store,
-                cooldown: new CooldownGate(
-                    resolveCooldownSeconds(config.cooldownSeconds, ctx.logger) * MS_PER_SECOND,
+                cooldown: new CooldownGate(cooldownSeconds * MS_PER_SECOND),
+                elevationMap: buildElevationMap(
+                    resolveField('treatAsBroadcaster', config.treatAsBroadcaster, {}, ctx.logger),
                 ),
-                elevationMap: buildElevationMap(config),
-                shareAcrossChannels: resolveShareAcrossChannels(
+                shareAcrossChannels: resolveField(
+                    'shareAcrossChannels',
                     config.shareAcrossChannels,
+                    true,
                     ctx.logger,
                 ),
                 now,
