@@ -35,6 +35,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `funfact` plugin: a curated pool of channel fun facts persisted under
+  `data/`. Broadcasters (and the chatters listed under `treatAsBroadcaster`)
+  add and remove entries with `!addfunfact` / `!delfunfact`; everyone can pull
+  one with `!funfact`, fetch a specific entry with `!funfact <id>`, and check
+  the size with `!funfactcount`. Reads are rate limited to one reply per
+  chatter per channel every `cooldownSeconds` (default 30), with broadcasters
+  and moderators exempt. Facts are pooled across channels by default
+  (`shareAcrossChannels`). Submitted text, the plugin's config block, and the
+  on-disk pool are all validated at runtime against bounded zod schemas; an
+  invalid config field falls back to its default, and an invalid curator map
+  falls back to empty so only the broadcaster can curate.
+- `AtomicJsonFile` moved from the `streak` plugin to `src/core/atomicFile.ts`
+  so plugins can share the crash-safe writer. The old module path still
+  re-exports it.
 - Linux and macOS support: added POSIX shell scripts (`setup.sh`, `run.sh`) and service configurations (`scripts/ghostclauf.service` for systemd on Linux and `scripts/com.ghostclauf.bot.plist` for launchd on macOS).
 - CI workflow expansion: extended `.github/workflows/ci.yml` matrix to build and test on `ubuntu-latest`, `macos-latest`, and `windows-latest`.
 - `EventBus.drain()` & `BotContext.drain()`: introduced in-flight handler tracking in `EventBus` so plugins can await pending async event handlers before shutdown or store flushing.

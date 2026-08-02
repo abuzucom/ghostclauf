@@ -15,6 +15,7 @@ The design borrows the _spirit_ of [eggdrop](https://github.com/eggheads/eggdrop
 - [Follow age (`followage`)](#follow-age-followage-plugin)
 - [Lurk (`lurk`)](#lurk-lurk-plugin)
 - [Shoutout (`shoutout`)](#shoutout-shoutout-plugin)
+- [Fun facts (`funfact`)](#fun-facts-funfact-plugin)
 - [How it talks to Twitch](#how-it-talks-to-twitch)
 - [Architecture](#architecture)
 - [Prerequisites](#prerequisites)
@@ -40,10 +41,12 @@ The design borrows the _spirit_ of [eggdrop](https://github.com/eggheads/eggdrop
   around without being active in chat (see below).
 - **Shoutouts** — `!so` / `!shoutout @channel` (moderators and the
   broadcaster) plugs another streamer's channel (see below).
+- **Fun facts** - the broadcaster curates a pool with `!addfunfact` /
+  `!delfunfact`, and anyone can pull one with `!funfact` (see below).
 
 `ping` and `wentlive` are the reference examples for writing your own
 (`src/plugins/ping`, `src/plugins/wentlive`); `src/plugins/streak` is the
-larger worked example. All six built-in plugins live under `src/plugins/`.
+larger worked example. All built-in plugins live under `src/plugins/`.
 
 ## Attendance / watch streaks (`streak` plugin)
 
@@ -148,6 +151,36 @@ carry the `moderator:manage:shoutouts` scope (the same re-auth as
 warning but doesn't block the chat reply. See the `shoutout:` block in
 [`config.example.yaml`](config.example.yaml) for message/template overrides.
 
+## Fun facts (`funfact` plugin)
+
+A curated pool of one-liners about the channel, stored on disk under `data/`.
+
+| Command              | Who      | Effect                                            |
+| -------------------- | -------- | ------------------------------------------------- |
+| `!addfunfact <text>` | curators | Adds a fact and replies with its id.              |
+| `!delfunfact <id>`   | curators | Removes that fact. Ids are never reused.          |
+| `!funfact`           | everyone | Posts a random fact with its id and who added it. |
+| `!funfact <id>`      | everyone | Posts that specific fact.                         |
+| `!funfactcount`      | everyone | Reports how many facts are stored.                |
+
+Curators are the broadcaster of the channel the command was typed in, plus any
+chatter listed for that channel under `treatAsBroadcaster` - the same
+cross-channel pattern the `ping` plugin uses, so streamers who moderate each
+other's channels can curate in both. Moderators who are not listed cannot add
+or delete, and their attempts are ignored silently.
+
+Reads are rate limited to one reply per chatter per channel every
+`cooldownSeconds` (default 30); the broadcaster and moderators are exempt, and
+throttled invocations get no reply at all so a chat flood cannot be amplified.
+
+Facts are pooled across every configured broadcaster by default
+(`shareAcrossChannels: true`), so a fact added in one channel is served in all
+of them. Set it to false to keep each channel's pool independent. Submitted
+text is collapsed to a single line, capped at 300 characters, rejected if it
+starts with `/` or `.`, and deduplicated case-insensitively; the pool holds at
+most 500 facts. See the `funfact:` block in
+[`config.example.yaml`](config.example.yaml).
+
 ## How it talks to Twitch
 
 Twitch now recommends **[EventSub](https://dev.twitch.tv/docs/eventsub/) for
@@ -200,6 +233,7 @@ src/
     followage/          !followage - Helix follower lookup
     lurk/               !lurk / !unlurk
     shoutout/           !so / !shoutout - Helix user lookup + native shoutout
+    funfact/            !addfunfact / !funfact - curated fact pool on disk
   tools/
     authFlow.ts         one-time OAuth to mint an account's initial token
     checkTokens.ts      reports missing/under-scoped token stores (used by run.sh / run.bat)
@@ -387,7 +421,7 @@ the bot.
 ## Testing
 
 ```bash
-npm test          # vitest unit tests (core + all six plugins)
+npm test          # vitest unit tests (core + every plugin)
 npm run typecheck # tsc --noEmit
 ```
 
