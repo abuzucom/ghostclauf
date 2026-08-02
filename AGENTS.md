@@ -53,8 +53,20 @@ src/core/auth.ts           RefreshingAuthProvider + token persistence
 src/core/twitch.ts         EventSub WS + Helix sender (the only @twurple code)
 src/plugins/ping/          !ping -> pong!
 src/plugins/wentlive/      stream.online -> announcement
+src/plugins/streak/        !checkin / !streak / admin commands, live-gated
+src/plugins/followage/     !followage - Helix follower lookup
+src/plugins/lurk/          !lurk / !unlurk
+src/plugins/shoutout/      !so / !shoutout - Helix user lookup + native shoutout
+src/plugins/funfact/       !addfunfact / !funfact - curated fact pool on disk
+src/plugins/nowplaying/    !nowplaying - polls a local DJ overlay server
 src/tools/authFlow.ts      one-time OAuth to mint the bot's initial token
+src/tools/checkTokens.ts   reports missing/under-scoped token stores
+src/tools/configureAccounts.ts  writes real Twitch logins into config.yaml
 ```
+
+`ping` and `wentlive` are the reference examples for writing a new plugin;
+`streak` is the larger worked example. See README.md for full command
+tables and per-plugin configuration.
 
 **Plugins never import `@twurple/*`.** They receive a `BotContext` and use
 only `ctx.command({...})`, `ctx.on(event, handler)`, `ctx.say(text, replyToId?)`,
