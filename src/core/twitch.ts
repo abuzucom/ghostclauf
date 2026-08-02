@@ -1,7 +1,9 @@
 import { ApiClient } from '@twurple/api';
 import { EventSubWsListener } from '@twurple/eventsub-ws';
 import type { RefreshingAuthProvider } from '@twurple/auth';
+import { fireAlert } from './alerts.js';
 import { ChatRateLimiter } from './chatRateLimiter.js';
+import { createMetrics, type Metrics } from './metrics.js';
 import { resolveRoles } from './permissions.js';
 import type {
     ChatMessageEvent,
@@ -36,6 +38,8 @@ export interface TwitchTransportOptions {
     offlineConfirmationMs?: number;
     /** Internal/test override for the single failed-confirmation retry. */
     offlineRetryMs?: number;
+    /** Counter registry for reconnects/send failures/rate-limit drops. Defaults to a fresh one. */
+    metrics?: Metrics;
 }
 
 export interface TwitchTransport {
@@ -43,6 +47,10 @@ export interface TwitchTransport {
     broadcasterIds: string[];
     sender: MessageSender;
     helix: HelixClient;
+    /** Counter snapshot (see core/metrics.ts); used by the health/readiness endpoint. */
+    metrics: Metrics;
+    /** True once no configured broadcaster has an EventSub subscription in a revoked state. */
+    isReady(): boolean;
     start(): Promise<void>;
     stop(): Promise<void>;
 }
@@ -57,6 +65,7 @@ export async function createTwitchTransport(
     opts: TwitchTransportOptions,
 ): Promise<TwitchTransport> {
     const { authProvider, botUserId, botLogin, logger, handlers } = opts;
+    const metrics = opts.metrics ?? createMetrics();
 
     const api = new ApiClient({ authProvider });
 
@@ -104,28 +113,31 @@ export async function createTwitchTransport(
         }
     >();
     const disconnectedUsers = new Set<string>();
+    const revokedUserIds = new Set<string>();
     const offlineConfirmationMs = opts.offlineConfirmationMs ?? 60_000;
     const offlineRetryMs = opts.offlineRetryMs ?? 30_000;
 
     listener.onUserSocketConnect((userId) => {
         const wasDisconnected = disconnectedUsers.delete(userId);
         logger.info({ userId }, 'EventSub WebSocket connected');
-        if (wasDisconnected) void reconcileLiveStreams('EventSub reconnect');
+        if (wasDisconnected) {
+            metrics.increment('eventsub_reconnects');
+            void reconcileLiveStreams('EventSub reconnect');
+        }
     });
     listener.onUserSocketDisconnect((userId, error) => {
         disconnectedUsers.add(userId);
         logger.warn({ userId, err: error }, 'EventSub WebSocket disconnected');
     });
     listener.onRevoke((subscription, status) => {
-        logger.error(
-            {
-                subscriptionId: subscription.id,
-                subscriptionClass: subscription.constructor.name,
-                authUserId: subscription.authUserId,
-                status,
-            },
-            'EventSub subscription revoked',
-        );
+        if (subscription.authUserId) revokedUserIds.add(subscription.authUserId);
+        metrics.increment('eventsub_revocations');
+        fireAlert(logger, 'eventsub_subscription_revoked', {
+            subscriptionId: subscription.id,
+            subscriptionClass: subscription.constructor.name,
+            authUserId: subscription.authUserId,
+            status,
+        });
     });
     listener.onSubscriptionCreateFailure((subscription, error) => {
         logger.error(
@@ -347,6 +359,9 @@ export async function createTwitchTransport(
                     ),
                 );
                 if (!result.isSent) {
+                    if (isRateLimitDrop(result.dropReasonCode)) {
+                        metrics.increment('rate_limit_drops');
+                    }
                     logger.warn(
                         {
                             broadcasterId,
@@ -361,6 +376,7 @@ export async function createTwitchTransport(
         try {
             await sendChatMessageWithRetry(sendChatMessage);
         } catch (error) {
+            metrics.increment('chat_send_failures');
             logger.error(
                 {
                     broadcasterId,
@@ -413,6 +429,8 @@ export async function createTwitchTransport(
         broadcasterIds,
         sender,
         helix,
+        metrics,
+        isReady: () => !broadcasters.some((broadcaster) => revokedUserIds.has(broadcaster.id)),
         start: async () => {
             listener.start();
             await reconcileLiveStreams('startup');
@@ -450,6 +468,16 @@ function classifySendFailure(error: unknown): string {
     if (statusCode === 429) return 'rate_limited';
     if (statusCode === 503) return 'service_unavailable';
     return 'api_error';
+}
+
+/**
+ * Twitch's Send Chat Message API returns a free-form `drop_reason.code`
+ * string that twurple does not type as an enum. Match case-insensitively on
+ * "rate limit" so this counter tracks only rate-limit drops, not other drop
+ * causes (e.g. banned user, message too large).
+ */
+function isRateLimitDrop(dropReasonCode: string | undefined): boolean {
+    return dropReasonCode !== undefined && /rate.?limit/i.test(dropReasonCode);
 }
 
 function buildLegacyBroadcasters(

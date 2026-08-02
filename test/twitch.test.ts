@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { RefreshingAuthProvider } from '@twurple/auth';
+import { createMetrics } from '../src/core/metrics.js';
 import { createTwitchTransport } from '../src/core/twitch.js';
 import { testLogger } from './helpers.js';
 
@@ -369,5 +370,102 @@ describe('twitch transport', () => {
         } finally {
             vi.useRealTimers();
         }
+    });
+
+    it('increments eventsub_reconnects when a socket reconnects after a disconnect', async () => {
+        const metrics = createMetrics();
+        const transport = await createTwitchTransport({
+            authProvider: dummyAuthProvider,
+            botUserId: 'bot-id',
+            broadcasters: [{ login: 'streamer' }],
+            logger: testLogger,
+            metrics,
+            handlers: { onChatMessage: vi.fn(), onStreamOnline: vi.fn(), onStreamOffline: vi.fn() },
+        });
+        await transport.start();
+        const listener = listenerInstances[0] as any;
+        const disconnectHandler = listener.onUserSocketDisconnect.mock.calls[0][0];
+        const connectHandler = listener.onUserSocketConnect.mock.calls[0][0];
+
+        // A plain (re)connect with no prior disconnect must not count.
+        connectHandler('bot-id');
+        expect(metrics.snapshot().eventsub_reconnects).toBeUndefined();
+
+        disconnectHandler('bot-id', new Error('dropped'));
+        connectHandler('bot-id');
+        expect(metrics.snapshot().eventsub_reconnects).toBe(1);
+        await transport.stop();
+    });
+
+    it('increments eventsub_revocations and marks the transport not ready on revoke', async () => {
+        const metrics = createMetrics();
+        const transport = await createTwitchTransport({
+            authProvider: dummyAuthProvider,
+            botUserId: 'bot-id',
+            broadcasters: [{ login: 'streamer' }],
+            logger: testLogger,
+            metrics,
+            handlers: { onChatMessage: vi.fn(), onStreamOnline: vi.fn(), onStreamOffline: vi.fn() },
+        });
+        await transport.start();
+        expect(transport.isReady()).toBe(true);
+
+        const listener = listenerInstances[0] as any;
+        const revokeHandler = listener.onRevoke.mock.calls[0][0];
+        revokeHandler(
+            { id: 'sub-1', authUserId: 'channel-id', constructor: { name: 'FakeSubscription' } },
+            'authorization_revoked',
+        );
+
+        expect(metrics.snapshot().eventsub_revocations).toBe(1);
+        expect(transport.isReady()).toBe(false);
+        await transport.stop();
+    });
+
+    it('increments chat_send_failures on a non-retryable send error', async () => {
+        const metrics = createMetrics();
+        const failure = Object.assign(new Error('forbidden'), { statusCode: 403 });
+        sendChatMessageSpy.mockRejectedValueOnce(failure);
+        const transport = await createTwitchTransport({
+            authProvider: dummyAuthProvider,
+            botUserId: 'bot-id',
+            broadcasters: [{ login: 'streamer' }],
+            logger: testLogger,
+            metrics,
+            handlers: { onChatMessage: vi.fn(), onStreamOnline: vi.fn(), onStreamOffline: vi.fn() },
+        });
+
+        await expect(transport.sender('oops')).rejects.toThrow('forbidden');
+        expect(metrics.snapshot().chat_send_failures).toBe(1);
+    });
+
+    it('increments rate_limit_drops only for rate-limit drop reasons', async () => {
+        const metrics = createMetrics();
+        sendChatMessageSpy.mockResolvedValueOnce({
+            isSent: false,
+            id: '',
+            dropReasonCode: 'automod_held',
+            dropReasonMessage: 'held for review',
+        });
+        const transport = await createTwitchTransport({
+            authProvider: dummyAuthProvider,
+            botUserId: 'bot-id',
+            broadcasters: [{ login: 'streamer' }],
+            logger: testLogger,
+            metrics,
+            handlers: { onChatMessage: vi.fn(), onStreamOnline: vi.fn(), onStreamOffline: vi.fn() },
+        });
+
+        await transport.sender('not rate limited');
+        expect(metrics.snapshot().rate_limit_drops).toBeUndefined();
+
+        sendChatMessageSpy.mockResolvedValueOnce({
+            isSent: false,
+            id: '',
+            dropReasonCode: 'rate_limited',
+            dropReasonMessage: 'too many messages',
+        });
+        await transport.sender('rate limited');
+        expect(metrics.snapshot().rate_limit_drops).toBe(1);
     });
 });
