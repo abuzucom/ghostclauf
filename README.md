@@ -16,6 +16,7 @@ The design borrows the _spirit_ of [eggdrop](https://github.com/eggheads/eggdrop
 - [Lurk (`lurk`)](#lurk-lurk-plugin)
 - [Shoutout (`shoutout`)](#shoutout-shoutout-plugin)
 - [Fun facts (`funfact`)](#fun-facts-funfact-plugin)
+- [Now playing (`nowplaying`)](#now-playing-nowplaying-plugin)
 - [How it talks to Twitch](#how-it-talks-to-twitch)
 - [Architecture](#architecture)
 - [Prerequisites](#prerequisites)
@@ -43,6 +44,8 @@ The design borrows the _spirit_ of [eggdrop](https://github.com/eggheads/eggdrop
   broadcaster) plugs another streamer's channel (see below).
 - **Fun facts** - the broadcaster curates a pool with `!addfunfact` /
   `!delfunfact`, and anyone can pull one with `!funfact` (see below).
+- **Now playing** — `!nowplaying` reports the track(s) currently on air from a
+  local DJ overlay server (see below).
 
 `ping` and `wentlive` are the reference examples for writing your own
 (`src/plugins/ping`, `src/plugins/wentlive`); `src/plugins/streak` is the
@@ -181,6 +184,25 @@ starts with `/` or `.`, and deduplicated case-insensitively; the pool holds at
 most 500 facts. See the `funfact:` block in
 [`config.example.yaml`](config.example.yaml).
 
+## Now playing (`nowplaying` plugin)
+
+Reports the track(s) currently on air, by polling a local `1a2n-track-id`
+overlay server (a Traktor Pro 4 deck/track tracker for DJ streams) on demand.
+It never holds a persistent connection, so it can't interfere with that
+server's own auto-shutdown.
+
+| Command       | Who      | Effect                                        |
+| ------------- | -------- | ---------------------------------------------- |
+| `!nowplaying` | everyone | Posts the track(s) currently on air, if any.  |
+
+The broadcaster and moderators can use it any time, unlimited. Everyone else
+is limited to once every 3 minutes per chatter (fixed, not configurable). If
+the overlay server is unreachable or nothing is on air, the command replies
+with nothing rather than an error. `baseUrl` (default
+`http://127.0.0.1:8080`) is only ever contacted on the same machine the bot
+runs on. See the `nowplaying:` block in
+[`config.example.yaml`](config.example.yaml).
+
 ## How it talks to Twitch
 
 Twitch now recommends **[EventSub](https://dev.twitch.tv/docs/eventsub/) for
@@ -234,6 +256,7 @@ src/
     lurk/               !lurk / !unlurk
     shoutout/           !so / !shoutout - Helix user lookup + native shoutout
     funfact/            !addfunfact / !funfact - curated fact pool on disk
+    nowplaying/         !nowplaying - polls a local DJ overlay server
   tools/
     authFlow.ts         one-time OAuth to mint an account's initial token
     checkTokens.ts      reports missing/under-scoped token stores (used by run.sh / run.bat)

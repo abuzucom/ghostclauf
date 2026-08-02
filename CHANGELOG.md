@@ -35,6 +35,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `nowplaying` plugin: `!nowplaying` (everyone) reports the track(s)
+  currently on air by polling a local `1a2n-track-id` overlay server
+  (Traktor Pro 4 deck/track tracker for DJ streams) on demand. Never holds a
+  persistent connection to the overlay server. Broadcasters and moderators
+  are unlimited; everyone else is limited to one request per chatter every 3
+  minutes. Replies with nothing when the overlay is unreachable or nothing
+  is on air. `baseUrl` (default `http://127.0.0.1:8080`) and
+  `requestTimeoutMs` (default 1500) are configurable.
 - `funfact` plugin: a curated pool of channel fun facts persisted under
   `data/`. Broadcasters (and the chatters listed under `treatAsBroadcaster`)
   add and remove entries with `!addfunfact` / `!delfunfact`; everyone can pull
