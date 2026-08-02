@@ -54,6 +54,27 @@ plugins:
                     - itsjustatank
                 itsjustatank:
                     - dj1a2n
+        funfact:
+            # Where the curated fun fact pool is persisted (own store under ./data).
+            dataPath: ./data/funfacts.json
+            # Pool fun facts across every broadcaster configured above, so a fact
+            # added in one channel is served in all of them. Set false to keep
+            # each channel's pool independent. Note: when pooled, the curators of
+            # ANY configured channel can add and delete facts served everywhere.
+            shareAcrossChannels: true
+            # Seconds a chatter must wait between handled !funfact (or
+            # !funfactcount) replies; repeats inside the window are silently
+            # ignored. Broadcasters and moderators are exempt. Set 0 to disable.
+            cooldownSeconds: 30
+            # Broadcaster login -> chatter logins allowed to run !addfunfact and
+            # !delfunfact on that channel, despite their actual Twitch role there.
+            # For streamers who curate each other's channels. Broadcasters always
+            # qualify; other moderators never do unless listed here.
+            treatAsBroadcaster:
+                dj1a2n:
+                    - itsjustatank
+                itsjustatank:
+                    - dj1a2n
         followage:
             # Seconds a chatter must wait between handled !followage lookups;
             # repeats inside the window are silently ignored (protects the shared
