@@ -191,9 +191,9 @@ overlay server (a Traktor Pro 4 deck/track tracker for DJ streams) on demand.
 It never holds a persistent connection, so it can't interfere with that
 server's own auto-shutdown.
 
-| Command       | Who      | Effect                                        |
-| ------------- | -------- | ---------------------------------------------- |
-| `!nowplaying` | everyone | Posts the track(s) currently on air, if any.  |
+| Command       | Who      | Effect                                       |
+| ------------- | -------- | -------------------------------------------- |
+| `!nowplaying` | everyone | Posts the track(s) currently on air, if any. |
 
 The broadcaster and moderators can use it any time, unlimited. Everyone else
 is limited to once every 3 minutes per chatter (fixed, not configurable). If
