@@ -49,6 +49,9 @@ vi.mock('@twurple/eventsub-ws', () => {
         onUserSocketDisconnect = vi.fn();
         onRevoke = vi.fn();
         onSubscriptionCreateFailure = vi.fn();
+        onChannelRaidTo = vi.fn();
+        onChannelSubscription = vi.fn();
+        onChannelCheer = vi.fn();
     }
     return { EventSubWsListener: MockListener };
 });
@@ -369,5 +372,144 @@ describe('twitch transport', () => {
         } finally {
             vi.useRealTimers();
         }
+    });
+
+    it('forwards raid events', async () => {
+        const onRaid = vi.fn();
+        const transport = await createTwitchTransport({
+            authProvider: dummyAuthProvider,
+            botUserId: 'bot-id',
+            broadcasters: [{ login: 'streamer' }],
+            logger: testLogger,
+            handlers: {
+                onChatMessage: vi.fn(),
+                onStreamOnline: vi.fn(),
+                onStreamOffline: vi.fn(),
+                onRaid,
+            },
+        });
+        await transport.start();
+        const listener = listenerInstances[0] as any;
+        const handler = listener.onChannelRaidTo.mock.calls[0][1];
+
+        handler({
+            raidedBroadcasterId: 'channel-id',
+            raidedBroadcasterName: 'streamer',
+            raidedBroadcasterDisplayName: 'Streamer',
+            raidingBroadcasterId: 'raider-id',
+            raidingBroadcasterName: 'raider',
+            raidingBroadcasterDisplayName: 'Raider',
+            viewers: 42,
+        });
+
+        expect(onRaid).toHaveBeenCalledWith(
+            expect.objectContaining({
+                broadcasterId: 'channel-id',
+                raidingBroadcasterDisplayName: 'Raider',
+                viewers: 42,
+            }),
+        );
+        await transport.stop();
+    });
+
+    it('forwards subscribe events', async () => {
+        const onSubscribe = vi.fn();
+        const transport = await createTwitchTransport({
+            authProvider: dummyAuthProvider,
+            botUserId: 'bot-id',
+            broadcasters: [{ login: 'streamer' }],
+            logger: testLogger,
+            handlers: {
+                onChatMessage: vi.fn(),
+                onStreamOnline: vi.fn(),
+                onStreamOffline: vi.fn(),
+                onSubscribe,
+            },
+        });
+        await transport.start();
+        const listener = listenerInstances[0] as any;
+        const handler = listener.onChannelSubscription.mock.calls[0][1];
+
+        handler({
+            broadcasterId: 'channel-id',
+            broadcasterName: 'streamer',
+            broadcasterDisplayName: 'Streamer',
+            userId: 'sub-1',
+            userName: 'subscriber',
+            userDisplayName: 'Subscriber',
+            tier: '2000',
+            isGift: true,
+        });
+
+        expect(onSubscribe).toHaveBeenCalledWith(
+            expect.objectContaining({
+                broadcasterId: 'channel-id',
+                userDisplayName: 'Subscriber',
+                tier: '2000',
+                isGift: true,
+            }),
+        );
+        await transport.stop();
+    });
+
+    it('forwards cheer events', async () => {
+        const onCheer = vi.fn();
+        const transport = await createTwitchTransport({
+            authProvider: dummyAuthProvider,
+            botUserId: 'bot-id',
+            broadcasters: [{ login: 'streamer' }],
+            logger: testLogger,
+            handlers: {
+                onChatMessage: vi.fn(),
+                onStreamOnline: vi.fn(),
+                onStreamOffline: vi.fn(),
+                onCheer,
+            },
+        });
+        await transport.start();
+        const listener = listenerInstances[0] as any;
+        const handler = listener.onChannelCheer.mock.calls[0][1];
+
+        handler({
+            broadcasterId: 'channel-id',
+            broadcasterName: 'streamer',
+            broadcasterDisplayName: 'Streamer',
+            userId: null,
+            userName: null,
+            userDisplayName: null,
+            isAnonymous: true,
+            message: 'have some bits!',
+            bits: 500,
+        });
+
+        expect(onCheer).toHaveBeenCalledWith(
+            expect.objectContaining({ isAnonymous: true, bits: 500, userId: null }),
+        );
+        await transport.stop();
+    });
+
+    it('does not throw when raid/subscribe/cheer handlers are not provided', async () => {
+        const transport = await createTwitchTransport({
+            authProvider: dummyAuthProvider,
+            botUserId: 'bot-id',
+            broadcasters: [{ login: 'streamer' }],
+            logger: testLogger,
+            handlers: { onChatMessage: vi.fn(), onStreamOnline: vi.fn(), onStreamOffline: vi.fn() },
+        });
+        await transport.start();
+        const listener = listenerInstances[0] as any;
+
+        expect(() =>
+            listener.onChannelRaidTo.mock.calls[0][1]({
+                raidedBroadcasterId: 'channel-id',
+                raidedBroadcasterName: 'streamer',
+                raidedBroadcasterDisplayName: 'Streamer',
+                raidingBroadcasterId: 'raider-id',
+                raidingBroadcasterName: 'raider',
+                raidingBroadcasterDisplayName: 'Raider',
+                viewers: 1,
+            }),
+        ).not.toThrow();
+        await transport.stop();
     });
 });
