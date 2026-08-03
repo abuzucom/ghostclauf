@@ -18,6 +18,7 @@ The design borrows the _spirit_ of [eggdrop](https://github.com/eggheads/eggdrop
 - [Announce (`announce`)](#announce-announce-plugin)
 - [Fun facts (`funfact`)](#fun-facts-funfact-plugin)
 - [Quotes (`quotes`)](#quotes-quotes-plugin)
+- [Loyalty (`loyalty`)](#loyalty-loyalty-plugin)
 - [Now playing (`nowplaying`)](#now-playing-nowplaying-plugin)
 - [How it talks to Twitch](#how-it-talks-to-twitch)
 - [Architecture](#architecture)
@@ -50,6 +51,8 @@ The design borrows the _spirit_ of [eggdrop](https://github.com/eggheads/eggdrop
   `!delfunfact`, and anyone can pull one with `!funfact` (see below).
 - **Quotes** - the broadcaster curates a pool of community quotes with
   `!addquote` / `!delquote`, and anyone can pull one with `!quote` (see below).
+- **Loyalty** - viewers passively earn a configurable currency for chat
+  activity while live; `!wallet` / `!economy` (see below).
 - **Now playing** — `!nowplaying` reports the track(s) currently on air from a
   local DJ overlay server (see below).
 
@@ -247,6 +250,32 @@ speaker at 50), rejected if it starts with `/` or `.`, and deduplicated
 case-insensitively on text and speaker together; the pool holds at most 500
 quotes. See the `quotes:` block in [`config.example.yaml`](config.example.yaml).
 
+## Loyalty (`loyalty` plugin)
+
+Viewers passively earn a configurable currency (`esports dollars` by default) for
+being active in chat while the channel is live.
+
+| Command    | Who      | Effect                                               |
+| ---------- | -------- | ---------------------------------------------------- |
+| `!wallet`  | everyone | Report your balance.                                 |
+| `!economy` | everyone | Show the top `leaderboardSize` balances (default 5). |
+
+**Earning is a chat-activity proxy, not real Twitch watch-time.** Every
+`tickIntervalMinutes` (default 5), each chatter who sent at least one chat
+message since the last tick, while their channel was live, is awarded
+`dollarsPerTick` (default 1). The bot only sees chat messages - it has no
+access to the viewer list - so this measures chat participation, not
+whether someone is actually watching. There is no earn command; earning is
+entirely passive. Reads (`!wallet`/`!economy`) are rate limited to one
+reply per chatter per channel every `cooldownSeconds` (default 10);
+broadcasters and moderators are exempt.
+
+Balances are pooled across every configured broadcaster by default
+(`shareAcrossChannels: true`); set it to false to keep each channel's
+balances independent. There is no spend/redemption yet - this is v1
+(earn + balance + leaderboard only). See the `loyalty:` block in
+[`config.example.yaml`](config.example.yaml).
+
 ## Now playing (`nowplaying` plugin)
 
 Reports the track(s) currently on air, by polling a local `1a2n-track-id`
@@ -350,6 +379,7 @@ src/
     announce/           raid / subscribe / cheer -> templated announcement
     funfact/            !addfunfact / !funfact - curated fact pool on disk
     quotes/             !addquote / !quote - curated quote pool on disk
+    loyalty/            !wallet / !economy - passive chat-activity currency
     nowplaying/         !nowplaying - polls a local DJ overlay server
   tools/
     authFlow.ts         one-time OAuth to mint an account's initial token

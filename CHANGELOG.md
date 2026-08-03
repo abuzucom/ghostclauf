@@ -49,6 +49,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `loyalty` plugin (v1: earn + balance + leaderboard, no spend/redemption
+  yet): viewers passively earn a configurable currency (`esports dollars` by
+  default) for chat activity while the channel is live. Every
+  `tickIntervalMinutes` (default 5), each chatter who sent at least one
+  chat message since the last tick is awarded `dollarsPerTick` (default 1).
+  This is a chat-activity proxy, not real Twitch watch-time - the bot has
+  no access to the viewer list. `!wallet` reports a balance; `!economy`
+  shows the top `leaderboardSize` earners (default 5). All date and time
+  handling uses `luxon`, matching `streak`/`followage`/`wentlive`. Reads are rate
+  limited to one reply per chatter per channel every `cooldownSeconds`
+  (default 10), with broadcasters and moderators exempt. Balances are
+  pooled across channels by default (`shareAcrossChannels`). Balances,
+  the plugin's config block, and the on-disk pool are all validated at
+  runtime against bounded zod schemas.
 - `announce` plugin: posts a templated chat message on raid, subscribe, and
   cheer, each independently toggleable with its own template. Cheers below
   `minBits` (default 100) are not announced. Added new normalized

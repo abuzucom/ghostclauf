@@ -184,3 +184,24 @@ plugins:
                 template: '{user} cheered {bits} bits: {message}'
                 # Cheers below this many bits are not announced.
                 minBits: 100
+        loyalty:
+            # Where balances are persisted (own store under ./data).
+            dataPath: ./data/loyalty.json
+            # Pool balances across every broadcaster configured above. Set
+            # false to keep each channel's balances independent.
+            shareAcrossChannels: true
+            # What the currency is called in chat replies (!wallet, !economy).
+            currencyName: 'esports dollars'
+            # Awarded per tick to each chatter who sent at least one
+            # chat message since the last tick, while the channel was live.
+            # This is a CHAT-ACTIVITY PROXY, not real Twitch watch-time - the
+            # bot only sees chat messages, never the viewer list.
+            dollarsPerTick: 1
+            # Minutes between ticks.
+            tickIntervalMinutes: 5
+            # Seconds a chatter must wait between handled !wallet/!economy
+            # replies; repeats inside the window are silently ignored.
+            # Broadcasters and moderators are exempt. Set 0 to disable.
+            cooldownSeconds: 10
+            # Rows shown by !economy.
+            leaderboardSize: 5
