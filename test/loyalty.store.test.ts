@@ -85,6 +85,17 @@ describe('LoyaltyStore', () => {
         expect(await readdir(dir).catch(() => [])).toEqual([]);
     });
 
+    it('does not persist when every award in the batch clamps to zero', async () => {
+        const store = await makeStore();
+        await store.awardMany(SHARED_SCOPE_KEY, [
+            { chatterId: '10', displayName: 'Tank', amount: 0 },
+            { chatterId: '11', displayName: 'Dj', amount: -5 },
+        ]);
+        // Nothing changed, so the tick must not rewrite the same file.
+        expect(await readdir(dir).catch(() => [])).toEqual([]);
+        expect(store.getBalance(SHARED_SCOPE_KEY, '10')).toBe(0);
+    });
+
     it('keeps scopes independent', async () => {
         const store = await makeStore();
         await store.awardMany('1', [{ chatterId: '10', displayName: 'Tank', amount: 5 }]);
@@ -145,6 +156,73 @@ describe('LoyaltyStore', () => {
         const store = new LoyaltyStore(dataPath, testLogger);
         await store.load();
         expect(store.getBalance(SHARED_SCOPE_KEY, '10')).toBe(0);
+    });
+
+    // The load schema is the contract; anything awardMany writes must survive a
+    // reload. Asserted as a round-trip rather than by inspecting the file, so
+    // these fail if either side of the invariant drifts.
+    const selfCorruptionCases: ReadonlyArray<[string, { displayName: string; amount: number }]> = [
+        ['a NaN amount', { displayName: 'Tank', amount: Number.NaN }],
+        ['an Infinite amount', { displayName: 'Tank', amount: Number.POSITIVE_INFINITY }],
+        ['an over-long display name', { displayName: 'x'.repeat(500), amount: 5 }],
+        ['an empty display name', { displayName: '', amount: 5 }],
+    ];
+
+    it.each(selfCorruptionCases)(
+        'writes a file that reloads cleanly despite %s',
+        async (_label, award) => {
+            const store = await makeStore();
+            await store.awardMany(SHARED_SCOPE_KEY, [{ chatterId: '10', ...award }]);
+            await store.flush();
+
+            const reloaded = new LoyaltyStore(dataPath, testLogger);
+            await reloaded.load();
+
+            // A rejected file would have been preserved as .corrupt-* and the
+            // balance reset to 0, so a surviving balance proves it round-tripped.
+            const preserved = (await readdir(dir)).filter((name) =>
+                name.startsWith('loyalty.json.corrupt-'),
+            );
+            expect(preserved).toHaveLength(0);
+            expect(reloaded.getBalance(SHARED_SCOPE_KEY, '10')).toBe(
+                store.getBalance(SHARED_SCOPE_KEY, '10'),
+            );
+        },
+    );
+
+    it('skips an award whose chatter id cannot be stored', async () => {
+        const store = await makeStore();
+        await store.awardMany(SHARED_SCOPE_KEY, [
+            { chatterId: '', displayName: 'Tank', amount: 5 },
+            { chatterId: 'x'.repeat(65), displayName: 'Dj', amount: 5 },
+        ]);
+        expect(await readdir(dir).catch(() => [])).toEqual([]);
+    });
+
+    it('rejects a file whose scope exceeds the viewer cap', async () => {
+        // The write path caps viewers per scope; the file is untrusted input,
+        // so a hand-edited one claiming more must not load unbounded.
+        const viewers: Record<string, { displayName: string; balance: number }> = {};
+        for (let i = 0; i <= 100_000; i += 1) {
+            viewers[String(i)] = { displayName: 'V', balance: 1 };
+        }
+        await writeFile(dataPath, storedFile({ viewers }), 'utf8');
+        const store = new LoyaltyStore(dataPath, testLogger);
+        await store.load();
+
+        expect(store.getBalance(SHARED_SCOPE_KEY, '0')).toBe(0);
+    });
+
+    it('loads a file at exactly the viewer cap', async () => {
+        const viewers: Record<string, { displayName: string; balance: number }> = {};
+        for (let i = 0; i < 100_000; i += 1) {
+            viewers[String(i)] = { displayName: 'V', balance: 7 };
+        }
+        await writeFile(dataPath, storedFile({ viewers }), 'utf8');
+        const store = new LoyaltyStore(dataPath, testLogger);
+        await store.load();
+
+        expect(store.getBalance(SHARED_SCOPE_KEY, '0')).toBe(7);
     });
 
     it('never resolves a scope or chatter key to an inherited object member', async () => {

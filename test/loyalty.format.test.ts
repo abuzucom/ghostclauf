@@ -90,4 +90,39 @@ describe('renderLeaderboard', () => {
             ]),
         ).toBe('Top points: 1. Bob (20), 2. Cara (10)');
     });
+
+    it('keeps a full leaderboard inside the 500-character chat limit', () => {
+        // ctx.say throws past 500, which would drop the whole reply. 25 rows
+        // is the configurable maximum and overruns the limit on its own.
+        const entries = Array.from({ length: 25 }, (_, i) => ({
+            displayName: `Viewer${String(i).padStart(2, '0')}Name${'x'.repeat(14)}`,
+            balance: 123456,
+        }));
+        const rendered = renderLeaderboard('points', entries);
+        expect([...rendered].length).toBeLessThanOrEqual(500);
+    });
+
+    it('drops whole trailing rows rather than cutting one mid-entry', () => {
+        const entries = Array.from({ length: 25 }, (_, i) => ({
+            displayName: `Viewer${String(i).padStart(2, '0')}Name${'x'.repeat(14)}`,
+            balance: 123456,
+        }));
+        const rendered = renderLeaderboard('points', entries);
+        // Whatever rows survive, the last one is complete: it ends with the
+        // closing paren of a balance, not a severed name.
+        expect(rendered.endsWith(')')).toBe(true);
+        expect(rendered.startsWith('Top points: 1. ')).toBe(true);
+    });
+
+    it('still truncates when even the first row cannot fit', () => {
+        const rendered = renderLeaderboard('points', [
+            { displayName: 'x'.repeat(600), balance: 1 },
+        ]);
+        expect([...rendered].length).toBe(500);
+    });
+
+    it('keeps a balance reply inside the chat limit', () => {
+        const rendered = renderBalance('points', 'y'.repeat(600), 1);
+        expect([...rendered].length).toBe(500);
+    });
 });
