@@ -16,6 +16,7 @@ The design borrows the _spirit_ of [eggdrop](https://github.com/eggheads/eggdrop
 - [Lurk (`lurk`)](#lurk-lurk-plugin)
 - [Shoutout (`shoutout`)](#shoutout-shoutout-plugin)
 - [Fun facts (`funfact`)](#fun-facts-funfact-plugin)
+- [Quotes (`quotes`)](#quotes-quotes-plugin)
 - [Now playing (`nowplaying`)](#now-playing-nowplaying-plugin)
 - [How it talks to Twitch](#how-it-talks-to-twitch)
 - [Architecture](#architecture)
@@ -44,6 +45,8 @@ The design borrows the _spirit_ of [eggdrop](https://github.com/eggheads/eggdrop
   broadcaster) plugs another streamer's channel (see below).
 - **Fun facts** - the broadcaster curates a pool with `!addfunfact` /
   `!delfunfact`, and anyone can pull one with `!funfact` (see below).
+- **Quotes** - the broadcaster curates a pool of community quotes with
+  `!addquote` / `!delquote`, and anyone can pull one with `!quote` (see below).
 - **Now playing** — `!nowplaying` reports the track(s) currently on air from a
   local DJ overlay server (see below).
 
@@ -184,6 +187,40 @@ starts with `/` or `.`, and deduplicated case-insensitively; the pool holds at
 most 500 facts. See the `funfact:` block in
 [`config.example.yaml`](config.example.yaml).
 
+## Quotes (`quotes` plugin)
+
+A curated pool of community quotes, stored on disk under `data/`. Distinct
+from `funfact`: quotes carry an optional speaker attribution, separate from
+who added them.
+
+| Command                          | Who      | Effect                                                               |
+| -------------------------------- | -------- | -------------------------------------------------------------------- |
+| `!addquote <text> [- <speaker>]` | curators | Adds a quote and replies with its id.                                |
+| `!delquote <id>`                 | curators | Removes that quote. Ids are never reused.                            |
+| `!quote`                         | everyone | Posts a random quote, with its id, speaker if any, and who added it. |
+| `!quote <id>`                    | everyone | Posts that specific quote.                                           |
+| `!quotecount`                    | everyone | Reports how many quotes are stored.                                  |
+
+`!addquote` splits on the last `-` in the argument, so `!addquote well,
+actually - Tank` stores the text "well, actually" with speaker "Tank"; text
+with no `-` has no speaker. Curators are the broadcaster of the channel the
+command was typed in, plus any chatter listed for that channel under
+`treatAsBroadcaster` - the same cross-channel pattern `funfact` and `ping`
+use. Moderators who are not listed cannot add or delete, and their attempts
+are ignored silently.
+
+Reads are rate limited to one reply per chatter per channel every
+`cooldownSeconds` (default 30); the broadcaster and moderators are exempt, and
+throttled invocations get no reply at all so a chat flood cannot be amplified.
+
+Quotes are pooled across every configured broadcaster by default
+(`shareAcrossChannels: true`), so a quote added in one channel is served in
+all of them. Set it to false to keep each channel's pool independent.
+Submitted text is collapsed to a single line, capped at 300 characters (the
+speaker at 50), rejected if it starts with `/` or `.`, and deduplicated
+case-insensitively on text and speaker together; the pool holds at most 500
+quotes. See the `quotes:` block in [`config.example.yaml`](config.example.yaml).
+
 ## Now playing (`nowplaying` plugin)
 
 Reports the track(s) currently on air, by polling a local `1a2n-track-id`
@@ -256,6 +293,7 @@ src/
     lurk/               !lurk / !unlurk
     shoutout/           !so / !shoutout - Helix user lookup + native shoutout
     funfact/            !addfunfact / !funfact - curated fact pool on disk
+    quotes/             !addquote / !quote - curated quote pool on disk
     nowplaying/         !nowplaying - polls a local DJ overlay server
   tools/
     authFlow.ts         one-time OAuth to mint an account's initial token
