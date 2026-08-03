@@ -1,14 +1,45 @@
 import { mkdtemp, readdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { AtomicJsonFile } from '../src/core/atomicFile.js';
+
+/**
+ * Lets a test make `rename` report the target as locked. Windows does that
+ * when something else holds the file open; POSIX never does, so the retry
+ * path is unreachable here without simulating it.
+ */
+const { renameControl } = vi.hoisted(() => ({
+    renameControl: {
+        calls: 0,
+        failWith: null as null | ((call: number) => Error | null),
+    },
+}));
+
+vi.mock('node:fs/promises', async (importOriginal) => {
+    const actual = await importOriginal<typeof import('node:fs/promises')>();
+    return {
+        ...actual,
+        rename: async (from: string, to: string) => {
+            renameControl.calls += 1;
+            const failure = renameControl.failWith?.(renameControl.calls) ?? null;
+            if (failure) throw failure;
+            return actual.rename(from, to);
+        },
+    };
+});
+
+function lockedError(): Error {
+    return Object.assign(new Error('EPERM: operation not permitted, rename'), { code: 'EPERM' });
+}
 
 describe('AtomicJsonFile', () => {
     let dir: string;
 
     beforeEach(async () => {
         dir = await mkdtemp(join(tmpdir(), 'ghostclauf-atomicfile-'));
+        renameControl.calls = 0;
+        renameControl.failWith = null;
     });
 
     afterEach(async () => {
@@ -105,6 +136,36 @@ describe('AtomicJsonFile', () => {
             expect(dirMode).toBe(0o700);
         },
     );
+
+    it('retries a rename the OS reports as momentarily locked', async () => {
+        const target = join(dir, 'data.json');
+        const file = new AtomicJsonFile(target);
+        renameControl.failWith = (call) => (call <= 2 ? lockedError() : null);
+
+        await file.write('{"a":1}');
+
+        expect(renameControl.calls).toBe(3);
+        expect(await readFile(target, 'utf8')).toBe('{"a":1}');
+    });
+
+    it('gives up and rethrows once the retries are exhausted', async () => {
+        const target = join(dir, 'data.json');
+        const file = new AtomicJsonFile(target);
+        renameControl.failWith = () => lockedError();
+
+        await expect(file.write('{"a":1}')).rejects.toThrow('EPERM');
+        expect(renameControl.calls).toBe(5);
+    });
+
+    it('does not retry an error that is not lock contention', async () => {
+        const target = join(dir, 'data.json');
+        const file = new AtomicJsonFile(target);
+        renameControl.failWith = () =>
+            Object.assign(new Error('ENOSPC: no space left on device'), { code: 'ENOSPC' });
+
+        await expect(file.write('{"a":1}')).rejects.toThrow('ENOSPC');
+        expect(renameControl.calls).toBe(1);
+    });
 
     it('markExisting snapshots a file not written by this instance', async () => {
         const target = join(dir, 'data.json');

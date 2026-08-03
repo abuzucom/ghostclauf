@@ -12,6 +12,41 @@ import { dirname } from 'node:path';
 const FILE_MODE = 0o600;
 const DIRECTORY_MODE = 0o700;
 
+/**
+ * Windows fails a rename onto an open target instead of replacing it, so a
+ * transient reader - Defender, the search indexer, a backup agent, or a
+ * concurrent write to the same path - surfaces as one of these. POSIX
+ * replaces atomically and never reports them here.
+ */
+const RENAME_CONTENTION_CODES = new Set(['EPERM', 'EACCES', 'EBUSY']);
+const RENAME_ATTEMPTS = 5;
+const RENAME_RETRY_BASE_MS = 10;
+
+function isRenameContention(error: unknown): boolean {
+    if (typeof error !== 'object' || error === null) return false;
+    const code = (error as { code?: unknown }).code;
+    return typeof code === 'string' && RENAME_CONTENTION_CODES.has(code);
+}
+
+const delay = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
+
+/**
+ * Rename, retrying while the target is momentarily locked. The lock is held by
+ * whoever opened the file, so backing off and retrying is the only remedy;
+ * the last attempt rethrows so a genuine permission error still surfaces.
+ */
+async function renameWithRetry(from: string, to: string): Promise<void> {
+    for (let attempt = 1; attempt <= RENAME_ATTEMPTS; attempt += 1) {
+        try {
+            await rename(from, to);
+            return;
+        } catch (error) {
+            if (attempt === RENAME_ATTEMPTS || !isRenameContention(error)) throw error;
+            await delay(RENAME_RETRY_BASE_MS * attempt);
+        }
+    }
+}
+
 export class AtomicJsonFile {
     private writeSeq = 0;
     private hasPersisted = false;
@@ -31,14 +66,14 @@ export class AtomicJsonFile {
             const backupTemp = `${this.path}.bak.${this.writeSeq}.tmp`;
             await copyFile(this.path, backupTemp);
             await chmod(backupTemp, FILE_MODE);
-            await rename(backupTemp, `${this.path}.bak`);
+            await renameWithRetry(backupTemp, `${this.path}.bak`);
         }
         const tempPath = `${this.path}.${this.writeSeq}.tmp`;
         // mode on writeFile applies only when creating; chmod covers a reused
         // temp path left behind by an earlier crash.
         await writeFile(tempPath, json, { encoding: 'utf8', mode: FILE_MODE });
         await chmod(tempPath, FILE_MODE);
-        await rename(tempPath, this.path);
+        await renameWithRetry(tempPath, this.path);
         this.hasPersisted = true;
     }
 }
