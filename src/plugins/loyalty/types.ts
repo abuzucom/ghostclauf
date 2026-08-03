@@ -21,15 +21,15 @@ export interface LoyaltyConfig {
     dataPath?: string;
     /** Pool balances across every configured channel. Defaults to true. */
     shareAcrossChannels?: boolean;
-    /** What the currency is called in chat replies. Defaults to "points". */
+    /** What the currency is called in chat replies. Defaults to "esports dollars". */
     currencyName?: string;
-    /** Points awarded per tick to each chatter active since the last tick. Defaults to 1. */
-    pointsPerTick?: number;
+    /** Awarded per tick to each chatter active since the last tick. Defaults to 1. */
+    dollarsPerTick?: number;
     /** Minutes between ticks. Defaults to 5. */
     tickIntervalMinutes?: number;
-    /** Seconds a chatter must wait between handled !points/!pointsboard replies. Defaults to 10. */
+    /** Seconds a chatter must wait between handled !wallet/!economy replies. Defaults to 10. */
     cooldownSeconds?: number;
-    /** Rows shown by !pointsboard. Defaults to 5. */
+    /** Rows shown by !economy. Defaults to 5. */
     leaderboardSize?: number;
 }
 

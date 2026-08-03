@@ -1,11 +1,12 @@
-// Loyalty plugin: viewers passively earn a configurable currency for being
-// active in chat while the channel is live. Every tickIntervalMinutes, each
-// chatter who sent at least one message since the last tick is awarded
-// pointsPerTick. This is a CHAT-ACTIVITY PROXY, not real Twitch viewership -
-// the bot only sees chat messages, never the viewer list, so it cannot know
-// who is actually watching versus merely chatting. !points reports a
-// balance; !pointsboard shows the top earners. No spend/redemption yet.
+// Loyalty plugin: viewers passively earn esports dollars for being active in
+// chat while the channel is live. Every tickIntervalMinutes, each chatter who
+// sent at least one message since the last tick is awarded dollarsPerTick.
+// This is a CHAT-ACTIVITY PROXY, not real Twitch viewership - the bot only
+// sees chat messages, never the viewer list, so it cannot know who is actually
+// watching versus merely chatting. !wallet reports a balance; !economy shows
+// the top earners. No spend/redemption yet.
 
+import { DateTime, Duration } from 'luxon';
 import { z } from 'zod';
 import type { BotContext, ChatCommandEvent, Plugin } from '../../core/types.js';
 import { CooldownGate } from '../../core/cooldown.js';
@@ -14,25 +15,23 @@ import { LoyaltyStore, SHARED_SCOPE_KEY } from './store.js';
 import type { Award } from './store.js';
 
 const DEFAULT_DATA_PATH = './data/loyalty.json';
-const DEFAULT_CURRENCY_NAME = 'points';
-const DEFAULT_POINTS_PER_TICK = 1;
+const DEFAULT_CURRENCY_NAME = 'esports dollars';
+const DEFAULT_DOLLARS_PER_TICK = 1;
 const DEFAULT_TICK_INTERVAL_MINUTES = 5;
 const DEFAULT_COOLDOWN_SECONDS = 10;
 const DEFAULT_LEADERBOARD_SIZE = 5;
 const MAX_COOLDOWN_SECONDS = 3600;
-const MAX_POINTS_PER_TICK = 1_000;
+const MAX_DOLLARS_PER_TICK = 1_000;
 const MAX_TICK_INTERVAL_MINUTES = 1_440;
 const MAX_LEADERBOARD_SIZE = 25;
 const MAX_CURRENCY_NAME_LENGTH = 32;
 const MAX_PATH_LENGTH = 4096;
-const MS_PER_SECOND = 1000;
-const MS_PER_MINUTE = 60_000;
 
 const CONFIG_FIELD_SCHEMAS = {
     dataPath: z.string().trim().min(1).max(MAX_PATH_LENGTH),
     shareAcrossChannels: z.boolean(),
     currencyName: z.string().trim().min(1).max(MAX_CURRENCY_NAME_LENGTH),
-    pointsPerTick: z.number().int().min(1).max(MAX_POINTS_PER_TICK),
+    dollarsPerTick: z.number().int().min(1).max(MAX_DOLLARS_PER_TICK),
     tickIntervalMinutes: z.number().int().min(1).max(MAX_TICK_INTERVAL_MINUTES),
     cooldownSeconds: z.number().int().min(0).max(MAX_COOLDOWN_SECONDS),
     leaderboardSize: z.number().int().min(1).max(MAX_LEADERBOARD_SIZE),
@@ -61,7 +60,7 @@ interface LoyaltyRuntime {
     currencyName: string;
     shareAcrossChannels: boolean;
     leaderboardSize: number;
-    now: () => Date;
+    now: () => DateTime;
 }
 
 function scopeKeyFor(runtime: LoyaltyRuntime, broadcasterId: string): string {
@@ -72,7 +71,7 @@ function scopeKeyFor(runtime: LoyaltyRuntime, broadcasterId: string): string {
 function isThrottled(runtime: LoyaltyRuntime, event: ChatCommandEvent): boolean {
     if (event.roles.has('broadcaster') || event.roles.has('moderator')) return false;
     const key = `${event.command}:${event.broadcasterId}:${event.chatterId}`;
-    return runtime.cooldown.shouldThrottle(key, runtime.now().getTime());
+    return runtime.cooldown.shouldThrottle(key, runtime.now().toMillis());
 }
 
 function reply(ctx: BotContext, event: ChatCommandEvent, text: string): Promise<void> {
@@ -81,7 +80,7 @@ function reply(ctx: BotContext, event: ChatCommandEvent, text: string): Promise<
 
 function registerBalanceCommand(ctx: BotContext, runtime: LoyaltyRuntime): void {
     ctx.command({
-        trigger: 'points',
+        trigger: 'wallet',
         allow: ['everyone'],
         description: 'Report your loyalty balance.',
         handler: async (event, ctx) => {
@@ -99,7 +98,7 @@ function registerBalanceCommand(ctx: BotContext, runtime: LoyaltyRuntime): void 
 
 function registerLeaderboardCommand(ctx: BotContext, runtime: LoyaltyRuntime): void {
     ctx.command({
-        trigger: 'pointsboard',
+        trigger: 'economy',
         allow: ['everyone'],
         description: 'Show the top loyalty balances.',
         handler: async (event, ctx) => {
@@ -116,7 +115,7 @@ function registerLeaderboardCommand(ctx: BotContext, runtime: LoyaltyRuntime): v
  * Build the loyalty plugin. `now` is injectable so cooldown timing is
  * deterministically testable; production use relies on the real clock.
  */
-export function createLoyaltyPlugin(now: () => Date = () => new Date()): Plugin {
+export function createLoyaltyPlugin(now: () => DateTime = () => DateTime.utc()): Plugin {
     let store: LoyaltyStore | null = null;
     let tickTimer: NodeJS.Timeout | null = null;
 
@@ -146,10 +145,10 @@ export function createLoyaltyPlugin(now: () => Date = () => new Date()): Plugin 
                 true,
                 ctx.logger,
             );
-            const pointsPerTick = resolveField(
-                'pointsPerTick',
-                config.pointsPerTick,
-                DEFAULT_POINTS_PER_TICK,
+            const dollarsPerTick = resolveField(
+                'dollarsPerTick',
+                config.dollarsPerTick,
+                DEFAULT_DOLLARS_PER_TICK,
                 ctx.logger,
             );
             const tickIntervalMinutes = resolveField(
@@ -173,7 +172,9 @@ export function createLoyaltyPlugin(now: () => Date = () => new Date()): Plugin 
 
             const runtime: LoyaltyRuntime = {
                 store,
-                cooldown: new CooldownGate(cooldownSeconds * MS_PER_SECOND),
+                cooldown: new CooldownGate(
+                    Duration.fromObject({ seconds: cooldownSeconds }).as('milliseconds'),
+                ),
                 currencyName,
                 shareAcrossChannels,
                 leaderboardSize,
@@ -209,26 +210,29 @@ export function createLoyaltyPlugin(now: () => Date = () => new Date()): Plugin 
                 activeChatters(event.broadcasterId).set(event.chatterId, event.chatterDisplayName);
             });
 
-            tickTimer = setInterval(() => {
-                for (const [broadcasterId, chatters] of activeSinceLastTick) {
-                    if (chatters.size === 0) continue;
-                    const scopeKey = scopeKeyFor(runtime, broadcasterId);
-                    const awards: Award[] = [...chatters].map(([chatterId, displayName]) => ({
-                        chatterId,
-                        displayName,
-                        amount: pointsPerTick,
-                    }));
-                    chatters.clear();
-                    store
-                        ?.awardMany(scopeKey, awards)
-                        .catch((err: unknown) =>
-                            ctx.logger.error(
-                                { err, scopeKey, broadcasterId },
-                                'loyalty tick award failed',
-                            ),
-                        );
-                }
-            }, tickIntervalMinutes * MS_PER_MINUTE);
+            tickTimer = setInterval(
+                () => {
+                    for (const [broadcasterId, chatters] of activeSinceLastTick) {
+                        if (chatters.size === 0) continue;
+                        const scopeKey = scopeKeyFor(runtime, broadcasterId);
+                        const awards: Award[] = [...chatters].map(([chatterId, displayName]) => ({
+                            chatterId,
+                            displayName,
+                            amount: dollarsPerTick,
+                        }));
+                        chatters.clear();
+                        store
+                            ?.awardMany(scopeKey, awards)
+                            .catch((err: unknown) =>
+                                ctx.logger.error(
+                                    { err, scopeKey, broadcasterId },
+                                    'loyalty tick award failed',
+                                ),
+                            );
+                    }
+                },
+                Duration.fromObject({ minutes: tickIntervalMinutes }).as('milliseconds'),
+            );
             tickTimer.unref?.();
         },
         async dispose(ctx: BotContext): Promise<void> {

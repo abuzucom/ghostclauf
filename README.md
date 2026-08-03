@@ -52,7 +52,7 @@ The design borrows the _spirit_ of [eggdrop](https://github.com/eggheads/eggdrop
 - **Quotes** - the broadcaster curates a pool of community quotes with
   `!addquote` / `!delquote`, and anyone can pull one with `!quote` (see below).
 - **Loyalty** - viewers passively earn a configurable currency for chat
-  activity while live; `!points` / `!pointsboard` (see below).
+  activity while live; `!wallet` / `!economy` (see below).
 - **Now playing** — `!nowplaying` reports the track(s) currently on air from a
   local DJ overlay server (see below).
 
@@ -252,21 +252,21 @@ quotes. See the `quotes:` block in [`config.example.yaml`](config.example.yaml).
 
 ## Loyalty (`loyalty` plugin)
 
-Viewers passively earn a configurable currency (`points` by default) for
+Viewers passively earn a configurable currency (`esports dollars` by default) for
 being active in chat while the channel is live.
 
-| Command        | Who      | Effect                                               |
-| -------------- | -------- | ---------------------------------------------------- |
-| `!points`      | everyone | Report your balance.                                 |
-| `!pointsboard` | everyone | Show the top `leaderboardSize` balances (default 5). |
+| Command    | Who      | Effect                                               |
+| ---------- | -------- | ---------------------------------------------------- |
+| `!wallet`  | everyone | Report your balance.                                 |
+| `!economy` | everyone | Show the top `leaderboardSize` balances (default 5). |
 
 **Earning is a chat-activity proxy, not real Twitch watch-time.** Every
 `tickIntervalMinutes` (default 5), each chatter who sent at least one chat
 message since the last tick, while their channel was live, is awarded
-`pointsPerTick` (default 1). The bot only sees chat messages - it has no
+`dollarsPerTick` (default 1). The bot only sees chat messages - it has no
 access to the viewer list - so this measures chat participation, not
 whether someone is actually watching. There is no earn command; earning is
-entirely passive. Reads (`!points`/`!pointsboard`) are rate limited to one
+entirely passive. Reads (`!wallet`/`!economy`) are rate limited to one
 reply per chatter per channel every `cooldownSeconds` (default 10);
 broadcasters and moderators are exempt.
 
@@ -379,7 +379,7 @@ src/
     announce/           raid / subscribe / cheer -> templated announcement
     funfact/            !addfunfact / !funfact - curated fact pool on disk
     quotes/             !addquote / !quote - curated quote pool on disk
-    loyalty/            !points / !pointsboard - passive chat-activity currency
+    loyalty/            !wallet / !economy - passive chat-activity currency
     nowplaying/         !nowplaying - polls a local DJ overlay server
   tools/
     authFlow.ts         one-time OAuth to mint an account's initial token

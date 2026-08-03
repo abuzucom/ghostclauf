@@ -12,7 +12,7 @@ import type { LoyaltyData, LoyaltyScope, ViewerRecord } from './types.js';
 /** Scope key used when balances are pooled across every configured channel. */
 export const SHARED_SCOPE_KEY = 'shared';
 
-/** Bound on a single award, so a misconfigured pointsPerTick cannot overflow a balance in one tick. */
+/** Bound on a single award, so a misconfigured dollarsPerTick cannot overflow a balance in one tick. */
 export const MAX_AWARD = 1_000_000;
 /** Bound on a stored balance. */
 export const MAX_BALANCE = 1_000_000_000;

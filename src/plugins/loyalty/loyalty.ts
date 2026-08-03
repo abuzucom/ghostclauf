@@ -20,13 +20,13 @@ function truncateForChat(text: string): string {
     return codePoints.slice(0, MAX_CHAT_MESSAGE_LENGTH).join('');
 }
 
-/** Render a !points balance reply. */
+/** Render a !wallet balance reply. */
 export function renderBalance(currencyName: string, displayName: string, balance: number): string {
     return truncateForChat(`${displayName} has ${balance} ${currencyName}.`);
 }
 
 /**
- * Render a !pointsboard reply, or a message for an empty pool.
+ * Render a !economy reply, or a message for an empty pool.
  *
  * A full leaderboard overruns Twitch's 500-character limit well before the
  * configurable maximum of 25 rows, so entries are added only while they fit
