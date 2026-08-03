@@ -32,6 +32,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   login charset, since `run.sh` passes them to `npm run auth`. The
   `config.example.yaml` placeholders are still accepted so `run.sh` can
   replace them interactively.
+- CI: added an `npm audit --audit-level=high` step so high/critical
+  dependency vulnerabilities fail the build instead of relying on manual
+  review.
+- Added `.github/dependabot.yml` for weekly automated `npm` and
+  `github-actions` update pull requests.
+- Added `test/atomicFile.test.ts`, direct coverage of `AtomicJsonFile`
+  (owner-only file permissions, `.bak` snapshotting, concurrent-write
+  safety, parent-directory auto-creation), previously exercised only
+  transitively through the `streak` and `funfact` store tests.
 
 ### Added
 
@@ -49,6 +58,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   schemas; an invalid config field falls back to its default, and an
   invalid curator map falls back to empty so only the broadcaster can
   curate.
+- Operational visibility: `GET /healthz` (liveness) and `GET /readyz`
+  (readiness, `503` while any configured broadcaster's EventSub subscription
+  is revoked) HTTP endpoints, reusing the port already opened for the
+  one-time OAuth callback. `/readyz` includes an in-process counter
+  snapshot (`eventsub_reconnects`, `eventsub_revocations`,
+  `chat_send_failures`, `rate_limit_drops`, `token_refresh_failures`).
+  Token-refresh failures and EventSub revocations now also emit a
+  structured, greppable `{ alert: true, kind: ... }` log line instead of a
+  plain log message. No new dependency; built on `node:http` the same way
+  `tools/authFlow.ts` already builds its OAuth callback server. Shutdown
+  drops open health-server connections rather than waiting on them, so a
+  local socket that never completes a request cannot stall exit.
 - `nowplaying` plugin: `!nowplaying` (everyone) reports the track(s)
   currently on air by polling a local `1a2n-track-id` overlay server
   (Traktor Pro 4 deck/track tracker for DJ streams) on demand. Never holds a

@@ -202,8 +202,14 @@ describe('createAuthProvider', () => {
         onRefreshFailureHandler('bot-user-id', refreshError);
 
         expect(spy.error).toHaveBeenCalledWith(
-            expect.objectContaining({ userId: 'bot-user-id', err: refreshError }),
-            'token refresh failed; re-run `npm run auth`',
+            expect.objectContaining({
+                alert: true,
+                kind: 'token_refresh_failure',
+                userId: 'bot-user-id',
+                err: refreshError,
+                hint: 're-run `npm run auth`',
+            }),
+            'alert: token_refresh_failure',
         );
     });
 
