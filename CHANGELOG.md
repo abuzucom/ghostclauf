@@ -89,6 +89,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- `AtomicJsonFile`: a rename onto a momentarily locked target is retried
+  (bounded, with backoff) instead of failing the write. Windows fails rather
+  than replaces when anything else holds the target open - Defender, the
+  search indexer, a backup agent - which surfaced as intermittent `EPERM`
+  write failures on Windows only. Errors that are not lock contention still
+  fail immediately.
 - `streak` plugin: fixed a race condition in `handleOffline` by committing `lastOfflineAt` to session state before yielding to `qualifyCurrentInterval()`, preventing rapid reconnects from failing `isReconnect` checks.
 - Prettier line ending compatibility: configured `endOfLine: "auto"` in `.prettierrc` to support cross-platform line endings across POSIX and Windows checkouts in CI.
 - `setup.sh` and `run.sh` are committed executable, so the documented
