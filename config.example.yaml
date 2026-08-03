@@ -146,3 +146,24 @@ plugins:
             template: 'Go check out @{display} at twitch.tv/{channel}! They were last seen playing {game}.'
             fallbackGame: 'something awesome'
             sendNativeShoutout: true
+        loyalty:
+            # Where balances are persisted (own store under ./data).
+            dataPath: ./data/loyalty.json
+            # Pool balances across every broadcaster configured above. Set
+            # false to keep each channel's balances independent.
+            shareAcrossChannels: true
+            # What the currency is called in chat replies (!points, !pointsboard).
+            currencyName: 'points'
+            # Points awarded per tick to each chatter who sent at least one
+            # chat message since the last tick, while the channel was live.
+            # This is a CHAT-ACTIVITY PROXY, not real Twitch watch-time - the
+            # bot only sees chat messages, never the viewer list.
+            pointsPerTick: 1
+            # Minutes between ticks.
+            tickIntervalMinutes: 5
+            # Seconds a chatter must wait between handled !points/!pointsboard
+            # replies; repeats inside the window are silently ignored.
+            # Broadcasters and moderators are exempt. Set 0 to disable.
+            cooldownSeconds: 10
+            # Rows shown by !pointsboard.
+            leaderboardSize: 5

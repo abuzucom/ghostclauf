@@ -35,6 +35,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `loyalty` plugin (v1: earn + balance + leaderboard, no spend/redemption
+  yet): viewers passively earn a configurable currency (`points` by
+  default) for chat activity while the channel is live. Every
+  `tickIntervalMinutes` (default 5), each chatter who sent at least one
+  chat message since the last tick is awarded `pointsPerTick` (default 1).
+  This is a chat-activity proxy, not real Twitch watch-time - the bot has
+  no access to the viewer list. `!points` reports a balance; `!pointsboard`
+  shows the top `leaderboardSize` earners (default 5). Reads are rate
+  limited to one reply per chatter per channel every `cooldownSeconds`
+  (default 10), with broadcasters and moderators exempt. Balances are
+  pooled across channels by default (`shareAcrossChannels`). Balances,
+  the plugin's config block, and the on-disk pool are all validated at
+  runtime against bounded zod schemas.
 - `nowplaying` plugin: `!nowplaying` (everyone) reports the track(s)
   currently on air by polling a local `1a2n-track-id` overlay server
   (Traktor Pro 4 deck/track tracker for DJ streams) on demand. Never holds a
