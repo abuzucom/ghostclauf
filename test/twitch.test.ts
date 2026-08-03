@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { RefreshingAuthProvider } from '@twurple/auth';
+import { createMetrics } from '../src/core/metrics.js';
 import { createTwitchTransport } from '../src/core/twitch.js';
 import { testLogger } from './helpers.js';
 
@@ -43,15 +44,15 @@ vi.mock('@twurple/eventsub-ws', () => {
         onChannelChatMessage = vi.fn();
         onStreamOnline = vi.fn();
         onStreamOffline = vi.fn();
+        onChannelRaidTo = vi.fn();
+        onChannelSubscription = vi.fn();
+        onChannelCheer = vi.fn();
         start = vi.fn();
         stop = vi.fn();
         onUserSocketConnect = vi.fn();
         onUserSocketDisconnect = vi.fn();
         onRevoke = vi.fn();
         onSubscriptionCreateFailure = vi.fn();
-        onChannelRaidTo = vi.fn();
-        onChannelSubscription = vi.fn();
-        onChannelCheer = vi.fn();
     }
     return { EventSubWsListener: MockListener };
 });
@@ -374,6 +375,163 @@ describe('twitch transport', () => {
         }
     });
 
+    it('increments eventsub_reconnects when a socket reconnects after a disconnect', async () => {
+        const metrics = createMetrics();
+        const transport = await createTwitchTransport({
+            authProvider: dummyAuthProvider,
+            botUserId: 'bot-id',
+            broadcasters: [{ login: 'streamer' }],
+            logger: testLogger,
+            metrics,
+            handlers: { onChatMessage: vi.fn(), onStreamOnline: vi.fn(), onStreamOffline: vi.fn() },
+        });
+        await transport.start();
+        const listener = listenerInstances[0] as any;
+        const disconnectHandler = listener.onUserSocketDisconnect.mock.calls[0][0];
+        const connectHandler = listener.onUserSocketConnect.mock.calls[0][0];
+
+        // A plain (re)connect with no prior disconnect must not count.
+        connectHandler('bot-id');
+        expect(metrics.snapshot().eventsub_reconnects).toBeUndefined();
+
+        disconnectHandler('bot-id', new Error('dropped'));
+        connectHandler('bot-id');
+        expect(metrics.snapshot().eventsub_reconnects).toBe(1);
+        await transport.stop();
+    });
+
+    it('increments eventsub_revocations and marks the transport not ready on revoke', async () => {
+        const metrics = createMetrics();
+        const transport = await createTwitchTransport({
+            authProvider: dummyAuthProvider,
+            botUserId: 'bot-id',
+            broadcasters: [{ login: 'streamer' }],
+            logger: testLogger,
+            metrics,
+            handlers: { onChatMessage: vi.fn(), onStreamOnline: vi.fn(), onStreamOffline: vi.fn() },
+        });
+        await transport.start();
+        expect(transport.isReady()).toBe(true);
+
+        const listener = listenerInstances[0] as any;
+        const revokeHandler = listener.onRevoke.mock.calls[0][0];
+        revokeHandler(
+            { id: 'sub-1', authUserId: 'channel-id', constructor: { name: 'FakeSubscription' } },
+            'authorization_revoked',
+        );
+
+        expect(metrics.snapshot().eventsub_revocations).toBe(1);
+        expect(transport.isReady()).toBe(false);
+        await transport.stop();
+    });
+
+    it('increments chat_send_failures on a non-retryable send error', async () => {
+        const metrics = createMetrics();
+        const failure = Object.assign(new Error('forbidden'), { statusCode: 403 });
+        sendChatMessageSpy.mockRejectedValueOnce(failure);
+        const transport = await createTwitchTransport({
+            authProvider: dummyAuthProvider,
+            botUserId: 'bot-id',
+            broadcasters: [{ login: 'streamer' }],
+            logger: testLogger,
+            metrics,
+            handlers: { onChatMessage: vi.fn(), onStreamOnline: vi.fn(), onStreamOffline: vi.fn() },
+        });
+
+        await expect(transport.sender('oops')).rejects.toThrow('forbidden');
+        expect(metrics.snapshot().chat_send_failures).toBe(1);
+    });
+
+    it('increments rate_limit_drops only for rate-limit drop reasons', async () => {
+        const metrics = createMetrics();
+        sendChatMessageSpy.mockResolvedValueOnce({
+            isSent: false,
+            id: '',
+            dropReasonCode: 'automod_held',
+            dropReasonMessage: 'held for review',
+        });
+        const transport = await createTwitchTransport({
+            authProvider: dummyAuthProvider,
+            botUserId: 'bot-id',
+            broadcasters: [{ login: 'streamer' }],
+            logger: testLogger,
+            metrics,
+            handlers: { onChatMessage: vi.fn(), onStreamOnline: vi.fn(), onStreamOffline: vi.fn() },
+        });
+
+        await transport.sender('not rate limited');
+        expect(metrics.snapshot().rate_limit_drops).toBeUndefined();
+
+        sendChatMessageSpy.mockResolvedValueOnce({
+            isSent: false,
+            id: '',
+            dropReasonCode: 'rate_limited',
+            dropReasonMessage: 'too many messages',
+        });
+        await transport.sender('rate limited');
+        expect(metrics.snapshot().rate_limit_drops).toBe(1);
+    });
+
+    it('does not match a drop reason that merely contains "rate_limit"', async () => {
+        const metrics = createMetrics();
+        sendChatMessageSpy.mockResolvedValueOnce({
+            isSent: false,
+            id: '',
+            dropReasonCode: 'pirate_limit_exceeded',
+            dropReasonMessage: 'unrelated code sharing the substring',
+        });
+        const transport = await createTwitchTransport({
+            authProvider: dummyAuthProvider,
+            botUserId: 'bot-id',
+            broadcasters: [{ login: 'streamer' }],
+            logger: testLogger,
+            metrics,
+            handlers: { onChatMessage: vi.fn(), onStreamOnline: vi.fn(), onStreamOffline: vi.fn() },
+        });
+
+        await transport.sender('not actually rate limited');
+        expect(metrics.snapshot().rate_limit_drops).toBeUndefined();
+    });
+
+    it('does not match a code starting with "rate" followed by an arbitrary character', async () => {
+        const metrics = createMetrics();
+        sendChatMessageSpy.mockResolvedValueOnce({
+            isSent: false,
+            id: '',
+            dropReasonCode: 'rateXlimitedSomehow',
+            dropReasonMessage: 'not a real Twitch code, but exercises the separator anchor',
+        });
+        const transport = await createTwitchTransport({
+            authProvider: dummyAuthProvider,
+            botUserId: 'bot-id',
+            broadcasters: [{ login: 'streamer' }],
+            logger: testLogger,
+            metrics,
+            handlers: { onChatMessage: vi.fn(), onStreamOnline: vi.fn(), onStreamOffline: vi.fn() },
+        });
+
+        await transport.sender('still not rate limited');
+        expect(metrics.snapshot().rate_limit_drops).toBeUndefined();
+    });
+
+    it('matches rate-limited with a hyphen or no separator', async () => {
+        const metrics = createMetrics();
+        sendChatMessageSpy
+            .mockResolvedValueOnce({ isSent: false, id: '', dropReasonCode: 'rate-limited' })
+            .mockResolvedValueOnce({ isSent: false, id: '', dropReasonCode: 'ratelimited' });
+        const transport = await createTwitchTransport({
+            authProvider: dummyAuthProvider,
+            botUserId: 'bot-id',
+            broadcasters: [{ login: 'streamer' }],
+            logger: testLogger,
+            metrics,
+            handlers: { onChatMessage: vi.fn(), onStreamOnline: vi.fn(), onStreamOffline: vi.fn() },
+        });
+
+        await transport.sender('one');
+        await transport.sender('two');
+        expect(metrics.snapshot().rate_limit_drops).toBe(2);
+    });
     it('forwards raid events', async () => {
         const onRaid = vi.fn();
         const transport = await createTwitchTransport({

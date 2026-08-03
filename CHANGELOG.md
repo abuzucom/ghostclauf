@@ -32,6 +32,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   login charset, since `run.sh` passes them to `npm run auth`. The
   `config.example.yaml` placeholders are still accepted so `run.sh` can
   replace them interactively.
+- CI: added an `npm audit --audit-level=high` step so high/critical
+  dependency vulnerabilities fail the build instead of relying on manual
+  review.
+- Added `.github/dependabot.yml` for weekly automated `npm` and
+  `github-actions` update pull requests.
+- Added `test/atomicFile.test.ts`, direct coverage of `AtomicJsonFile`
+  (owner-only file permissions, `.bak` snapshotting, concurrent-write
+  safety, parent-directory auto-creation), previously exercised only
+  transitively through the `streak` and `funfact` store tests.
 
 ### Added
 
@@ -51,6 +60,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   since chat strips leading whitespace. A cheer's message is also collapsed
   to a single trimmed line with control characters removed, matching
   `funfact`'s handling of submitted text.
+- Operational visibility: `GET /healthz` (liveness) and `GET /readyz`
+  (readiness, `503` while any configured broadcaster's EventSub subscription
+  is revoked) HTTP endpoints, reusing the port already opened for the
+  one-time OAuth callback. `/readyz` includes an in-process counter
+  snapshot (`eventsub_reconnects`, `eventsub_revocations`,
+  `chat_send_failures`, `rate_limit_drops`, `token_refresh_failures`).
+  Token-refresh failures and EventSub revocations now also emit a
+  structured, greppable `{ alert: true, kind: ... }` log line instead of a
+  plain log message. No new dependency; built on `node:http` the same way
+  `tools/authFlow.ts` already builds its OAuth callback server. Shutdown
+  drops open health-server connections rather than waiting on them, so a
+  local socket that never completes a request cannot stall exit.
 - `nowplaying` plugin: `!nowplaying` (everyone) reports the track(s)
   currently on air by polling a local `1a2n-track-id` overlay server
   (Traktor Pro 4 deck/track tracker for DJ streams) on demand. Never holds a
@@ -84,6 +105,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- `AtomicJsonFile`: a rename onto a momentarily locked target is retried
+  (bounded, with backoff) instead of failing the write. Windows fails rather
+  than replaces when anything else holds the target open - Defender, the
+  search indexer, a backup agent - which surfaced as intermittent `EPERM`
+  write failures on Windows only. Errors that are not lock contention still
+  fail immediately.
 - `streak` plugin: fixed a race condition in `handleOffline` by committing `lastOfflineAt` to session state before yielding to `qualifyCurrentInterval()`, preventing rapid reconnects from failing `isReconnect` checks.
 - Prettier line ending compatibility: configured `endOfLine: "auto"` in `.prettierrc` to support cross-platform line endings across POSIX and Windows checkouts in CI.
 - `setup.sh` and `run.sh` are committed executable, so the documented

@@ -3,7 +3,9 @@ import { createAuthProvider } from './core/auth.js';
 import { CommandRegistry } from './core/commands.js';
 import { loadConfig } from './core/config.js';
 import { EventBus } from './core/eventBus.js';
+import { startHealthServer, type HealthServer } from './core/healthServer.js';
 import { createLogger } from './core/logger.js';
+import { createMetrics } from './core/metrics.js';
 import { PluginManager } from './core/pluginManager.js';
 import { createTwitchTransport } from './core/twitch.js';
 import type { HelixClient, MessageSender } from './core/types.js';
@@ -11,12 +13,14 @@ import type { HelixClient, MessageSender } from './core/types.js';
 async function main(): Promise<void> {
     const logger = createLogger();
     const { file, secrets } = loadConfig();
+    const metrics = createMetrics();
 
     // Auth: load the bot and broadcaster tokens and resolve their user ids.
     const { authProvider, botUserId, broadcasterUserIds } = await createAuthProvider(
         secrets,
         logger,
         file.broadcasters,
+        metrics,
     );
     const broadcasterTargets = file.broadcasters.map((broadcaster, index) => ({
         login: broadcaster.login,
@@ -76,6 +80,7 @@ async function main(): Promise<void> {
             userId: target.userId!,
         })),
         logger,
+        metrics,
         handlers: {
             onChatMessage: (event) => {
                 bus.emit('chatMessage', event);
@@ -114,10 +119,42 @@ async function main(): Promise<void> {
         'ghostclauf is online',
     );
 
+    // Reuses the OAuth callback's port; the two never run at the same time.
+    const healthPort = Number(new URL(secrets.redirectUri).port || '3000');
+    let healthServer: HealthServer | undefined;
+    try {
+        healthServer = await startHealthServer({
+            port: healthPort,
+            logger,
+            metrics,
+            isReady: () => transport.isReady(),
+        });
+    } catch (error) {
+        logger.warn({ err: error, port: healthPort }, 'could not start health server');
+    }
+
     const shutdown = async (signal: string): Promise<void> => {
         logger.info({ signal }, 'shutting down');
-        await plugins.disposeAll();
-        await transport.stop();
+        // Each step runs independently so one failure (e.g. a plugin's
+        // dispose() throwing) cannot skip the rest of cleanup or leave the
+        // process hanging without calling exit.
+        const steps: Array<[string, () => Promise<void>]> = [
+            ['dispose plugins', () => plugins.disposeAll()],
+            ['stop transport', () => transport.stop()],
+            [
+                'close health server',
+                async () => {
+                    await healthServer?.close();
+                },
+            ],
+        ];
+        for (const [label, step] of steps) {
+            try {
+                await step();
+            } catch (error) {
+                logger.error({ err: error, step: label }, 'error during shutdown step');
+            }
+        }
         process.exit(0);
     };
     process.on('SIGINT', () => void shutdown('SIGINT'));
