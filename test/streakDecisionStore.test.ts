@@ -5,6 +5,15 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { StreakDecisionStore } from '../src/plugins/streak/decisionStore.js';
 import { makeSpyLogger } from './helpers.js';
 
+/**
+ * These cases fill a store to its cap, which is hundreds of real atomic writes.
+ * They run in well under a second locally, but a loaded CI runner has blown the
+ * 5s default - and an aborted test leaves an in-flight write racing the
+ * temp-directory cleanup, surfacing as a confusing ENOTEMPTY rather than a
+ * timeout. The work is I/O-bound, not hung, so give it room.
+ */
+const HEAVY_IO_TIMEOUT_MS = 30_000;
+
 describe('StreakDecisionStore', () => {
     let dir: string;
     let path: string;
@@ -92,25 +101,29 @@ describe('StreakDecisionStore', () => {
         expect(cancelled.latest('shared', 'viewer-1')).not.toBeNull();
     });
 
-    it('prunes resolved decisions beyond the retention cap but keeps live ones', async () => {
-        const store = new StreakDecisionStore(path, makeSpyLogger().logger);
-        await store.load();
-        // 60 resolved decisions (each set is superseded by the next) plus one
-        // live decision left at the end.
-        for (let i = 0; i < 60; i += 1) {
-            await store.recordSet('shared', 'viewer-1', 'viewer', i, i + 1, 0, 'owner', 'tank');
-            await store.supersede('shared', 'viewer-1');
-        }
-        await store.recordSet('shared', 'viewer-1', 'viewer', 60, 61, 0, 'owner', 'tank');
-        await store.flush();
+    it(
+        'prunes resolved decisions beyond the retention cap but keeps live ones',
+        async () => {
+            const store = new StreakDecisionStore(path, makeSpyLogger().logger);
+            await store.load();
+            // 60 resolved decisions (each set is superseded by the next) plus one
+            // live decision left at the end.
+            for (let i = 0; i < 60; i += 1) {
+                await store.recordSet('shared', 'viewer-1', 'viewer', i, i + 1, 0, 'owner', 'tank');
+                await store.supersede('shared', 'viewer-1');
+            }
+            await store.recordSet('shared', 'viewer-1', 'viewer', 60, 61, 0, 'owner', 'tank');
+            await store.flush();
 
-        const reloaded = new StreakDecisionStore(path, makeSpyLogger().logger);
-        await reloaded.load();
-        await reloaded.flush();
-        const persisted = JSON.parse(await readFile(path, 'utf8'));
+            const reloaded = new StreakDecisionStore(path, makeSpyLogger().logger);
+            await reloaded.load();
+            await reloaded.flush();
+            const persisted = JSON.parse(await readFile(path, 'utf8'));
 
-        expect(persisted.decisions.length).toBe(51);
-        // The live decision survives and is still reversible.
-        expect(reloaded.latest('shared', 'viewer-1')?.afterStreak).toBe(61);
-    });
+            expect(persisted.decisions.length).toBe(51);
+            // The live decision survives and is still reversible.
+            expect(reloaded.latest('shared', 'viewer-1')?.afterStreak).toBe(61);
+        },
+        HEAVY_IO_TIMEOUT_MS,
+    );
 });

@@ -119,6 +119,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Tests: `flush()` now drains the event bus instead of sleeping a fixed 10ms,
+  so async event handlers are deterministically settled before assertions. The
+  delay-only version failed on a loaded CI runner as a wrong assertion rather
+  than a timeout, because a handler that had not finished writing left stale
+  state for the next assertion to read. The four store tests that fill a pool
+  to its cap get an explicit timeout, since that work is I/O-bound rather than
+  hung and an aborted run surfaced as a confusing `ENOTEMPTY` from the
+  temp-directory cleanup.
 - `AtomicJsonFile`: a rename onto a momentarily locked target is retried
   (bounded, with backoff) instead of failing the write. Windows fails rather
   than replaces when anything else holds the target open - Defender, the

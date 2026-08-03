@@ -40,7 +40,7 @@ describe('wentlive plugin', () => {
         const { bus, say, ctx } = makeHarness('wentlive');
         await wentlive.init(ctx);
         bus.emit('streamOnline', onlineEvent('SomeStreamer'));
-        await flush();
+        await flush(bus);
         expect(say).toHaveBeenCalledWith(
             'SomeStreamer has gone live at 2026-07-12T18:04:05.000Z',
             undefined,
@@ -55,7 +55,7 @@ describe('wentlive plugin', () => {
         });
         await wentlive.init(ctx);
         bus.emit('streamOnline', onlineEvent('Foo'));
-        await flush();
+        await flush(bus);
         expect(say).toHaveBeenCalledWith(`Foo @ ${STARTED_AT.toUTCString()}`, undefined, '1');
     });
 
@@ -63,7 +63,7 @@ describe('wentlive plugin', () => {
         const { bus, say, ctx } = makeHarness('wentlive');
         await wentlive.init(ctx);
         bus.emit('streamOnline', { ...onlineEvent(), recovered: true });
-        await flush();
+        await flush(bus);
         expect(say).not.toHaveBeenCalled();
     });
 });
