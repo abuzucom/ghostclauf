@@ -44,7 +44,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   added to `BROADCASTER_SCOPES`, so `npm run auth -- --broadcaster <login>`
   now requests them; existing broadcaster tokens are unaffected until
   re-authorized (a missing scope only disables that event's subscription
-  and is logged, not a startup failure).
+  and is logged, not a startup failure). A rendered announcement that would
+  begin with a chat command sigil (`/` or `.`) is prefixed with a zero-width
+  space before sending, so a cheer's free-form message cannot lead the
+  message the bot posts with a command.
 - `nowplaying` plugin: `!nowplaying` (everyone) reports the track(s)
   currently on air by polling a local `1a2n-track-id` overlay server
   (Traktor Pro 4 deck/track tracker for DJ streams) on demand. Never holds a

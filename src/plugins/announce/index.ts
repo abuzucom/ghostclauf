@@ -38,6 +38,13 @@ const DEFAULT_CHEER_TEMPLATE = '{user} cheered {bits} bits: {message}';
 const DEFAULT_MIN_BITS = 100;
 const ANONYMOUS_CHEERER = 'Someone';
 
+/**
+ * Twitch chat interprets a leading "/" or "." as a chat command. Defined here
+ * rather than shared with funfact/quotes so plugins stay independent of one
+ * another; those two reject such text at submission, this one defuses it.
+ */
+const COMMAND_SIGILS = ['/', '.'];
+
 interface EventConfig {
     enabled: boolean;
     template: string;
@@ -113,6 +120,29 @@ export function truncateForChat(text: string): string {
     return codePoints.slice(0, MAX_CHAT_MESSAGE_LENGTH).join('');
 }
 
+/**
+ * Prefix that neutralizes a leading command sigil. Zero width, so the
+ * announcement still reads correctly in chat.
+ */
+export const ZERO_WIDTH_SPACE = '\u200B';
+
+/**
+ * Finalize a rendered announcement for sending.
+ *
+ * A cheer's free-form message is untrusted chatter input, and a broadcaster
+ * template may place it first (e.g. "{message}"), so the rendered text can
+ * start with a sigil a chat client would run as a command. `funfact` and
+ * `quotes` reject such text at submission; an announcement has no submitter
+ * to reject, so the sigil is defused instead of dropping the announcement.
+ *
+ * Neutralizing runs before truncation so the added prefix cannot push the
+ * result past the 500 code-point limit that `ctx.say` enforces.
+ */
+export function formatForChat(text: string): string {
+    const defused = COMMAND_SIGILS.includes(text[0] ?? '') ? `${ZERO_WIDTH_SPACE}${text}` : text;
+    return truncateForChat(defused);
+}
+
 /** Build the announce plugin. No cooldown/state: each event fires once, driven by EventSub. */
 export function createAnnouncePlugin(): Plugin {
     return {
@@ -138,7 +168,7 @@ export function createAnnouncePlugin(): Plugin {
             if (raid.enabled) {
                 ctx.on('raid', async (event) => {
                     await ctx.say(
-                        truncateForChat(renderRaid(raid.template, event)),
+                        formatForChat(renderRaid(raid.template, event)),
                         undefined,
                         event.broadcasterId,
                     );
@@ -147,7 +177,7 @@ export function createAnnouncePlugin(): Plugin {
             if (subscribe.enabled) {
                 ctx.on('subscribe', async (event) => {
                     await ctx.say(
-                        truncateForChat(renderSubscribe(subscribe.template, event)),
+                        formatForChat(renderSubscribe(subscribe.template, event)),
                         undefined,
                         event.broadcasterId,
                     );
@@ -157,7 +187,7 @@ export function createAnnouncePlugin(): Plugin {
                 ctx.on('cheer', async (event) => {
                     if (event.bits < minBits) return;
                     await ctx.say(
-                        truncateForChat(renderCheer(cheer.template, event)),
+                        formatForChat(renderCheer(cheer.template, event)),
                         undefined,
                         event.broadcasterId,
                     );

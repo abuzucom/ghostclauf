@@ -1,10 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import announce, {
     createAnnouncePlugin,
+    formatForChat,
     renderCheer,
     renderRaid,
     renderSubscribe,
     truncateForChat,
+    ZERO_WIDTH_SPACE,
 } from '../src/plugins/announce/index.js';
 import type { CheerEvent, PluginConfig, RaidEvent, SubscribeEvent } from '../src/core/types.js';
 import { flush, makeHarness } from './helpers.js';
@@ -110,6 +112,28 @@ describe('truncateForChat', () => {
     });
 });
 
+describe('formatForChat', () => {
+    it('leaves a message that does not start with a sigil untouched', () => {
+        expect(formatForChat('Someone cheered 100 bits: hi')).toBe('Someone cheered 100 bits: hi');
+    });
+
+    it.each(['/', '.'])('neutralizes a leading "%s" so chat cannot run it', (sigil) => {
+        const formatted = formatForChat(`${sigil}ban someone`);
+        expect(formatted.startsWith(sigil)).toBe(false);
+        expect(formatted).toBe(`${ZERO_WIDTH_SPACE}${sigil}ban someone`);
+    });
+
+    it('leaves a sigil that is not in the first position alone', () => {
+        expect(formatForChat('cheered: /ban someone')).toBe('cheered: /ban someone');
+    });
+
+    it('still fits the 500 code-point limit after neutralizing', () => {
+        const formatted = formatForChat(`/${'x'.repeat(600)}`);
+        expect([...formatted]).toHaveLength(500);
+        expect(formatted.startsWith(ZERO_WIDTH_SPACE)).toBe(true);
+    });
+});
+
 describe('announce plugin', () => {
     async function setup(config: PluginConfig = {}) {
         const plugin = createAnnouncePlugin();
@@ -152,6 +176,17 @@ describe('announce plugin', () => {
         await flush();
         const [sent] = say.mock.calls[0]!;
         expect([...(sent as string)]).toHaveLength(500);
+    });
+
+    it('defuses a cheer message that would lead the announcement with a command', async () => {
+        // A template placing the untrusted cheer message first is the case that
+        // lets a chatter control the first character of what the bot sends.
+        const { bus, say } = await setup({ cheer: { template: '{message}' } });
+        bus.emit('cheer', cheerEvent({ message: '/ban someone' }));
+        await flush();
+        const [sent] = say.mock.calls[0]!;
+        expect(sent as string).toBe(`${ZERO_WIDTH_SPACE}/ban someone`);
+        expect((sent as string).startsWith('/')).toBe(false);
     });
 
     it('respects a configured template per event type', async () => {
