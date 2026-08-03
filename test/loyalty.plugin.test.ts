@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { AtomicJsonFile } from '../src/core/atomicFile.js';
 import { createLoyaltyPlugin } from '../src/plugins/loyalty/index.js';
 import { LoyaltyStore, SHARED_SCOPE_KEY } from '../src/plugins/loyalty/store.js';
 import type { PluginConfig } from '../src/core/types.js';
@@ -296,6 +297,37 @@ describe('loyalty plugin', () => {
         const store = new LoyaltyStore(dataPath, testLogger);
         await store.load();
         expect(store.getBalance(SHARED_SCOPE_KEY, '200')).toBe(5);
+    });
+
+    it('logs a tick award failure instead of an unhandled rejection', async () => {
+        vi.useFakeTimers();
+        vi.setSystemTime(clock);
+        const errorSpy = vi.spyOn(testLogger, 'error');
+        // Simulate a write failure (disk full, permissions, transient FS
+        // error) on the tick's atomic write, independent of the real
+        // filesystem's permission enforcement.
+        const writeSpy = vi
+            .spyOn(AtomicJsonFile.prototype, 'write')
+            .mockRejectedValueOnce(new Error('simulated disk failure'));
+        const { plugin, bus, ctx } = await setup();
+
+        bus.emit('streamOnline', {
+            broadcasterId: '1',
+            broadcasterName: 'streamer',
+            broadcasterDisplayName: 'Streamer',
+            startedAt: clock,
+        });
+        bus.emit('chatMessage', chatFrom('200', 'Active'));
+
+        await vi.advanceTimersByTimeAsync(FIVE_MINUTES_MS);
+        expect(errorSpy).toHaveBeenCalledWith(
+            expect.objectContaining({ scopeKey: SHARED_SCOPE_KEY, broadcasterId: '1' }),
+            'loyalty tick award failed',
+        );
+
+        await plugin.dispose?.(ctx);
+        writeSpy.mockRestore();
+        errorSpy.mockRestore();
     });
 
     it('clears the tick timer on dispose so it cannot fire again', async () => {

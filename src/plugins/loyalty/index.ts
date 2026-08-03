@@ -219,7 +219,14 @@ export function createLoyaltyPlugin(now: () => Date = () => new Date()): Plugin 
                         amount: pointsPerTick,
                     }));
                     chatters.clear();
-                    void store?.awardMany(scopeKey, awards);
+                    store
+                        ?.awardMany(scopeKey, awards)
+                        .catch((err: unknown) =>
+                            ctx.logger.error(
+                                { err, scopeKey, broadcasterId },
+                                'loyalty tick award failed',
+                            ),
+                        );
                 }
             }, tickIntervalMinutes * MS_PER_MINUTE);
             tickTimer.unref?.();

@@ -163,6 +163,7 @@ export class LoyaltyStore {
     async awardMany(scopeKey: string, awards: readonly Award[]): Promise<void> {
         if (awards.length === 0) return;
         const scope = this.scope(scopeKey);
+        let viewerCount = Object.keys(scope.viewers).length;
         for (const award of awards) {
             const clampedAmount = Math.max(0, Math.min(MAX_AWARD, award.amount));
             if (clampedAmount === 0) continue;
@@ -171,7 +172,10 @@ export class LoyaltyStore {
                 MAX_BALANCE,
                 applyAward(existing?.balance ?? 0, clampedAmount),
             );
-            if (!existing && Object.keys(scope.viewers).length >= MAX_VIEWERS_PER_SCOPE) continue;
+            if (!existing) {
+                if (viewerCount >= MAX_VIEWERS_PER_SCOPE) continue;
+                viewerCount += 1;
+            }
             scope.viewers[award.chatterId] = {
                 displayName: award.displayName,
                 balance: nextBalance,
