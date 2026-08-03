@@ -44,6 +44,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `announce` plugin: posts a templated chat message on raid, subscribe, and
+  cheer, each independently toggleable with its own template. Cheers below
+  `minBits` (default 100) are not announced. Added new normalized
+  `raid`/`subscribe`/`cheer` events (`BotEvents`) backed by new
+  `channel.raid`/`channel.subscribe`/`channel.cheer` EventSub subscriptions
+  in `src/core/twitch.ts`. `channel:read:subscriptions` and `bits:read` were
+  added to `BROADCASTER_SCOPES`, so `npm run auth -- --broadcaster <login>`
+  now requests them; existing broadcaster tokens are unaffected until
+  re-authorized (a missing scope only disables that event's subscription
+  and is logged, not a startup failure). A rendered announcement that would
+  begin with a chat command sigil (`/` or `.`) is prefixed with a zero-width
+  space before sending, so a cheer's free-form message cannot lead the
+  message the bot posts with a command. The check runs on the trimmed text,
+  since chat strips leading whitespace. A cheer's message is also collapsed
+  to a single trimmed line with control characters removed, matching
+  `funfact`'s handling of submitted text.
 - `quotes` plugin: a curated pool of community quotes persisted under
   `data/`, distinct from `funfact` in that a quote carries an optional
   speaker attribution separate from who added it. Broadcasters (and the

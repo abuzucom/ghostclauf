@@ -95,6 +95,15 @@ async function main(): Promise<void> {
             onStreamOfflinePending: (event) => {
                 bus.emit('streamOfflinePending', event);
             },
+            onRaid: (event) => {
+                bus.emit('raid', event);
+            },
+            onSubscribe: (event) => {
+                bus.emit('subscribe', event);
+            },
+            onCheer: (event) => {
+                bus.emit('cheer', event);
+            },
         },
     });
     sender = transport.sender;

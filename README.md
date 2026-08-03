@@ -15,6 +15,7 @@ The design borrows the _spirit_ of [eggdrop](https://github.com/eggheads/eggdrop
 - [Follow age (`followage`)](#follow-age-followage-plugin)
 - [Lurk (`lurk`)](#lurk-lurk-plugin)
 - [Shoutout (`shoutout`)](#shoutout-shoutout-plugin)
+- [Announce (`announce`)](#announce-announce-plugin)
 - [Fun facts (`funfact`)](#fun-facts-funfact-plugin)
 - [Quotes (`quotes`)](#quotes-quotes-plugin)
 - [Now playing (`nowplaying`)](#now-playing-nowplaying-plugin)
@@ -43,6 +44,8 @@ The design borrows the _spirit_ of [eggdrop](https://github.com/eggheads/eggdrop
   around without being active in chat (see below).
 - **Shoutouts** — `!so` / `!shoutout @channel` (moderators and the
   broadcaster) plugs another streamer's channel (see below).
+- **Announcements** — posts a templated message on raid, subscribe, and
+  cheer, each independently toggleable (see below).
 - **Fun facts** - the broadcaster curates a pool with `!addfunfact` /
   `!delfunfact`, and anyone can pull one with `!funfact` (see below).
 - **Quotes** - the broadcaster curates a pool of community quotes with
@@ -157,6 +160,27 @@ carry the `moderator:manage:shoutouts` scope (the same re-auth as
 warning but doesn't block the chat reply. See the `shoutout:` block in
 [`config.example.yaml`](config.example.yaml) for message/template overrides.
 
+## Announce (`announce` plugin)
+
+Posts a templated chat message when the channel is raided, gets a new
+subscriber, or receives a cheer. Each event has its own enable toggle and
+template, all off the same `announce:` config block:
+
+| Event     | Default template                              | Placeholders                                                    |
+| --------- | --------------------------------------------- | --------------------------------------------------------------- |
+| Raid      | `{raider} raided with {viewers} viewers!`     | `{raider}`, `{viewers}`                                         |
+| Subscribe | `{user} subscribed at tier {tier}{giftNote}!` | `{user}`, `{tier}` (1/2/3), `{giftNote}` (` (gifted)` or empty) |
+| Cheer     | `{user} cheered {bits} bits: {message}`       | `{user}` (`Someone` if anonymous), `{bits}`, `{message}`        |
+
+Cheers below `cheer.minBits` (default 100) are not announced, to avoid chat
+spam from small cheers. Raids need no extra scope; subscribe requires
+`channel:read:subscriptions` and cheer requires `bits:read` on the
+**broadcaster's** token - re-run `npm run auth -- --broadcaster <login>` to
+grant them if the broadcaster authorized before this plugin existed. A
+missing scope only disables that event's subscription (logged as a
+warning); it does not stop the bot from starting. See the `announce:` block
+in [`config.example.yaml`](config.example.yaml).
+
 ## Fun facts (`funfact` plugin)
 
 A curated pool of one-liners about the channel, stored on disk under `data/`.
@@ -254,6 +278,9 @@ WebSocket** that carries _both_ required events:
 | Chat commands                               | `channel.chat.message` |
 | Going-live announcement, streak live-gating | `stream.online`        |
 | Streak live-gating (close on end)           | `stream.offline`       |
+| Announce plugin: raid                       | `channel.raid`         |
+| Announce plugin: subscribe                  | `channel.subscribe`    |
+| Announce plugin: cheer                      | `channel.cheer`        |
 
 All Twitch specifics live in [`src/core/twitch.ts`](src/core/twitch.ts) (built on
 [@twurple](https://twurple.js.org)); everything else is platform-neutral.
@@ -320,6 +347,7 @@ src/
     followage/          !followage - Helix follower lookup
     lurk/               !lurk / !unlurk
     shoutout/           !so / !shoutout - Helix user lookup + native shoutout
+    announce/           raid / subscribe / cheer -> templated announcement
     funfact/            !addfunfact / !funfact - curated fact pool on disk
     quotes/             !addquote / !quote - curated quote pool on disk
     nowplaying/         !nowplaying - polls a local DJ overlay server
@@ -347,11 +375,13 @@ src/
 
 The bot account authorizes these scopes: `user:read:chat`, `user:write:chat`,
 `user:bot`. Each broadcaster authorizes a user token for its EventSub
-WebSocket (`stream.online`/`stream.offline` need no extra scope) plus two
-scopes used by plugins: `moderator:read:followers` (the `followage` lookup)
-and `moderator:manage:shoutouts` (native shoutouts from the `shoutout`
-plugin). `npm run auth -- --broadcaster <login>` requests all of a
-broadcaster's required scopes together.
+WebSocket (`stream.online`/`stream.offline`/raids need no extra scope) plus
+scopes used by plugins: `moderator:read:followers` (the `followage` lookup),
+`moderator:manage:shoutouts` (native shoutouts from the `shoutout` plugin),
+`channel:read:subscriptions` (the `announce` plugin's subscribe event), and
+`bits:read` (the `announce` plugin's cheer event).
+`npm run auth -- --broadcaster <login>` requests all of a broadcaster's
+required scopes together.
 
 ## Setup
 
