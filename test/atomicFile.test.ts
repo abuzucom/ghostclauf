@@ -1,4 +1,4 @@
-import { mkdtemp, readdir, readFile, rm, stat } from 'node:fs/promises';
+import { mkdtemp, readdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -106,11 +106,15 @@ describe('AtomicJsonFile', () => {
         },
     );
 
-    it('markExisting forces a .bak snapshot attempt on the next write', async () => {
+    it('markExisting snapshots a file not written by this instance', async () => {
         const target = join(dir, 'data.json');
+        await writeFile(target, '{"old":1}', 'utf8');
         const file = new AtomicJsonFile(target);
         file.markExisting();
 
-        await expect(file.write('{"a":1}')).rejects.toThrow();
+        await file.write('{"new":2}');
+
+        expect(await readFile(target, 'utf8')).toBe('{"new":2}');
+        expect(await readFile(`${target}.bak`, 'utf8')).toBe('{"old":1}');
     });
 });
