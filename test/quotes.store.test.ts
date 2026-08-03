@@ -7,6 +7,15 @@ import { makeSpyLogger, testLogger } from './helpers.js';
 
 const ADDED_AT = new Date('2026-08-02T18:04:05.000Z');
 
+/**
+ * These cases fill a store to its cap, which is hundreds of real atomic writes.
+ * They run in well under a second locally, but a loaded CI runner has blown the
+ * 5s default - and an aborted test leaves an in-flight write racing the
+ * temp-directory cleanup, surfacing as a confusing ENOTEMPTY rather than a
+ * timeout. The work is I/O-bound, not hung, so give it room.
+ */
+const HEAVY_IO_TIMEOUT_MS = 30_000;
+
 describe('QuoteStore', () => {
     let dir: string;
     let dataPath: string;
@@ -75,15 +84,19 @@ describe('QuoteStore', () => {
         expect(store.count(SHARED_SCOPE_KEY)).toBe(2);
     });
 
-    it('refuses adds once the pool is full', async () => {
-        const store = await makeStore();
-        for (let i = 0; i < MAX_QUOTES; i += 1) {
-            await add(store, `quote ${i}`);
-        }
-        const outcome = await add(store, 'one too many');
-        expect(outcome).toEqual({ status: 'full' });
-        expect(store.count(SHARED_SCOPE_KEY)).toBe(MAX_QUOTES);
-    });
+    it(
+        'refuses adds once the pool is full',
+        async () => {
+            const store = await makeStore();
+            for (let i = 0; i < MAX_QUOTES; i += 1) {
+                await add(store, `quote ${i}`);
+            }
+            const outcome = await add(store, 'one too many');
+            expect(outcome).toEqual({ status: 'full' });
+            expect(store.count(SHARED_SCOPE_KEY)).toBe(MAX_QUOTES);
+        },
+        HEAVY_IO_TIMEOUT_MS,
+    );
 
     it('picks by roll across the pool', async () => {
         const store = await makeStore();

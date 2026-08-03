@@ -176,35 +176,35 @@ describe('announce plugin', () => {
     it('announces a raid with the default template', async () => {
         const { bus, say } = await setup();
         bus.emit('raid', raidEvent());
-        await flush();
+        await flush(bus);
         expect(say).toHaveBeenCalledWith('Raider raided with 25 viewers!', undefined, '1');
     });
 
     it('announces a subscribe with the default template', async () => {
         const { bus, say } = await setup();
         bus.emit('subscribe', subscribeEvent({ tier: '3000' }));
-        await flush();
+        await flush(bus);
         expect(say).toHaveBeenCalledWith('Viewer subscribed at tier 3!', undefined, '1');
     });
 
     it('announces a cheer at or above the default 100-bit minimum', async () => {
         const { bus, say } = await setup();
         bus.emit('cheer', cheerEvent({ bits: 100 }));
-        await flush();
+        await flush(bus);
         expect(say).toHaveBeenCalledWith('Viewer cheered 100 bits: nice stream!', undefined, '1');
     });
 
     it('suppresses a cheer below the configured minimum', async () => {
         const { bus, say } = await setup({ cheer: { minBits: 200 } });
         bus.emit('cheer', cheerEvent({ bits: 199 }));
-        await flush();
+        await flush(bus);
         expect(say).not.toHaveBeenCalled();
     });
 
     it('truncates a cheer announcement pushed past 500 characters by a long message', async () => {
         const { bus, say } = await setup();
         bus.emit('cheer', cheerEvent({ message: 'x'.repeat(600) }));
-        await flush();
+        await flush(bus);
         const [sent] = say.mock.calls[0]!;
         expect([...(sent as string)]).toHaveLength(500);
     });
@@ -214,7 +214,7 @@ describe('announce plugin', () => {
         // lets a chatter control the first character of what the bot sends.
         const { bus, say } = await setup({ cheer: { template: '{message}' } });
         bus.emit('cheer', cheerEvent({ message: '/ban someone' }));
-        await flush();
+        await flush(bus);
         const [sent] = say.mock.calls[0]!;
         expect(sent as string).toBe(`${ZERO_WIDTH_SPACE}/ban someone`);
         expect((sent as string).startsWith('/')).toBe(false);
@@ -223,7 +223,7 @@ describe('announce plugin', () => {
     it('keeps a cheer announcement on one line when the message has newlines', async () => {
         const { bus, say } = await setup();
         bus.emit('cheer', cheerEvent({ message: 'line one\nline two' }));
-        await flush();
+        await flush(bus);
         const [sent] = say.mock.calls[0]!;
         expect(sent as string).not.toContain('\n');
         expect(sent as string).toBe('Viewer cheered 500 bits: line one line two');
@@ -232,7 +232,7 @@ describe('announce plugin', () => {
     it('defuses a sigil a chatter pads with leading whitespace', async () => {
         const { bus, say } = await setup({ cheer: { template: '{message}' } });
         bus.emit('cheer', cheerEvent({ message: '   /ban someone' }));
-        await flush();
+        await flush(bus);
         const [sent] = say.mock.calls[0]!;
         expect(sent as string).toBe(`${ZERO_WIDTH_SPACE}/ban someone`);
     });
@@ -246,7 +246,7 @@ describe('announce plugin', () => {
         bus.emit('raid', raidEvent());
         bus.emit('subscribe', subscribeEvent());
         bus.emit('cheer', cheerEvent());
-        await flush();
+        await flush(bus);
         expect(say).toHaveBeenCalledWith('RAID from Raider (25)', undefined, '1');
         expect(say).toHaveBeenCalledWith('SUB Viewer', undefined, '1');
         expect(say).toHaveBeenCalledWith('BITS 500', undefined, '1');
@@ -256,7 +256,7 @@ describe('announce plugin', () => {
         const { bus, say } = await setup({ raid: { enabled: false } });
         bus.emit('raid', raidEvent());
         bus.emit('subscribe', subscribeEvent());
-        await flush();
+        await flush(bus);
         expect(say).toHaveBeenCalledTimes(1);
         expect(say).toHaveBeenCalledWith('Viewer subscribed at tier 1!', undefined, '1');
     });
@@ -268,7 +268,7 @@ describe('announce plugin', () => {
         });
         bus.emit('raid', raidEvent());
         bus.emit('cheer', cheerEvent({ bits: 1 }));
-        await flush();
+        await flush(bus);
         expect(say).toHaveBeenCalledWith('Raider raided with 25 viewers!', undefined, '1');
         // minBits fell back to the default (100), so a 1-bit cheer is suppressed.
         expect(say).not.toHaveBeenCalledWith(expect.stringContaining('1 bits'), undefined, '1');

@@ -78,9 +78,49 @@ export function makeHarness(
     return { registry, bus, say, ctx, helix };
 }
 
-/** Wait for queued microtasks/timers so async event handlers can run. */
-export function flush(): Promise<void> {
-    return new Promise((resolve) => setTimeout(resolve, 10));
+/**
+ * Window given to real timers (e.g. streak's offline confirmation) to fire.
+ * Kept at the value the delay-only flush used, so timing-dependent tests see
+ * at least the settling time they saw before.
+ */
+const FLUSH_DELAY_MS = 10;
+
+/** Rounds of drain, enough for handlers that emit further events. */
+const DRAIN_ROUNDS = 5;
+
+/**
+ * `drain()` awaits a snapshot of the in-flight set, so a handler that emits
+ * another event registers work the first pass cannot see. Yielding a
+ * macrotask between rounds lets those land and be awaited in turn.
+ */
+async function drainRepeatedly(bus: EventBus): Promise<void> {
+    for (let round = 0; round < DRAIN_ROUNDS; round += 1) {
+        await bus.drain();
+        // Only between rounds: a yield after the last drain has nothing left to
+        // await whatever lands during it, so it would cost a tick for nothing.
+        if (round < DRAIN_ROUNDS - 1) {
+            await new Promise((resolve) => setImmediate(resolve));
+        }
+    }
+}
+
+/**
+ * Settle async event handlers before asserting.
+ *
+ * Pass the harness bus wherever possible: `EventBus` tracks every in-flight
+ * handler promise, so draining it is deterministic. Without a bus this can
+ * only wait a fixed delay and hope the work finished, which fails on a loaded
+ * machine as a wrong assertion rather than a timeout - a handler that has not
+ * finished writing leaves stale state for the next assertion to read.
+ */
+export async function flush(bus?: EventBus): Promise<void> {
+    if (!bus) {
+        await new Promise((resolve) => setTimeout(resolve, FLUSH_DELAY_MS));
+        return;
+    }
+    await drainRepeatedly(bus);
+    await new Promise((resolve) => setTimeout(resolve, FLUSH_DELAY_MS));
+    await drainRepeatedly(bus);
 }
 
 export function spySender() {

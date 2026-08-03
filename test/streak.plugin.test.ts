@@ -60,7 +60,7 @@ describe('streak plugin', () => {
         const { ctx, bus, say, registry } = harness();
         await streak.init(ctx);
         bus.emit('streamOnline', onlineNow('1'));
-        await flush();
+        await flush(bus);
 
         await registry.handle(makeMessage('!checkin', ['everyone']));
         expect(say).toHaveBeenCalledTimes(1);
@@ -93,7 +93,7 @@ describe('streak plugin', () => {
         expect(say.mock.calls[0][0]).toContain('no streak yet');
 
         bus.emit('streamOnline', onlineNow('1'));
-        await flush();
+        await flush(bus);
         await registry.handle(makeMessage('!checkin', ['everyone']));
         await registry.handle(makeMessage('!streak', ['everyone']));
         expect(say.mock.calls[say.mock.calls.length - 1][0]).toContain('your streak is 1');
@@ -103,7 +103,7 @@ describe('streak plugin', () => {
         const { ctx, bus, say, registry } = harness();
         await streak.init(ctx);
         bus.emit('streamOnline', onlineNow('1'));
-        await flush();
+        await flush(bus);
         await registry.handle(makeMessage('!checkin', ['everyone']));
         say.mockClear();
 
@@ -132,7 +132,7 @@ describe('streak plugin', () => {
         const { ctx, bus, say, registry } = harness();
         await plugin.init(ctx);
         bus.emit('streamOnline', onlineNow('1', current));
-        await flush();
+        await flush(bus);
 
         await registry.handle(makeMessage('!checkin', ['everyone']));
         expect(say).toHaveBeenCalledTimes(1);
@@ -165,7 +165,7 @@ describe('streak plugin', () => {
         const { ctx, bus, say, registry } = harness({ checkinCooldownSeconds: 0 });
         await plugin.init(ctx);
         bus.emit('streamOnline', onlineNow('1', now));
-        await flush();
+        await flush(bus);
 
         await registry.handle(makeMessage('!checkin', ['everyone']));
         await registry.handle(makeMessage('!checkin', ['everyone']));
@@ -179,7 +179,7 @@ describe('streak plugin', () => {
         const { ctx, bus, say, registry } = harness();
         await plugin.init(ctx);
         bus.emit('streamOnline', onlineNow('1', now));
-        await flush();
+        await flush(bus);
         await registry.handle(makeMessage('!checkin', ['everyone']));
         say.mockClear();
 
@@ -201,7 +201,7 @@ describe('streak plugin', () => {
         const { ctx, bus, say, registry } = harness();
         await plugin.init(ctx);
         bus.emit('streamOnline', onlineNow('1', startedAt));
-        await flush();
+        await flush(bus);
 
         await registry.handle(makeMessage('!checkin', ['everyone']));
         expect(say.mock.calls[0][0]).toContain('Streak started');
@@ -224,7 +224,7 @@ describe('streak plugin', () => {
         const { ctx, bus, say, registry } = harness();
         await plugin.init(ctx);
         bus.emit('streamOnline', onlineNow('1', startedAt));
-        await flush();
+        await flush(bus);
 
         await registry.handle(makeMessage('!checkin', ['everyone']));
         expect(say.mock.calls[0][0]).toContain('not open');
@@ -236,7 +236,7 @@ describe('streak plugin', () => {
         const { ctx, bus, say, registry } = harness();
         await plugin.init(ctx);
         bus.emit('streamOnline', onlineNow('1', current));
-        await flush();
+        await flush(bus);
 
         await registry.handle(makeMessage('!checkin', ['everyone'], { broadcasterId: '1' }));
         expect(say.mock.calls[0][0]).toContain('Streak started');
@@ -259,7 +259,7 @@ describe('streak plugin', () => {
         const { ctx, bus, say, registry } = harness();
         await plugin.init(ctx);
         bus.emit('streamOnline', onlineNow('1', now));
-        await flush();
+        await flush(bus);
         await registry.handle(makeMessage('!checkin', ['everyone'], { broadcasterId: '1' }));
         say.mockClear();
 
@@ -279,13 +279,13 @@ describe('streak plugin', () => {
         const { ctx, bus, say, registry } = harness();
         await streak.init(ctx);
         bus.emit('streamOnline', onlineNow('1'));
-        await flush();
+        await flush(bus);
 
         await registry.handle(makeMessage('!checkin', ['everyone']));
         expect(say.mock.calls[0][0]).toContain('Streak started');
 
         bus.emit('streamOffline', offlineNow('1'));
-        await flush();
+        await flush(bus);
         say.mockClear();
 
         // A different chatter tries to check in after the stream ended: today
@@ -305,10 +305,10 @@ describe('streak plugin', () => {
         await streak.init(ctx);
         bus.emit('streamOnline', onlineNow('1'));
         bus.emit('streamOnline', onlineNow('2'));
-        await flush();
+        await flush(bus);
 
         bus.emit('streamOffline', offlineNow('1'));
-        await flush();
+        await flush(bus);
 
         // Channel '2' is still live, so the shared pool remains open.
         await registry.handle(makeMessage('!checkin', ['everyone'], { broadcasterId: '2' }));
@@ -321,7 +321,7 @@ describe('streak plugin', () => {
         const { ctx, bus, say, registry } = harness({ shareAcrossChannels: false });
         await plugin.init(ctx);
         bus.emit('streamOnline', onlineNow('1', now));
-        await flush();
+        await flush(bus);
 
         await registry.handle(makeMessage('!checkin', ['everyone'], { broadcasterId: '1' }));
         expect(say.mock.calls[0][0]).toContain('Streak started');
@@ -338,7 +338,7 @@ describe('streak plugin', () => {
         const { ctx, bus, say, registry } = modernHarness({ checkinCooldownSeconds: 0 });
         await plugin.init(ctx);
         bus.emit('streamOnline', onlineNow('1', now));
-        await flush();
+        await flush(bus);
 
         await registry.handle(makeMessage('!checkin', ['everyone'], { broadcasterId: '2' }));
         expect(say.mock.calls[0][0]).toContain('not open');
@@ -354,24 +354,24 @@ describe('streak plugin', () => {
         await plugin.init(ctx);
 
         bus.emit('streamOnline', onlineNow('1', current));
-        await flush();
+        await flush(bus);
         await registry.handle(makeMessage('!checkin', ['everyone'], { broadcasterId: '1' }));
         bus.emit('streamOffline', { ...offlineNow('1'), observedAt: current, verified: true });
-        await flush();
+        await flush(bus);
 
         current = new Date('2026-07-21T20:00:00Z');
         bus.emit('streamOnline', onlineNow('1', current));
-        await flush();
+        await flush(bus);
         bus.emit('streamOffline', { ...offlineNow('1'), observedAt: current, verified: true });
-        await flush();
+        await flush(bus);
 
         current = new Date('2026-07-22T20:00:00Z');
         bus.emit('streamOnline', onlineNow('2', current));
-        await flush();
+        await flush(bus);
         await registry.handle(makeMessage('!checkin', ['everyone'], { broadcasterId: '2' }));
         expect(say.mock.calls.at(-1)?.[0]).toContain('Streak: 2');
         bus.emit('streamOffline', { ...offlineNow('2'), observedAt: current, verified: true });
-        await flush();
+        await flush(bus);
 
         for (const [day, broadcasterId] of [
             ['2026-07-23', '1'],
@@ -379,18 +379,18 @@ describe('streak plugin', () => {
         ] as const) {
             current = new Date(`${day}T20:00:00Z`);
             bus.emit('streamOnline', onlineNow(broadcasterId, current));
-            await flush();
+            await flush(bus);
             bus.emit('streamOffline', {
                 ...offlineNow(broadcasterId),
                 observedAt: current,
                 verified: true,
             });
-            await flush();
+            await flush(bus);
         }
 
         current = new Date('2026-07-25T20:00:00Z');
         bus.emit('streamOnline', onlineNow('1', current));
-        await flush();
+        await flush(bus);
         await registry.handle(makeMessage('!checkin', ['everyone'], { broadcasterId: '1' }));
         expect(say.mock.calls.at(-1)?.[0]).toContain('Streak started: 1');
         await plugin.dispose?.(ctx);
@@ -405,25 +405,25 @@ describe('streak plugin', () => {
         });
         await plugin.init(ctx);
         bus.emit('streamOnline', onlineNow('1', current));
-        await flush();
+        await flush(bus);
         await registry.handle(makeMessage('!checkin', ['everyone'], { broadcasterId: '1' }));
 
         for (const broadcasterId of ['1', '2']) {
             current = new Date(`2026-07-${broadcasterId === '1' ? '21' : '22'}T20:00:00Z`);
             bus.emit('streamOnline', onlineNow(broadcasterId, current));
-            await flush();
+            await flush(bus);
             current = new Date(current.getTime() + 29 * 60_000);
             bus.emit('streamOffline', {
                 ...offlineNow(broadcasterId),
                 observedAt: current,
                 verified: true,
             });
-            await flush();
+            await flush(bus);
         }
 
         current = new Date('2026-07-23T20:00:00Z');
         bus.emit('streamOnline', onlineNow('1', current));
-        await flush();
+        await flush(bus);
         await registry.handle(makeMessage('!checkin', ['everyone'], { broadcasterId: '1' }));
         expect(say.mock.calls.at(-1)?.[0]).toContain('Streak: 2');
         await plugin.dispose?.(ctx);
@@ -438,13 +438,13 @@ describe('streak plugin', () => {
         });
         await plugin.init(ctx);
         bus.emit('streamOnline', { ...onlineNow('1', current), streamId: 'first' });
-        await flush();
+        await flush(bus);
         current = new Date('2026-07-20T10:55:00Z');
         bus.emit('streamOffline', { ...offlineNow('1'), observedAt: current, verified: true });
-        await flush();
+        await flush(bus);
         current = new Date('2026-07-20T11:20:00Z');
         bus.emit('streamOnline', { ...onlineNow('1', current), streamId: 'second' });
-        await flush();
+        await flush(bus);
         await registry.handle(makeMessage('!checkin', ['everyone'], { broadcasterId: '1' }));
 
         const persisted = JSON.parse(await readFile(dataPath, 'utf8'));
@@ -458,7 +458,7 @@ describe('streak plugin', () => {
         const { ctx, bus, say, registry } = modernHarness({ checkinCooldownSeconds: 0 });
         await plugin.init(ctx);
         bus.emit('streamOnline', onlineNow('1', current));
-        await flush();
+        await flush(bus);
         await registry.handle(makeMessage('!checkin', ['everyone'], { broadcasterId: '1' }));
         await registry.handle(
             makeMessage('!streakset @viewer 10', ['everyone', 'broadcaster'], {
@@ -472,24 +472,24 @@ describe('streak plugin', () => {
         ] as const) {
             current = new Date(`${day}T20:00:00Z`);
             bus.emit('streamOnline', onlineNow(broadcasterId, current));
-            await flush();
+            await flush(bus);
             bus.emit('streamOffline', {
                 ...offlineNow(broadcasterId),
                 observedAt: current,
                 verified: true,
             });
-            await flush();
+            await flush(bus);
         }
 
         current = new Date('2026-07-23T20:00:00Z');
         bus.emit('streamOnline', onlineNow('1', current));
-        await flush();
+        await flush(bus);
         await registry.handle(makeMessage('!checkin', ['everyone'], { broadcasterId: '1' }));
         expect(say.mock.calls.at(-1)?.[0]).toContain('Streak started: 1');
 
         current = new Date('2026-07-24T20:00:00Z');
         bus.emit('streamOnline', onlineNow('2', current));
-        await flush();
+        await flush(bus);
         await registry.handle(makeMessage('!checkin', ['everyone'], { broadcasterId: '2' }));
         await registry.handle(
             makeMessage('!fixstreak @viewer', ['everyone', 'broadcaster'], {
@@ -513,7 +513,7 @@ describe('streak plugin', () => {
         const { ctx, bus, say, registry } = harness();
         await plugin.init(ctx);
         bus.emit('streamOnline', onlineNow('1', now));
-        await flush();
+        await flush(bus);
         await registry.handle(makeMessage('!checkin', ['everyone']));
         say.mockClear();
 
