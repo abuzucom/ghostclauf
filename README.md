@@ -16,11 +16,8 @@ The design borrows the _spirit_ of [eggdrop](https://github.com/eggheads/eggdrop
 - [Lurk (`lurk`)](#lurk-lurk-plugin)
 - [Shoutout (`shoutout`)](#shoutout-shoutout-plugin)
 - [Fun facts (`funfact`)](#fun-facts-funfact-plugin)
-<<<<<<< HEAD
-- [Loyalty (`loyalty`)](#loyalty-loyalty-plugin)
-=======
 - [Quotes (`quotes`)](#quotes-quotes-plugin)
->>>>>>> main
+- [Loyalty (`loyalty`)](#loyalty-loyalty-plugin)
 - [Now playing (`nowplaying`)](#now-playing-nowplaying-plugin)
 - [How it talks to Twitch](#how-it-talks-to-twitch)
 - [Architecture](#architecture)
@@ -49,13 +46,10 @@ The design borrows the _spirit_ of [eggdrop](https://github.com/eggheads/eggdrop
   broadcaster) plugs another streamer's channel (see below).
 - **Fun facts** - the broadcaster curates a pool with `!addfunfact` /
   `!delfunfact`, and anyone can pull one with `!funfact` (see below).
-<<<<<<< HEAD
-- **Loyalty** - viewers passively earn a configurable currency for chat
-  activity while live; `!points` / `!pointsboard` (see below).
-=======
 - **Quotes** - the broadcaster curates a pool of community quotes with
   `!addquote` / `!delquote`, and anyone can pull one with `!quote` (see below).
->>>>>>> main
+- **Loyalty** - viewers passively earn a configurable currency for chat
+  activity while live; `!points` / `!pointsboard` (see below).
 - **Now playing** — `!nowplaying` reports the track(s) currently on air from a
   local DJ overlay server (see below).
 
@@ -196,33 +190,6 @@ starts with `/` or `.`, and deduplicated case-insensitively; the pool holds at
 most 500 facts. See the `funfact:` block in
 [`config.example.yaml`](config.example.yaml).
 
-<<<<<<< HEAD
-## Loyalty (`loyalty` plugin)
-
-Viewers passively earn a configurable currency (`points` by default) for
-being active in chat while the channel is live.
-
-| Command        | Who      | Effect                                               |
-| -------------- | -------- | ---------------------------------------------------- |
-| `!points`      | everyone | Report your balance.                                 |
-| `!pointsboard` | everyone | Show the top `leaderboardSize` balances (default 5). |
-
-**Earning is a chat-activity proxy, not real Twitch watch-time.** Every
-`tickIntervalMinutes` (default 5), each chatter who sent at least one chat
-message since the last tick, while their channel was live, is awarded
-`pointsPerTick` (default 1). The bot only sees chat messages - it has no
-access to the viewer list - so this measures chat participation, not
-whether someone is actually watching. There is no earn command; earning is
-entirely passive. Reads (`!points`/`!pointsboard`) are rate limited to one
-reply per chatter per channel every `cooldownSeconds` (default 10);
-broadcasters and moderators are exempt.
-
-Balances are pooled across every configured broadcaster by default
-(`shareAcrossChannels: true`); set it to false to keep each channel's
-balances independent. There is no spend/redemption yet - this is v1
-(earn + balance + leaderboard only). See the `loyalty:` block in
-[`config.example.yaml`](config.example.yaml).
-=======
 ## Quotes (`quotes` plugin)
 
 A curated pool of community quotes, stored on disk under `data/`. Distinct
@@ -258,7 +225,32 @@ Submitted text is collapsed to a single line, capped at 300 characters (the
 speaker at 50), rejected if it starts with `/` or `.`, and deduplicated
 case-insensitively on text and speaker together; the pool holds at most 500
 quotes. See the `quotes:` block in [`config.example.yaml`](config.example.yaml).
->>>>>>> main
+
+## Loyalty (`loyalty` plugin)
+
+Viewers passively earn a configurable currency (`points` by default) for
+being active in chat while the channel is live.
+
+| Command        | Who      | Effect                                               |
+| -------------- | -------- | ---------------------------------------------------- |
+| `!points`      | everyone | Report your balance.                                 |
+| `!pointsboard` | everyone | Show the top `leaderboardSize` balances (default 5). |
+
+**Earning is a chat-activity proxy, not real Twitch watch-time.** Every
+`tickIntervalMinutes` (default 5), each chatter who sent at least one chat
+message since the last tick, while their channel was live, is awarded
+`pointsPerTick` (default 1). The bot only sees chat messages - it has no
+access to the viewer list - so this measures chat participation, not
+whether someone is actually watching. There is no earn command; earning is
+entirely passive. Reads (`!points`/`!pointsboard`) are rate limited to one
+reply per chatter per channel every `cooldownSeconds` (default 10);
+broadcasters and moderators are exempt.
+
+Balances are pooled across every configured broadcaster by default
+(`shareAcrossChannels: true`); set it to false to keep each channel's
+balances independent. There is no spend/redemption yet - this is v1
+(earn + balance + leaderboard only). See the `loyalty:` block in
+[`config.example.yaml`](config.example.yaml).
 
 ## Now playing (`nowplaying` plugin)
 
@@ -358,11 +350,8 @@ src/
     lurk/               !lurk / !unlurk
     shoutout/           !so / !shoutout - Helix user lookup + native shoutout
     funfact/            !addfunfact / !funfact - curated fact pool on disk
-<<<<<<< HEAD
-    loyalty/            !points / !pointsboard - passive chat-activity currency
-=======
     quotes/             !addquote / !quote - curated quote pool on disk
->>>>>>> main
+    loyalty/            !points / !pointsboard - passive chat-activity currency
     nowplaying/         !nowplaying - polls a local DJ overlay server
   tools/
     authFlow.ts         one-time OAuth to mint an account's initial token
