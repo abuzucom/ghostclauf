@@ -1,0 +1,286 @@
+// Quotes plugin: broadcasters curate a persistent pool of community quotes
+// with !addquote / !delquote, and anyone can pull one with !quote. Reads are
+// throttled per chatter per channel so the pool cannot be spammed into chat.
+//
+// The curation commands are registered for moderators as well as broadcasters
+// because the registry enforces `allow` before the handler runs; the handler
+// then narrows to broadcasters plus the configured cross-channel curators.
+
+import { z } from 'zod';
+import type { BotContext, ChatCommandEvent, Plugin } from '../../core/types.js';
+import { CooldownGate } from '../../core/cooldown.js';
+import { LOGIN_PATTERN } from '../../core/logins.js';
+import {
+    MAX_QUOTE_TEXT_LENGTH,
+    MAX_SPEAKER_LENGTH,
+    parseQuoteId,
+    renderQuote,
+    validateQuoteInput,
+} from './quote.js';
+import type { QuoteRejection } from './quote.js';
+import { MAX_QUOTES, QuoteStore, SHARED_SCOPE_KEY } from './store.js';
+
+const DEFAULT_DATA_PATH = './data/quotes.json';
+const DEFAULT_COOLDOWN_SECONDS = 30;
+const MAX_COOLDOWN_SECONDS = 3600;
+const MS_PER_SECOND = 1000;
+const MAX_PATH_LENGTH = 4096;
+const MAX_CURATORS_PER_CHANNEL = 50;
+
+/**
+ * Twitch logins as they may appear in config: the same 1-25 character
+ * allow-list as LOGIN_PATTERN, accepting either case before lowercasing.
+ */
+const LOGIN_ARGUMENT_PATTERN = /^[A-Za-z0-9_]{1,25}$/;
+
+const REJECTION_MESSAGES: Readonly<Record<QuoteRejection, string>> = {
+    empty: 'Usage: addquote <text> [- <speaker>]',
+    'text-too-long': `Quotes are limited to ${MAX_QUOTE_TEXT_LENGTH} characters.`,
+    'speaker-too-long': `Speaker names are limited to ${MAX_SPEAKER_LENGTH} characters.`,
+    command: 'Quotes cannot start with "/" or ".".',
+};
+
+const NO_QUOTES_MESSAGE = 'No quotes yet.';
+const BAD_ID_MESSAGE = 'That is not a quote id.';
+
+/**
+ * Build the lookup table for the cross-channel curation exception. Keys and
+ * values are lowercased Twitch logins; `Map`/`Set` are used instead of a plain
+ * object so a chatter or channel login can never be interpreted as an
+ * inherited `Object.prototype` member (e.g. "constructor").
+ */
+function buildElevationMap(validated: Record<string, string[]>): Map<string, Set<string>> {
+    return new Map(
+        Object.entries(validated).map(([broadcasterLogin, chatterLogins]) => [
+            broadcasterLogin.toLowerCase(),
+            new Set(chatterLogins.map((login) => login.toLowerCase())),
+        ]),
+    );
+}
+
+function isElevated(
+    elevationMap: Map<string, Set<string>>,
+    broadcasterName: string,
+    chatterName: string,
+): boolean {
+    if (!LOGIN_PATTERN.test(broadcasterName) || !LOGIN_PATTERN.test(chatterName)) return false;
+    return elevationMap.get(broadcasterName)?.has(chatterName) ?? false;
+}
+
+/**
+ * The config block is untrusted at runtime: the core hands plugins the raw
+ * `plugins.config.<name>` record without a schema, so every field is validated
+ * here before use. Each field falls back to its default independently, and a
+ * malformed curator map falls back to empty, which is fail-closed: only the
+ * broadcaster can curate.
+ */
+const CONFIG_FIELD_SCHEMAS = {
+    dataPath: z.string().trim().min(1).max(MAX_PATH_LENGTH),
+    shareAcrossChannels: z.boolean(),
+    cooldownSeconds: z.number().int().min(0).max(MAX_COOLDOWN_SECONDS),
+    treatAsBroadcaster: z.record(
+        z.string().regex(LOGIN_ARGUMENT_PATTERN),
+        z.array(z.string().regex(LOGIN_ARGUMENT_PATTERN)).max(MAX_CURATORS_PER_CHANNEL),
+    ),
+} as const;
+
+/** Validate one config field, warning and falling back when it is invalid. */
+function resolveField<K extends keyof typeof CONFIG_FIELD_SCHEMAS>(
+    field: K,
+    configured: unknown,
+    fallback: z.infer<(typeof CONFIG_FIELD_SCHEMAS)[K]>,
+    logger: BotContext['logger'],
+): z.infer<(typeof CONFIG_FIELD_SCHEMAS)[K]> {
+    if (configured === undefined) return fallback;
+    const result = CONFIG_FIELD_SCHEMAS[field].safeParse(configured);
+    if (result.success) return result.data;
+    logger.warn(
+        { field, configured, issues: result.error.issues },
+        'invalid quotes config value; falling back to default',
+    );
+    return fallback;
+}
+
+/** Shared state handed to each command binding. */
+interface QuotesRuntime {
+    store: QuoteStore;
+    cooldown: CooldownGate;
+    elevationMap: Map<string, Set<string>>;
+    shareAcrossChannels: boolean;
+    now: () => Date;
+    roll: () => number;
+}
+
+function scopeKeyFor(runtime: QuotesRuntime, event: ChatCommandEvent): string {
+    return runtime.shareAcrossChannels ? SHARED_SCOPE_KEY : event.broadcasterId;
+}
+
+function canCurate(runtime: QuotesRuntime, event: ChatCommandEvent): boolean {
+    if (event.roles.has('broadcaster')) return true;
+    return isElevated(runtime.elevationMap, event.broadcasterName, event.chatterName);
+}
+
+/** True when the chatter must wait; records the invocation otherwise. */
+function isThrottled(runtime: QuotesRuntime, event: ChatCommandEvent): boolean {
+    if (event.roles.has('broadcaster') || event.roles.has('moderator')) return false;
+    const key = `${event.command}:${event.broadcasterId}:${event.chatterId}`;
+    return runtime.cooldown.shouldThrottle(key, runtime.now().getTime());
+}
+
+function reply(ctx: BotContext, event: ChatCommandEvent, text: string): Promise<void> {
+    return ctx.say(text, event.messageId, event.broadcasterId);
+}
+
+function registerAddCommand(ctx: BotContext, runtime: QuotesRuntime): void {
+    ctx.command({
+        trigger: 'addquote',
+        allow: ['moderator', 'broadcaster'],
+        description: 'Add a quote to the pool (broadcaster and configured curators).',
+        handler: async (event, ctx) => {
+            if (!canCurate(runtime, event)) return;
+            const validation = validateQuoteInput(event.argString);
+            if (!validation.ok) {
+                await reply(ctx, event, REJECTION_MESSAGES[validation.reason]);
+                return;
+            }
+            const outcome = await runtime.store.add(
+                scopeKeyFor(runtime, event),
+                validation.text,
+                validation.speaker,
+                event.chatterId,
+                event.chatterDisplayName,
+                event.broadcasterId,
+                runtime.now(),
+            );
+            if (outcome.status === 'duplicate') {
+                await reply(ctx, event, `That is already quote #${outcome.quote.id}.`);
+                return;
+            }
+            if (outcome.status === 'full') {
+                await reply(
+                    ctx,
+                    event,
+                    `The quote pool is full (${MAX_QUOTES}). Delete one first.`,
+                );
+                return;
+            }
+            await reply(ctx, event, `Added quote #${outcome.quote.id}.`);
+        },
+    });
+}
+
+function registerDeleteCommand(ctx: BotContext, runtime: QuotesRuntime): void {
+    ctx.command({
+        trigger: 'delquote',
+        allow: ['moderator', 'broadcaster'],
+        description: 'Delete a quote by id (broadcaster and configured curators).',
+        handler: async (event, ctx) => {
+            if (!canCurate(runtime, event)) return;
+            const id = parseQuoteId(event.args[0]);
+            if (id === null) {
+                await reply(ctx, event, 'Usage: delquote <id>');
+                return;
+            }
+            const removed = await runtime.store.remove(scopeKeyFor(runtime, event), id);
+            const message = removed ? `Removed quote #${id}.` : `No quote #${id}.`;
+            await reply(ctx, event, message);
+        },
+    });
+}
+
+function registerReadCommand(ctx: BotContext, runtime: QuotesRuntime): void {
+    ctx.command({
+        trigger: 'quote',
+        allow: ['everyone'],
+        description: 'Post a random quote, or the one with the given id.',
+        handler: async (event, ctx) => {
+            if (isThrottled(runtime, event)) return;
+            const scopeKey = scopeKeyFor(runtime, event);
+            if (event.argString.length === 0) {
+                const quote = runtime.store.pick(scopeKey, runtime.roll());
+                await reply(ctx, event, quote ? renderQuote(quote) : NO_QUOTES_MESSAGE);
+                return;
+            }
+            const id = parseQuoteId(event.args[0]);
+            if (id === null) {
+                await reply(ctx, event, BAD_ID_MESSAGE);
+                return;
+            }
+            const quote = runtime.store.get(scopeKey, id);
+            await reply(ctx, event, quote ? renderQuote(quote) : `No quote #${id}.`);
+        },
+    });
+}
+
+function registerCountCommand(ctx: BotContext, runtime: QuotesRuntime): void {
+    ctx.command({
+        trigger: 'quotecount',
+        allow: ['everyone'],
+        description: 'Report how many quotes are stored.',
+        handler: async (event, ctx) => {
+            if (isThrottled(runtime, event)) return;
+            const total = runtime.store.count(scopeKeyFor(runtime, event));
+            const noun = total === 1 ? 'quote' : 'quotes';
+            await reply(ctx, event, `${total} ${noun} stored.`);
+        },
+    });
+}
+
+/**
+ * Build the quotes plugin. `now` and `roll` are injectable so cooldown timing
+ * and random selection are deterministically testable; production use relies
+ * on the real clock and Math.random.
+ */
+export function createQuotesPlugin(
+    now: () => Date = () => new Date(),
+    roll: () => number = () => Math.random(),
+): Plugin {
+    let store: QuoteStore | null = null;
+    return {
+        name: 'quotes',
+        version: '1.0.0',
+        async init(ctx: BotContext): Promise<void> {
+            const config = ctx.config ?? {};
+            const dataPath = resolveField(
+                'dataPath',
+                config.dataPath,
+                DEFAULT_DATA_PATH,
+                ctx.logger,
+            );
+            store = new QuoteStore(dataPath, ctx.logger);
+            await store.load();
+            const cooldownSeconds = resolveField(
+                'cooldownSeconds',
+                config.cooldownSeconds,
+                DEFAULT_COOLDOWN_SECONDS,
+                ctx.logger,
+            );
+            const runtime: QuotesRuntime = {
+                store,
+                cooldown: new CooldownGate(cooldownSeconds * MS_PER_SECOND),
+                elevationMap: buildElevationMap(
+                    resolveField('treatAsBroadcaster', config.treatAsBroadcaster, {}, ctx.logger),
+                ),
+                shareAcrossChannels: resolveField(
+                    'shareAcrossChannels',
+                    config.shareAcrossChannels,
+                    true,
+                    ctx.logger,
+                ),
+                now,
+                roll,
+            };
+            registerAddCommand(ctx, runtime);
+            registerDeleteCommand(ctx, runtime);
+            registerReadCommand(ctx, runtime);
+            registerCountCommand(ctx, runtime);
+        },
+        async dispose(ctx: BotContext): Promise<void> {
+            await ctx.drain();
+            await store?.flush();
+        },
+    };
+}
+
+const plugin = createQuotesPlugin();
+export default plugin;
