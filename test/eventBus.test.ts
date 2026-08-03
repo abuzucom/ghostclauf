@@ -12,7 +12,7 @@ describe('EventBus', () => {
 
         const payload = makeMessage('hello');
         bus.emit('chatMessage', payload);
-        await flush();
+        await flush(bus);
 
         expect(first).toHaveBeenCalledWith(payload);
         expect(second).toHaveBeenCalledWith(payload);
@@ -28,7 +28,7 @@ describe('EventBus', () => {
         bus.on('chatMessage', spyHandler);
 
         bus.emit('chatMessage', makeMessage('hello'));
-        await flush();
+        await flush(bus);
 
         expect(spyHandler).toHaveBeenCalledOnce();
         expect(spy.error).toHaveBeenCalledWith(
@@ -43,7 +43,7 @@ describe('EventBus', () => {
         bus.on('chatMessage', () => Promise.reject(new Error('async boom')));
 
         bus.emit('chatMessage', makeMessage('hello'));
-        await flush();
+        await flush(bus);
 
         expect(spy.error).toHaveBeenCalledWith(
             expect.objectContaining({
@@ -65,7 +65,7 @@ describe('EventBus', () => {
         bus.on('chatMessage', third);
 
         bus.emit('chatMessage', makeMessage('hello'));
-        await flush();
+        await flush(bus);
 
         expect(first).toHaveBeenCalledOnce();
         expect(third).toHaveBeenCalledOnce();

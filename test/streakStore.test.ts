@@ -31,6 +31,15 @@ function instantOn(day: string, hour = 20): Date {
     return new Date(`${day}T${String(hour).padStart(2, '0')}:00:00.000Z`);
 }
 
+/**
+ * These cases fill a store to its cap, which is hundreds of real atomic writes.
+ * They run in well under a second locally, but a loaded CI runner has blown the
+ * 5s default - and an aborted test leaves an in-flight write racing the
+ * temp-directory cleanup, surfacing as a confusing ENOTEMPTY rather than a
+ * timeout. The work is I/O-bound, not hung, so give it room.
+ */
+const HEAVY_IO_TIMEOUT_MS = 30_000;
+
 describe('StreakStore', () => {
     let dir: string;
     let dataPath: string;
@@ -356,42 +365,46 @@ describe('StreakStore', () => {
         await writePromise; // Ensure we clean up the promise
     });
 
-    it('prunes resolved penalties beyond the retention cap but keeps unrepaired ones', async () => {
-        const store = new StreakStore(dataPath, makeSpyLogger().logger);
-        await store.load();
-        const required = new Set(['tank', 'dj']);
-        // Check in every other day, with both broadcasters qualifying on the
-        // day between, so each check-in after the first breaks the streak and
-        // records a penalty.
-        for (let i = 0; i <= 60; i += 1) {
-            const day = dayOffset(i * 2);
-            await store.checkInBroadcaster(
-                'shared',
-                CID,
-                'viewer',
-                'Viewer',
-                day,
-                required,
-                'tank',
-                instantOn('2026-01-01'),
-            );
-            await store.recordQualifiedDay('shared', 'tank', dayOffset(i * 2 + 1));
-            await store.recordQualifiedDay('shared', 'dj', dayOffset(i * 2 + 1));
-            // Repair all but the most recent, leaving one live penalty.
-            if (i < 60) await store.fixLatestPenalty('shared', CID, 'owner', 'tank');
-        }
-        await store.flush();
-        const before = JSON.parse(await readFile(dataPath, 'utf8'));
-        expect(before.channels.shared.penalties.length).toBeGreaterThan(50);
+    it(
+        'prunes resolved penalties beyond the retention cap but keeps unrepaired ones',
+        async () => {
+            const store = new StreakStore(dataPath, makeSpyLogger().logger);
+            await store.load();
+            const required = new Set(['tank', 'dj']);
+            // Check in every other day, with both broadcasters qualifying on the
+            // day between, so each check-in after the first breaks the streak and
+            // records a penalty.
+            for (let i = 0; i <= 60; i += 1) {
+                const day = dayOffset(i * 2);
+                await store.checkInBroadcaster(
+                    'shared',
+                    CID,
+                    'viewer',
+                    'Viewer',
+                    day,
+                    required,
+                    'tank',
+                    instantOn('2026-01-01'),
+                );
+                await store.recordQualifiedDay('shared', 'tank', dayOffset(i * 2 + 1));
+                await store.recordQualifiedDay('shared', 'dj', dayOffset(i * 2 + 1));
+                // Repair all but the most recent, leaving one live penalty.
+                if (i < 60) await store.fixLatestPenalty('shared', CID, 'owner', 'tank');
+            }
+            await store.flush();
+            const before = JSON.parse(await readFile(dataPath, 'utf8'));
+            expect(before.channels.shared.penalties.length).toBeGreaterThan(50);
 
-        const reloaded = new StreakStore(dataPath, makeSpyLogger().logger);
-        await reloaded.load();
-        await reloaded.flush();
-        const after = JSON.parse(await readFile(dataPath, 'utf8'));
+            const reloaded = new StreakStore(dataPath, makeSpyLogger().logger);
+            await reloaded.load();
+            await reloaded.flush();
+            const after = JSON.parse(await readFile(dataPath, 'utf8'));
 
-        expect(after.channels.shared.penalties.length).toBe(51);
-        // The unrepaired penalty survives pruning and is still repairable.
-        expect(reloaded.hasUnrepairedPenaltyAfter('shared', CID, '2026-01-01')).toBe(true);
-        expect(await reloaded.fixLatestPenalty('shared', CID, 'owner', 'tank')).not.toBeNull();
-    });
+            expect(after.channels.shared.penalties.length).toBe(51);
+            // The unrepaired penalty survives pruning and is still repairable.
+            expect(reloaded.hasUnrepairedPenaltyAfter('shared', CID, '2026-01-01')).toBe(true);
+            expect(await reloaded.fixLatestPenalty('shared', CID, 'owner', 'tank')).not.toBeNull();
+        },
+        HEAVY_IO_TIMEOUT_MS,
+    );
 });
