@@ -32,6 +32,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   login charset, since `run.sh` passes them to `npm run auth`. The
   `config.example.yaml` placeholders are still accepted so `run.sh` can
   replace them interactively.
+- CI: added an `npm audit --audit-level=high` step so high/critical
+  dependency vulnerabilities fail the build instead of relying on manual
+  review.
+- Added `.github/dependabot.yml` for weekly automated `npm` and
+  `github-actions` update pull requests.
+- Added `test/atomicFile.test.ts`, direct coverage of `AtomicJsonFile`
+  (owner-only file permissions, `.bak` snapshotting, concurrent-write
+  safety, parent-directory auto-creation), previously exercised only
+  transitively through the `streak` and `funfact` store tests.
 
 ### Added
 
