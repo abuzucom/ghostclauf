@@ -32,6 +32,7 @@
         "zod": "3.25.76"
     },
     "overrides": {
+        "brace-expansion": "5.0.9",
         "ws": "8.21.1"
     },
     "devDependencies": {
