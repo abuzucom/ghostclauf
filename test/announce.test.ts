@@ -5,6 +5,7 @@ import announce, {
     renderCheer,
     renderRaid,
     renderSubscribe,
+    sanitizeChatterText,
     truncateForChat,
     ZERO_WIDTH_SPACE,
 } from '../src/plugins/announce/index.js';
@@ -112,6 +113,30 @@ describe('truncateForChat', () => {
     });
 });
 
+describe('sanitizeChatterText', () => {
+    it('leaves ordinary text untouched', () => {
+        expect(sanitizeChatterText('nice stream!')).toBe('nice stream!');
+    });
+
+    it('replaces control characters with a space', () => {
+        expect(sanitizeChatterText('one\u0007two three')).toBe('one two three');
+    });
+
+    it('collapses a newline so the announcement stays one line', () => {
+        const sanitized = sanitizeChatterText('first\nsecond\r\nthird');
+        expect(sanitized).toBe('first second third');
+        expect(sanitized).not.toContain('\n');
+    });
+
+    it('collapses whitespace runs and trims the ends', () => {
+        expect(sanitizeChatterText('  spaced   out  ')).toBe('spaced out');
+    });
+
+    it('strips DEL', () => {
+        expect(sanitizeChatterText('a\u007Fb')).toBe('a b');
+    });
+});
+
 describe('formatForChat', () => {
     it('leaves a message that does not start with a sigil untouched', () => {
         expect(formatForChat('Someone cheered 100 bits: hi')).toBe('Someone cheered 100 bits: hi');
@@ -121,6 +146,12 @@ describe('formatForChat', () => {
         const formatted = formatForChat(`${sigil}ban someone`);
         expect(formatted.startsWith(sigil)).toBe(false);
         expect(formatted).toBe(`${ZERO_WIDTH_SPACE}${sigil}ban someone`);
+    });
+
+    it('defuses a sigil hidden behind leading whitespace', () => {
+        // Chat strips leading whitespace, so checking the raw first character
+        // would let " /ban" through and still reach chat as a live command.
+        expect(formatForChat('   /ban someone')).toBe(`${ZERO_WIDTH_SPACE}/ban someone`);
     });
 
     it('leaves a sigil that is not in the first position alone', () => {
@@ -187,6 +218,23 @@ describe('announce plugin', () => {
         const [sent] = say.mock.calls[0]!;
         expect(sent as string).toBe(`${ZERO_WIDTH_SPACE}/ban someone`);
         expect((sent as string).startsWith('/')).toBe(false);
+    });
+
+    it('keeps a cheer announcement on one line when the message has newlines', async () => {
+        const { bus, say } = await setup();
+        bus.emit('cheer', cheerEvent({ message: 'line one\nline two' }));
+        await flush();
+        const [sent] = say.mock.calls[0]!;
+        expect(sent as string).not.toContain('\n');
+        expect(sent as string).toBe('Viewer cheered 500 bits: line one line two');
+    });
+
+    it('defuses a sigil a chatter pads with leading whitespace', async () => {
+        const { bus, say } = await setup({ cheer: { template: '{message}' } });
+        bus.emit('cheer', cheerEvent({ message: '   /ban someone' }));
+        await flush();
+        const [sent] = say.mock.calls[0]!;
+        expect(sent as string).toBe(`${ZERO_WIDTH_SPACE}/ban someone`);
     });
 
     it('respects a configured template per event type', async () => {

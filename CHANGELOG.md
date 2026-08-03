@@ -47,7 +47,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   and is logged, not a startup failure). A rendered announcement that would
   begin with a chat command sigil (`/` or `.`) is prefixed with a zero-width
   space before sending, so a cheer's free-form message cannot lead the
-  message the bot posts with a command.
+  message the bot posts with a command. The check runs on the trimmed text,
+  since chat strips leading whitespace. A cheer's message is also collapsed
+  to a single trimmed line with control characters removed, matching
+  `funfact`'s handling of submitted text.
 - `nowplaying` plugin: `!nowplaying` (everyone) reports the track(s)
   currently on air by polling a local `1a2n-track-id` overlay server
   (Traktor Pro 4 deck/track tracker for DJ streams) on demand. Never holds a

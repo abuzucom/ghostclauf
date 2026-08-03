@@ -45,6 +45,31 @@ const ANONYMOUS_CHEERER = 'Someone';
  */
 const COMMAND_SIGILS = ['/', '.'];
 
+const LAST_C0_CONTROL = 0x1f;
+const DELETE_CHARACTER = 0x7f;
+const WHITESPACE_RUN = /\s+/g;
+
+/**
+ * C0 controls plus DEL. Chat is a single line, and these corrupt logs.
+ * Tested by code point because the lint config forbids control characters
+ * inside a regular expression (no-control-regex).
+ */
+function isControlCharacter(character: string): boolean {
+    const code = character.codePointAt(0) ?? 0;
+    return code <= LAST_C0_CONTROL || code === DELETE_CHARACTER;
+}
+
+/**
+ * Collapse untrusted chatter text to a single trimmed line, matching
+ * funfact's `sanitizeFactText`. Applied to a cheer's free-form message, the
+ * only field here a chatter writes directly; display names come from Twitch
+ * and cannot carry control characters.
+ */
+export function sanitizeChatterText(raw: string): string {
+    const stripped = [...raw].map((ch) => (isControlCharacter(ch) ? ' ' : ch)).join('');
+    return stripped.replace(WHITESPACE_RUN, ' ').trim();
+}
+
 interface EventConfig {
     enabled: boolean;
     template: string;
@@ -109,7 +134,7 @@ export function renderCheer(template: string, event: CheerEvent): string {
     return template
         .replaceAll('{user}', event.userDisplayName ?? ANONYMOUS_CHEERER)
         .replaceAll('{bits}', String(event.bits))
-        .replaceAll('{message}', event.message);
+        .replaceAll('{message}', sanitizeChatterText(event.message));
 }
 
 /** Truncate to Twitch's chat message limit, counting by code point so a
@@ -135,11 +160,18 @@ export const ZERO_WIDTH_SPACE = '\u200B';
  * `quotes` reject such text at submission; an announcement has no submitter
  * to reject, so the sigil is defused instead of dropping the announcement.
  *
+ * The text is trimmed before the sigil check so what is inspected is what is
+ * sent: chat strips leading whitespace, so " /ban" would otherwise slip past
+ * a check on the raw first character and still reach chat as a command.
+ *
  * Neutralizing runs before truncation so the added prefix cannot push the
  * result past the 500 code-point limit that `ctx.say` enforces.
  */
 export function formatForChat(text: string): string {
-    const defused = COMMAND_SIGILS.includes(text[0] ?? '') ? `${ZERO_WIDTH_SPACE}${text}` : text;
+    const trimmed = text.trim();
+    const defused = COMMAND_SIGILS.includes(trimmed[0] ?? '')
+        ? `${ZERO_WIDTH_SPACE}${trimmed}`
+        : trimmed;
     return truncateForChat(defused);
 }
 
