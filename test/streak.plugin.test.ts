@@ -173,6 +173,66 @@ describe('streak plugin', () => {
         expect(say.mock.calls[1][0]).toContain('already checked in');
     });
 
+    // !streakset writes an authoritative value into the streak database, so its
+    // argument must be a plain whole number and nothing else. Number() would
+    // accept "1e3" as 1000, "0x10" as 16 and "" as 0; parseInt() would silently
+    // partial-parse "10+5" to 10 and "5abc" to 5. None of that may reach the
+    // store, and no existing test pinned this before.
+    const badStreakArguments: ReadonlyArray<[string, string]> = [
+        ['an arithmetic expression', '10+5'],
+        ['scientific notation', '1e3'],
+        ['hexadecimal', '0x10'],
+        ['a numeric separator', '1_000'],
+        ['a trailing decimal', '1.0'],
+        ['a fractional value', '1.5'],
+        ['a leading plus', '+5'],
+        ['a negative value', '-3'],
+        ['digits with a suffix', '5abc'],
+        ['a number word', 'one'],
+        ['Infinity', 'Infinity'],
+        ['NaN', 'NaN'],
+        ['a fullwidth digit', '\uFF15'],
+    ];
+
+    it.each(badStreakArguments)(
+        'refuses a !streakset argument that is %s',
+        async (_label, argument) => {
+            const now = new Date('2026-07-20T20:00:00.000Z');
+            const plugin = createStreakPlugin(() => now);
+            const { ctx, bus, say, registry } = harness();
+            await plugin.init(ctx);
+            bus.emit('streamOnline', onlineNow('1', now));
+            await flush(bus);
+            await registry.handle(makeMessage('!checkin', ['everyone']));
+            say.mockClear();
+
+            await registry.handle(
+                makeMessage(`!streakset @viewer ${argument}`, ['everyone', 'broadcaster']),
+            );
+
+            // The usage hint, never a "Set ..." confirmation.
+            expect(say).toHaveBeenCalledTimes(1);
+            expect(say.mock.calls[0][0]).toContain('Usage:');
+            expect(say.mock.calls[0][0]).not.toContain('Set');
+        },
+    );
+
+    it('accepts a plain whole number for !streakset', async () => {
+        const now = new Date('2026-07-20T20:00:00.000Z');
+        const plugin = createStreakPlugin(() => now);
+        const { ctx, bus, say, registry } = harness();
+        await plugin.init(ctx);
+        bus.emit('streamOnline', onlineNow('1', now));
+        await flush(bus);
+        await registry.handle(makeMessage('!checkin', ['everyone']));
+        say.mockClear();
+
+        await registry.handle(makeMessage('!streakset @viewer 0', ['everyone', 'broadcaster']));
+
+        expect(say).toHaveBeenCalledTimes(1);
+        expect(say.mock.calls[0][0]).toContain('Set');
+    });
+
     it('lets only the broadcaster set a streak, not moderators or plain viewers', async () => {
         const now = new Date('2026-07-20T20:00:00.000Z');
         const plugin = createStreakPlugin(() => now);
