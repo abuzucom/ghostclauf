@@ -75,6 +75,27 @@ plugins:
                     - itsjustatank
                 itsjustatank:
                     - dj1a2n
+        quotes:
+            # Where the curated quote pool is persisted (own store under ./data).
+            dataPath: ./data/quotes.json
+            # Pool quotes across every broadcaster configured above, so a quote
+            # added in one channel is served in all of them. Set false to keep
+            # each channel's pool independent. Note: when pooled, the curators of
+            # ANY configured channel can add and delete quotes served everywhere.
+            shareAcrossChannels: true
+            # Seconds a chatter must wait between handled !quote (or
+            # !quotecount) replies; repeats inside the window are silently
+            # ignored. Broadcasters and moderators are exempt. Set 0 to disable.
+            cooldownSeconds: 30
+            # Broadcaster login -> chatter logins allowed to run !addquote and
+            # !delquote on that channel, despite their actual Twitch role there.
+            # For streamers who curate each other's channels. Broadcasters always
+            # qualify; other moderators never do unless listed here.
+            treatAsBroadcaster:
+                dj1a2n:
+                    - itsjustatank
+                itsjustatank:
+                    - dj1a2n
         followage:
             # Seconds a chatter must wait between handled !followage lookups;
             # repeats inside the window are silently ignored (protects the shared

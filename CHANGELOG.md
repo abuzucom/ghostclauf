@@ -60,6 +60,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   since chat strips leading whitespace. A cheer's message is also collapsed
   to a single trimmed line with control characters removed, matching
   `funfact`'s handling of submitted text.
+- `quotes` plugin: a curated pool of community quotes persisted under
+  `data/`, distinct from `funfact` in that a quote carries an optional
+  speaker attribution separate from who added it. Broadcasters (and the
+  chatters listed under `treatAsBroadcaster`) add and remove entries with
+  `!addquote <text> [- <speaker>]` / `!delquote`; everyone can pull one with
+  `!quote`, fetch a specific entry with `!quote <id>`, and check the size
+  with `!quotecount`. Reads are rate limited to one reply per chatter per
+  channel every `cooldownSeconds` (default 30), with broadcasters and
+  moderators exempt. Quotes are pooled across channels by default
+  (`shareAcrossChannels`). Submitted text, the plugin's config block, and
+  the on-disk pool are all validated at runtime against bounded zod
+  schemas; an invalid config field falls back to its default, and an
+  invalid curator map falls back to empty so only the broadcaster can
+  curate.
 - Operational visibility: `GET /healthz` (liveness) and `GET /readyz`
   (readiness, `503` while any configured broadcaster's EventSub subscription
   is revoked) HTTP endpoints, reusing the port already opened for the
