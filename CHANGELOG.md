@@ -44,7 +44,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Token-refresh failures and EventSub revocations now also emit a
   structured, greppable `{ alert: true, kind: ... }` log line instead of a
   plain log message. No new dependency; built on `node:http` the same way
-  `tools/authFlow.ts` already builds its OAuth callback server.
+  `tools/authFlow.ts` already builds its OAuth callback server. Shutdown
+  drops open health-server connections rather than waiting on them, so a
+  local socket that never completes a request cannot stall exit.
 - `nowplaying` plugin: `!nowplaying` (everyone) reports the track(s)
   currently on air by polling a local `1a2n-track-id` overlay server
   (Traktor Pro 4 deck/track tracker for DJ streams) on demand. Never holds a

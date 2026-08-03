@@ -108,4 +108,27 @@ describe('health server', () => {
         const res = await fetch(`http://127.0.0.1:${srv.port}/healthz`);
         expect(res.status).toBe(200);
     });
+
+    it('close() does not hang on a connection that never completes a request', async () => {
+        const { server: srv } = await start(() => true);
+        // A local process can open a socket and send nothing. Node's close()
+        // waits on such a connection forever, which would block shutdown
+        // before process.exit(). Node clears *idle* keep-alives on its own,
+        // so this half-open case is what actually needs closeAllConnections().
+        const socket = netConnect(srv.port, '127.0.0.1');
+        await new Promise<void>((resolve, reject) => {
+            socket.on('connect', () => resolve());
+            socket.on('error', reject);
+        });
+
+        const timedOut = Symbol('timed out');
+        const outcome = await Promise.race([
+            srv.close().then(() => 'closed'),
+            new Promise((resolve) => setTimeout(() => resolve(timedOut), 1000)),
+        ]);
+        socket.destroy();
+        server = undefined;
+
+        expect(outcome).toBe('closed');
+    });
 });
