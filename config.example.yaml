@@ -146,3 +146,20 @@ plugins:
             template: 'Go check out @{display} at twitch.tv/{channel}! They were last seen playing {game}.'
             fallbackGame: 'something awesome'
             sendNativeShoutout: true
+        announce:
+            # Each event has its own enable toggle and template. Raids need no
+            # extra scope; subscribe needs channel:read:subscriptions and
+            # cheer needs bits:read on the broadcaster's token (re-run
+            # `npm run auth -- --broadcaster <login>` to grant them).
+            raid:
+                enabled: true
+                template: '{raider} raided with {viewers} viewers!'
+            subscribe:
+                enabled: true
+                # {tier} renders 1/2/3; {giftNote} renders " (gifted)" or empty.
+                template: '{user} subscribed at tier {tier}{giftNote}!'
+            cheer:
+                enabled: true
+                template: '{user} cheered {bits} bits: {message}'
+                # Cheers below this many bits are not announced.
+                minBits: 100

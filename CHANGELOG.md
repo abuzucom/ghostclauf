@@ -35,6 +35,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `announce` plugin: posts a templated chat message on raid, subscribe, and
+  cheer, each independently toggleable with its own template. Cheers below
+  `minBits` (default 100) are not announced. Added new normalized
+  `raid`/`subscribe`/`cheer` events (`BotEvents`) backed by new
+  `channel.raid`/`channel.subscribe`/`channel.cheer` EventSub subscriptions
+  in `src/core/twitch.ts`. `channel:read:subscriptions` and `bits:read` were
+  added to `BROADCASTER_SCOPES`, so `npm run auth -- --broadcaster <login>`
+  now requests them; existing broadcaster tokens are unaffected until
+  re-authorized (a missing scope only disables that event's subscription
+  and is logged, not a startup failure).
 - `nowplaying` plugin: `!nowplaying` (everyone) reports the track(s)
   currently on air by polling a local `1a2n-track-id` overlay server
   (Traktor Pro 4 deck/track tracker for DJ streams) on demand. Never holds a
