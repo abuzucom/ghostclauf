@@ -96,7 +96,11 @@ const DRAIN_ROUNDS = 5;
 async function drainRepeatedly(bus: EventBus): Promise<void> {
     for (let round = 0; round < DRAIN_ROUNDS; round += 1) {
         await bus.drain();
-        await new Promise((resolve) => setImmediate(resolve));
+        // Only between rounds: a yield after the last drain has nothing left to
+        // await whatever lands during it, so it would cost a tick for nothing.
+        if (round < DRAIN_ROUNDS - 1) {
+            await new Promise((resolve) => setImmediate(resolve));
+        }
     }
 }
 
