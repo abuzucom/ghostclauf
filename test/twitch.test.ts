@@ -489,4 +489,44 @@ describe('twitch transport', () => {
         await transport.sender('not actually rate limited');
         expect(metrics.snapshot().rate_limit_drops).toBeUndefined();
     });
+
+    it('does not match a code starting with "rate" followed by an arbitrary character', async () => {
+        const metrics = createMetrics();
+        sendChatMessageSpy.mockResolvedValueOnce({
+            isSent: false,
+            id: '',
+            dropReasonCode: 'rateXlimitedSomehow',
+            dropReasonMessage: 'not a real Twitch code, but exercises the separator anchor',
+        });
+        const transport = await createTwitchTransport({
+            authProvider: dummyAuthProvider,
+            botUserId: 'bot-id',
+            broadcasters: [{ login: 'streamer' }],
+            logger: testLogger,
+            metrics,
+            handlers: { onChatMessage: vi.fn(), onStreamOnline: vi.fn(), onStreamOffline: vi.fn() },
+        });
+
+        await transport.sender('still not rate limited');
+        expect(metrics.snapshot().rate_limit_drops).toBeUndefined();
+    });
+
+    it('matches rate-limited with a hyphen or no separator', async () => {
+        const metrics = createMetrics();
+        sendChatMessageSpy
+            .mockResolvedValueOnce({ isSent: false, id: '', dropReasonCode: 'rate-limited' })
+            .mockResolvedValueOnce({ isSent: false, id: '', dropReasonCode: 'ratelimited' });
+        const transport = await createTwitchTransport({
+            authProvider: dummyAuthProvider,
+            botUserId: 'bot-id',
+            broadcasters: [{ login: 'streamer' }],
+            logger: testLogger,
+            metrics,
+            handlers: { onChatMessage: vi.fn(), onStreamOnline: vi.fn(), onStreamOffline: vi.fn() },
+        });
+
+        await transport.sender('one');
+        await transport.sender('two');
+        expect(metrics.snapshot().rate_limit_drops).toBe(2);
+    });
 });

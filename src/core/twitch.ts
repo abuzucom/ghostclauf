@@ -473,11 +473,13 @@ function classifySendFailure(error: unknown): string {
 /**
  * Twitch's Send Chat Message API returns a free-form `drop_reason.code`
  * string that twurple does not type as an enum. Match case-insensitively,
- * anchored to the start, so this counter tracks only rate-limit drops (e.g.
- * "rate_limited") and not other codes that merely contain the substring.
+ * anchored to the start, with only "_"/"-" allowed as a separator, so this
+ * counter tracks only rate-limit drops (e.g. "rate_limited", "rate-limited",
+ * "ratelimited") and not other codes that merely start with "rate" followed
+ * by any character (e.g. a hypothetical "rateXlimit").
  */
 function isRateLimitDrop(dropReasonCode: string | undefined): boolean {
-    return dropReasonCode !== undefined && /^rate.?limit/i.test(dropReasonCode);
+    return dropReasonCode !== undefined && /^rate[_-]?limit/i.test(dropReasonCode);
 }
 
 function buildLegacyBroadcasters(

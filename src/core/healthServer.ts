@@ -34,12 +34,25 @@ export interface HealthServer {
     close(): Promise<void>;
 }
 
+/** Resolve a request's path, or null when the request target cannot be parsed. */
+export function resolveRequestPath(url: string | undefined): string | null {
+    try {
+        return new URL(url ?? '/', 'http://localhost').pathname;
+    } catch {
+        return null;
+    }
+}
+
 /** Starts listening immediately; /healthz is 200 as soon as this resolves. */
 export function startHealthServer(opts: HealthServerOptions): Promise<HealthServer> {
     const { port, host = DEFAULT_HOST, logger, metrics, isReady } = opts;
 
     const server: Server = createServer((req, res) => {
-        const path = new URL(req.url ?? '/', 'http://localhost').pathname;
+        const path = resolveRequestPath(req.url);
+        if (path === null) {
+            res.writeHead(400, { 'content-type': 'text/plain' }).end('Bad request');
+            return;
+        }
         if (path === '/healthz') {
             res.writeHead(200, { 'content-type': 'application/json' }).end(
                 JSON.stringify({ status: 'ok' }),
