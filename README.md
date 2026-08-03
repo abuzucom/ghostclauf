@@ -201,9 +201,11 @@ who added them.
 | `!quote <id>`                    | everyone | Posts that specific quote.                                           |
 | `!quotecount`                    | everyone | Reports how many quotes are stored.                                  |
 
-`!addquote` splits on the last `-` in the argument, so `!addquote well,
-actually - Tank` stores the text "well, actually" with speaker "Tank"; text
-with no `-` has no speaker. Curators are the broadcaster of the channel the
+`!addquote` splits on the last `-` (space-hyphen-space) in the argument, so
+`!addquote well, actually - Tank` stores the text "well, actually" with
+speaker "Tank"; text with no `-` separator - including text that merely
+contains a hyphen with no surrounding spaces - has no speaker. Curators are
+the broadcaster of the channel the
 command was typed in, plus any chatter listed for that channel under
 `treatAsBroadcaster` - the same cross-channel pattern `funfact` and `ping`
 use. Moderators who are not listed cannot add or delete, and their attempts
