@@ -124,6 +124,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Tests: `!streakset` is pinned to whole-number arguments only. The parser
+  already rejected arithmetic, scientific notation, hex, fractions, and
+  partial matches, but nothing asserted it - a refactor to `parseInt` would
+  have silently accepted `10+5` as 10 and `5abc` as 5, and bare `Number()`
+  would have accepted `1e3` as 1000. Behaviour is unchanged; the guard is new.
 - Tests: `flush()` now drains the event bus instead of sleeping a fixed 10ms,
   so async event handlers are deterministically settled before assertions. The
   delay-only version failed on a loaded CI runner as a wrong assertion rather
