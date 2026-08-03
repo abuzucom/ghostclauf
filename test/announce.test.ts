@@ -4,6 +4,7 @@ import announce, {
     renderCheer,
     renderRaid,
     renderSubscribe,
+    truncateForChat,
 } from '../src/plugins/announce/index.js';
 import type { CheerEvent, PluginConfig, RaidEvent, SubscribeEvent } from '../src/core/types.js';
 import { flush, makeHarness } from './helpers.js';
@@ -88,6 +89,27 @@ describe('announce helpers', () => {
     });
 });
 
+describe('truncateForChat', () => {
+    it('leaves a short message untouched', () => {
+        expect(truncateForChat('short')).toBe('short');
+    });
+
+    it('truncates a message over the 500 code-point limit', () => {
+        const long = 'x'.repeat(600);
+        const truncated = truncateForChat(long);
+        expect([...truncated]).toHaveLength(500);
+    });
+
+    it('counts by code point, not UTF-16 unit, so a surrogate pair is never split', () => {
+        // Each emoji is one code point but two UTF-16 units; naive .slice(0, 500)
+        // on the raw string could cut a pair in half and produce invalid output.
+        const long = '🎉'.repeat(600);
+        const truncated = truncateForChat(long);
+        expect([...truncated]).toHaveLength(500);
+        expect(truncated).toBe('🎉'.repeat(500));
+    });
+});
+
 describe('announce plugin', () => {
     async function setup(config: PluginConfig = {}) {
         const plugin = createAnnouncePlugin();
@@ -122,6 +144,14 @@ describe('announce plugin', () => {
         bus.emit('cheer', cheerEvent({ bits: 199 }));
         await flush();
         expect(say).not.toHaveBeenCalled();
+    });
+
+    it('truncates a cheer announcement pushed past 500 characters by a long message', async () => {
+        const { bus, say } = await setup();
+        bus.emit('cheer', cheerEvent({ message: 'x'.repeat(600) }));
+        await flush();
+        const [sent] = say.mock.calls[0]!;
+        expect([...(sent as string)]).toHaveLength(500);
     });
 
     it('respects a configured template per event type', async () => {

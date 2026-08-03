@@ -6,12 +6,16 @@
 // activity) and one config surface.
 //
 // channel.subscribe requires channel:read:subscriptions and channel.cheer
-// requires bits:read on the broadcaster token; neither is in the
-// unconditionally-required BROADCASTER_SCOPES list (adding either there
-// would break startup for every existing deployment). A broadcaster who
-// wants these events must re-run `npm run auth -- --broadcaster <login>`
-// after granting the scope; until then, EventSub subscription creation
-// fails and is logged, and the event simply never fires (see README).
+// requires bits:read on the broadcaster token. Both are in
+// BROADCASTER_SCOPES (src/core/auth.ts), so `npm run auth -- --broadcaster
+// <login>` (and the checkTokens-driven re-auth prompt in run.sh/run.bat)
+// requests them for every broadcaster, whether or not this plugin is
+// enabled - a deliberate tradeoff to reuse the existing all-or-nothing
+// scope machinery instead of building per-plugin conditional scopes. If a
+// broadcaster's token predates this and hasn't been through that prompt
+// yet, the corresponding EventSub subscription just fails to create
+// (already logged) and that event never fires; it does not stop the bot
+// from starting (see README).
 
 import { z } from 'zod';
 import type {
@@ -24,6 +28,9 @@ import type {
 
 const MAX_TEMPLATE_LENGTH = 500;
 const MAX_MIN_BITS = 1_000_000;
+/** Twitch's chat message limit; a cheer's free-form message can push a
+ * rendered announcement past it, so every render is truncated before send. */
+const MAX_CHAT_MESSAGE_LENGTH = 500;
 
 const DEFAULT_RAID_TEMPLATE = '{raider} raided with {viewers} viewers!';
 const DEFAULT_SUBSCRIBE_TEMPLATE = '{user} subscribed at tier {tier}{giftNote}!';
@@ -98,6 +105,14 @@ export function renderCheer(template: string, event: CheerEvent): string {
         .replaceAll('{message}', event.message);
 }
 
+/** Truncate to Twitch's chat message limit, counting by code point so a
+ * multi-byte character is never split. `ctx.say` throws past this limit. */
+export function truncateForChat(text: string): string {
+    const codePoints = [...text];
+    if (codePoints.length <= MAX_CHAT_MESSAGE_LENGTH) return text;
+    return codePoints.slice(0, MAX_CHAT_MESSAGE_LENGTH).join('');
+}
+
 /** Build the announce plugin. No cooldown/state: each event fires once, driven by EventSub. */
 export function createAnnouncePlugin(): Plugin {
     return {
@@ -122,13 +137,17 @@ export function createAnnouncePlugin(): Plugin {
 
             if (raid.enabled) {
                 ctx.on('raid', async (event) => {
-                    await ctx.say(renderRaid(raid.template, event), undefined, event.broadcasterId);
+                    await ctx.say(
+                        truncateForChat(renderRaid(raid.template, event)),
+                        undefined,
+                        event.broadcasterId,
+                    );
                 });
             }
             if (subscribe.enabled) {
                 ctx.on('subscribe', async (event) => {
                     await ctx.say(
-                        renderSubscribe(subscribe.template, event),
+                        truncateForChat(renderSubscribe(subscribe.template, event)),
                         undefined,
                         event.broadcasterId,
                     );
@@ -138,7 +157,7 @@ export function createAnnouncePlugin(): Plugin {
                 ctx.on('cheer', async (event) => {
                     if (event.bits < minBits) return;
                     await ctx.say(
-                        renderCheer(cheer.template, event),
+                        truncateForChat(renderCheer(cheer.template, event)),
                         undefined,
                         event.broadcasterId,
                     );
