@@ -3,7 +3,9 @@ import { dirname } from 'node:path';
 import { RefreshingAuthProvider } from '@twurple/auth';
 import type { AccessToken } from '@twurple/auth';
 import { z } from 'zod';
+import { fireAlert } from './alerts.js';
 import type { BroadcasterConfig, Secrets } from './config.js';
+import type { Metrics } from './metrics.js';
 import type { Logger } from './types.js';
 
 /** Scopes the bot account must grant. See README for broadcaster-side setup. */
@@ -25,6 +27,7 @@ export async function createAuthProvider(
     secrets: Secrets,
     logger: Logger,
     broadcasters: readonly BroadcasterConfig[] = [],
+    metrics?: Metrics,
 ): Promise<{
     authProvider: RefreshingAuthProvider;
     botUserId: string;
@@ -51,7 +54,12 @@ export async function createAuthProvider(
         logger.debug({ userId }, 'access token refreshed and persisted');
     });
     authProvider.onRefreshFailure((userId, error) => {
-        logger.error({ userId, err: error }, 'token refresh failed; re-run `npm run auth`');
+        metrics?.increment('token_refresh_failures');
+        fireAlert(logger, 'token_refresh_failure', {
+            userId,
+            err: error,
+            hint: 're-run `npm run auth`',
+        });
     });
 
     const addToken = async (
