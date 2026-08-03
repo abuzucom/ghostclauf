@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Security
 
+- Pin transitive dependency `brace-expansion` to 5.0.9 via `overrides`,
+  clearing a high-severity DoS advisory (GHSA-rgw5-rvv9-x895) that bypassed
+  the CVE-2026-14257 mitigation. Reached only through `eslint` ->
+  `minimatch`, so it is a dev-only dependency and never shipped in the bot,
+  but it failed the `npm audit --audit-level=high` CI gate on every branch.
 - Pin transitive dependency `ws` to 8.21.1 via `overrides`, fixing a
   memory-exhaustion DoS (CVE-2026-62389) in `ws`'s WebSocket fragment
   receiver. Pulled in through `@twurple/eventsub-ws`.
