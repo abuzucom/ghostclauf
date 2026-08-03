@@ -66,6 +66,48 @@ export interface BroadcasterIdentity {
     login: string;
 }
 
+/** A normalized "this channel was raided" event. */
+export interface RaidEvent {
+    /** The raided (this) broadcaster. */
+    broadcasterId: string;
+    broadcasterName: string;
+    broadcasterDisplayName: string;
+    /** The broadcaster who sent the raid. */
+    raidingBroadcasterId: string;
+    raidingBroadcasterName: string;
+    raidingBroadcasterDisplayName: string;
+    /** Number of viewers that came over with the raid. */
+    viewers: number;
+}
+
+/** A normalized "new subscriber" event (includes gifted-sub recipients). */
+export interface SubscribeEvent {
+    broadcasterId: string;
+    broadcasterName: string;
+    broadcasterDisplayName: string;
+    userId: string;
+    userName: string;
+    userDisplayName: string;
+    /** "1000", "2000", or "3000" (tier 1/2/3). */
+    tier: string;
+    /** True when this subscription was a gift. */
+    isGift: boolean;
+}
+
+/** A normalized "cheer" (bits) event. */
+export interface CheerEvent {
+    broadcasterId: string;
+    broadcasterName: string;
+    broadcasterDisplayName: string;
+    /** Null when the cheering user chose to be anonymous. */
+    userId: string | null;
+    userName: string | null;
+    userDisplayName: string | null;
+    isAnonymous: boolean;
+    message: string;
+    bits: number;
+}
+
 /** A chat message that matched a registered command, with parsed args. */
 export interface ChatCommandEvent extends ChatMessageEvent {
     /** The matched trigger (lowercased, without the prefix). */
@@ -82,6 +124,9 @@ export interface BotEvents {
     streamOnline: StreamOnlineEvent;
     streamOfflinePending: StreamOfflineEvent;
     streamOffline: StreamOfflineEvent;
+    raid: RaidEvent;
+    subscribe: SubscribeEvent;
+    cheer: CheerEvent;
 }
 
 export type CommandHandler = (event: ChatCommandEvent, ctx: BotContext) => void | Promise<void>;

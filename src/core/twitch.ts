@@ -6,13 +6,16 @@ import { ChatRateLimiter } from './chatRateLimiter.js';
 import { createMetrics, type Metrics } from './metrics.js';
 import { resolveRoles } from './permissions.js';
 import type {
+    CheerEvent,
     ChatMessageEvent,
     HelixClient,
     HelixUser,
     Logger,
     MessageSender,
+    RaidEvent,
     StreamOfflineEvent,
     StreamOnlineEvent,
+    SubscribeEvent,
 } from './types.js';
 
 export interface TransportHandlers {
@@ -20,6 +23,9 @@ export interface TransportHandlers {
     onStreamOnline(event: StreamOnlineEvent): void | Promise<void>;
     onStreamOfflinePending?(event: StreamOfflineEvent): void | Promise<void>;
     onStreamOffline(event: StreamOfflineEvent): void | Promise<void>;
+    onRaid?(event: RaidEvent): void | Promise<void>;
+    onSubscribe?(event: SubscribeEvent): void | Promise<void>;
+    onCheer?(event: CheerEvent): void | Promise<void>;
 }
 
 export interface TwitchTransportOptions {
@@ -329,6 +335,50 @@ export async function createTwitchTransport(
                 broadcasterDisplayName: event.broadcasterDisplayName,
             };
             emitStreamOffline(normalized);
+        });
+
+        // Raid/subscribe/cheer need no extra scope, channel:read:subscriptions,
+        // and bits:read respectively on the broadcaster token. A missing scope
+        // fails subscription creation (logged via onSubscriptionCreateFailure
+        // above), not the whole transport.
+        listener.onChannelRaidTo(broadcaster.id, (event) => {
+            const normalized: RaidEvent = {
+                broadcasterId: event.raidedBroadcasterId,
+                broadcasterName: event.raidedBroadcasterName,
+                broadcasterDisplayName: event.raidedBroadcasterDisplayName,
+                raidingBroadcasterId: event.raidingBroadcasterId,
+                raidingBroadcasterName: event.raidingBroadcasterName,
+                raidingBroadcasterDisplayName: event.raidingBroadcasterDisplayName,
+                viewers: event.viewers,
+            };
+            void handlers.onRaid?.(normalized);
+        });
+        listener.onChannelSubscription(broadcaster.id, (event) => {
+            const normalized: SubscribeEvent = {
+                broadcasterId: event.broadcasterId,
+                broadcasterName: event.broadcasterName,
+                broadcasterDisplayName: event.broadcasterDisplayName,
+                userId: event.userId,
+                userName: event.userName,
+                userDisplayName: event.userDisplayName,
+                tier: event.tier,
+                isGift: event.isGift,
+            };
+            void handlers.onSubscribe?.(normalized);
+        });
+        listener.onChannelCheer(broadcaster.id, (event) => {
+            const normalized: CheerEvent = {
+                broadcasterId: event.broadcasterId,
+                broadcasterName: event.broadcasterName,
+                broadcasterDisplayName: event.broadcasterDisplayName,
+                userId: event.userId,
+                userName: event.userName,
+                userDisplayName: event.userDisplayName,
+                isAnonymous: event.isAnonymous,
+                message: event.message,
+                bits: event.bits,
+            };
+            void handlers.onCheer?.(normalized);
         });
     }
 
