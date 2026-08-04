@@ -2,7 +2,8 @@
 // hand-written type guards over the parsed JSON, a preserved copy of any
 // unreadable file, and coalesced atomic writes.
 
-import { readFile, rename } from 'node:fs/promises';
+import { constants } from 'node:fs';
+import { copyFile, readFile, rename } from 'node:fs/promises';
 import { z } from 'zod';
 import { AtomicJsonFile } from '../../core/atomicFile.js';
 import type { Logger } from '../../core/types.js';
@@ -22,10 +23,33 @@ const MAX_CHATTER_ID_LENGTH = 64;
 const MAX_SCOPE_KEY_LENGTH = 64;
 /** Bound on viewers tracked per scope, so the file stays bounded under chatter churn. */
 const MAX_VIEWERS_PER_SCOPE = 100_000;
+/** Bound on time-bucketed grant keys kept per viewer. */
+const MAX_GRANT_KEYS_PER_VIEWER = 64;
+/**
+ * Grant keys with this prefix are NEVER pruned. The follow bonus pays once
+ * ever, so its key is the only thing standing between the bot and an
+ * unfollow/refollow farm - if it ages out, the farm reopens. Its cardinality
+ * is bounded by the number of configured broadcasters, so keeping it forever
+ * costs nothing. Every other prefix is time-bucketed and safe to age out.
+ */
+const PERMANENT_GRANT_PREFIX = 'follow:';
+
+/** Bound on a grant/redemption key, matching the other key bounds. */
+const MAX_GRANT_KEY_LENGTH = 128;
 
 const ViewerRecordSchema = z.object({
     displayName: z.string().min(1).max(MAX_DISPLAY_NAME_LENGTH),
     balance: z.number().int().min(0).max(MAX_BALANCE),
+    // Optional so a v1 record migrates as-is. z.object strips unknown keys, so
+    // anything not declared here is silently dropped at load - these must be
+    // listed or every guard and counter is lost on the next read.
+    grants: z
+        .record(z.string().min(1).max(MAX_GRANT_KEY_LENGTH), z.number().int().min(0))
+        .optional(),
+    spent: z.number().int().min(0).max(MAX_BALANCE).optional(),
+    redeemed: z
+        .record(z.string().min(1).max(MAX_GRANT_KEY_LENGTH), z.number().int().min(0))
+        .optional(),
 });
 
 const ViewerMapSchema = z.record(z.string().min(1).max(MAX_CHATTER_ID_LENGTH), ViewerRecordSchema);
@@ -48,12 +72,30 @@ const BoundedViewerMapSchema = z
 
 const ScopeSchema = z.object({
     viewers: BoundedViewerMapSchema,
+    redeemedTotals: z
+        .record(z.string().min(1).max(MAX_GRANT_KEY_LENGTH), z.number().int().min(0))
+        .optional(),
 });
 
-const DataSchema = z.object({
+const ScopeMapSchema = z.record(z.string().min(1).max(MAX_SCOPE_KEY_LENGTH), ScopeSchema);
+
+const DataSchemaV1 = z.object({
     version: z.literal(1),
-    scopes: z.record(z.string().min(1).max(MAX_SCOPE_KEY_LENGTH), ScopeSchema),
+    scopes: ScopeMapSchema,
 });
+
+const DataSchemaV2 = z.object({
+    version: z.literal(2),
+    scopes: ScopeMapSchema,
+    // Journals are permissive here; their writers own the shape. Validating
+    // them strictly would quarantine a whole balance file over one bad audit
+    // row, which trades a recoverable problem for an unrecoverable one.
+    decisions: z.array(z.unknown()).default([]),
+    redemptions: z.array(z.unknown()).default([]),
+});
+
+/** Accepts either version; `parseData` normalizes v1 up to v2. */
+const DataSchema = z.discriminatedUnion('version', [DataSchemaV1, DataSchemaV2]);
 
 /** True when a key satisfies the bounds the load schema puts on chatter ids. */
 function isStorableKey(key: string): boolean {
@@ -86,20 +128,62 @@ function emptyViewers(): Record<string, ViewerRecord> {
 }
 
 function emptyData(): LoyaltyData {
-    return { version: 1, scopes: emptyScopes() };
+    return { version: 2, scopes: emptyScopes(), decisions: [], redemptions: [] };
 }
 
 function emptyScope(): LoyaltyScope {
     return { viewers: emptyViewers() };
 }
 
-function parseData(raw: string): LoyaltyData {
+/**
+ * Parse either schema version, normalizing v1 up to v2. Every field v2 adds is
+ * optional or defaulted, so the per-record migration is the identity - a v1
+ * file simply gains empty journals.
+ */
+function parseData(raw: string): { data: LoyaltyData; wasV1: boolean } {
     const parsed = DataSchema.parse(JSON.parse(raw));
     const scopes = emptyScopes();
     for (const [scopeKey, scope] of Object.entries(parsed.scopes)) {
-        scopes[scopeKey] = { viewers: Object.assign(emptyViewers(), scope.viewers) };
+        scopes[scopeKey] = {
+            viewers: Object.assign(emptyViewers(), scope.viewers),
+            ...(scope.redeemedTotals ? { redeemedTotals: scope.redeemedTotals } : {}),
+        };
     }
-    return { version: 1, scopes };
+    if (parsed.version === 1) {
+        return { data: { version: 2, scopes, decisions: [], redemptions: [] }, wasV1: true };
+    }
+    return {
+        data: {
+            version: 2,
+            scopes,
+            decisions: parsed.decisions as LoyaltyData['decisions'],
+            redemptions: parsed.redemptions as LoyaltyData['redemptions'],
+        },
+        wasV1: false,
+    };
+}
+
+/**
+ * Trim time-bucketed grant keys to the newest MAX_GRANT_KEYS_PER_VIEWER,
+ * keeping every permanent key regardless of the cap. Runs at load() only -
+ * never mid-flight - matching how the streak journals prune.
+ */
+function pruneGrants(grants: Record<string, number>): Record<string, number> {
+    const entries = Object.entries(grants);
+    const permanent = entries.filter(([key]) => key.startsWith(PERMANENT_GRANT_PREFIX));
+    const prunable = entries.filter(([key]) => !key.startsWith(PERMANENT_GRANT_PREFIX));
+    if (prunable.length <= MAX_GRANT_KEYS_PER_VIEWER) return grants;
+    const kept = prunable.sort(([, a], [, b]) => b - a).slice(0, MAX_GRANT_KEYS_PER_VIEWER);
+    return Object.fromEntries([...permanent, ...kept]);
+}
+
+/** Apply grant pruning across every viewer in every scope. */
+function pruneAllGrants(scopes: Record<string, LoyaltyScope>): void {
+    for (const scope of Object.values(scopes)) {
+        for (const viewer of Object.values(scope.viewers)) {
+            if (viewer.grants) viewer.grants = pruneGrants(viewer.grants);
+        }
+    }
 }
 
 export interface Award {
@@ -112,6 +196,8 @@ export class LoyaltyStore {
     private data: LoyaltyData = emptyData();
     private saveChain: Promise<void> = Promise.resolve();
     private pendingWrite: Promise<void> | null = null;
+    /** Set when the on-disk file was v1, so the first write snapshots it. */
+    private upgradedFromV1 = false;
     private readonly file: AtomicJsonFile;
 
     constructor(
@@ -134,7 +220,10 @@ export class LoyaltyStore {
             throw err;
         }
         try {
-            this.data = parseData(raw);
+            const parsed = parseData(raw);
+            this.data = parsed.data;
+            this.upgradedFromV1 = parsed.wasV1;
+            pruneAllGrants(this.data.scopes);
             this.file.markExisting();
         } catch (err) {
             await this.backupCorruptFile(err);
@@ -145,7 +234,7 @@ export class LoyaltyStore {
     private async loadPreviousBackup(): Promise<LoyaltyData> {
         try {
             const raw = await readFile(`${this.dataPath}.bak`, 'utf8');
-            const restored = parseData(raw);
+            const restored = parseData(raw).data;
             this.logger.warn(
                 { dataPath: this.dataPath },
                 'loaded previous loyalty database backup',
@@ -222,6 +311,10 @@ export class LoyaltyStore {
                 viewerCount += 1;
             }
             scope.viewers[award.chatterId] = {
+                // Spread `existing` first so an award never drops the fields it
+                // does not own - grants especially, since wiping those reopens
+                // every one-shot bonus (the follow farm) on the next tick.
+                ...existing,
                 displayName: boundDisplayName(award.displayName, award.chatterId),
                 balance: nextBalance,
             };
@@ -233,10 +326,36 @@ export class LoyaltyStore {
         await this.persist();
     }
 
+    /**
+     * Preserve the pristine v1 file before the first v2 write.
+     *
+     * `AtomicJsonFile` refreshes `.bak` on every write, so after two v2 writes
+     * both it and the target are v2 - a rollback to a v1 build would reject
+     * both, quarantine them as `.corrupt-*`, and appear to lose every balance.
+     * This snapshot is written once and never overwritten, so it stays a
+     * valid v1 file forever. `copyFile` with COPYFILE_EXCL fails if the
+     * destination exists, which is the "never overwrite" guarantee.
+     */
+    private async snapshotV1IfNeeded(): Promise<void> {
+        if (!this.upgradedFromV1) return;
+        this.upgradedFromV1 = false;
+        const snapshotPath = `${this.dataPath}.v1`;
+        try {
+            await copyFile(this.dataPath, snapshotPath, constants.COPYFILE_EXCL);
+            this.logger.info({ snapshotPath }, 'preserved v1 loyalty data before upgrading to v2');
+        } catch (err) {
+            if ((err as NodeJS.ErrnoException).code === 'EEXIST') return;
+            // Not fatal: the upgrade itself is still safe, the operator just
+            // loses the rollback convenience. Surfacing it beats failing the write.
+            this.logger.warn({ err, snapshotPath }, 'could not preserve v1 loyalty data');
+        }
+    }
+
     private persist(): Promise<void> {
         if (this.pendingWrite) return this.pendingWrite;
         const write = this.saveChain.then(async () => {
             this.pendingWrite = null;
+            await this.snapshotV1IfNeeded();
             await this.file.write(JSON.stringify(this.data, null, 2));
         });
         this.pendingWrite = write;

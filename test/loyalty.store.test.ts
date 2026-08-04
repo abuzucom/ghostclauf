@@ -130,6 +130,166 @@ describe('LoyaltyStore', () => {
         expect(spy.error).toHaveBeenCalled();
     });
 
+    describe('grant pruning', () => {
+        function v2WithGrants(grants: Record<string, number>) {
+            return JSON.stringify({
+                version: 2,
+                scopes: {
+                    shared: {
+                        viewers: { '10': { displayName: 'Tank', balance: 1, grants } },
+                    },
+                },
+                decisions: [],
+                redemptions: [],
+            });
+        }
+
+        async function loadGrants(grants: Record<string, number>) {
+            await writeFile(dataPath, v2WithGrants(grants), 'utf8');
+            const store = new LoyaltyStore(dataPath, testLogger);
+            await store.load();
+            // Force a write so the pruned shape lands on disk, then read it back.
+            await store.awardMany(SHARED_SCOPE_KEY, [
+                { chatterId: '10', displayName: 'Tank', amount: 1 },
+            ]);
+            await store.flush();
+            const written = JSON.parse(await readFile(dataPath, 'utf8')) as {
+                scopes: {
+                    shared: { viewers: Record<string, { grants?: Record<string, number> }> };
+                };
+            };
+            return written.scopes.shared.viewers['10']!.grants ?? {};
+        }
+
+        it('keeps time-bucketed keys under the cap untouched', async () => {
+            const grants: Record<string, number> = {};
+            for (let i = 0; i < 10; i += 1)
+                grants[`sub:1:2026-${String(i + 1).padStart(2, '0')}`] = i;
+
+            expect(Object.keys(await loadGrants(grants))).toHaveLength(10);
+        });
+
+        it('trims time-bucketed keys past the cap, newest first', async () => {
+            const grants: Record<string, number> = {};
+            for (let i = 0; i < 100; i += 1) grants[`cheer:1:20:${i}`] = i;
+
+            const pruned = await loadGrants(grants);
+
+            expect(Object.keys(pruned)).toHaveLength(64);
+            // Newest survive: 36..99 by timestamp.
+            expect(pruned['cheer:1:20:99']).toBe(99);
+            expect(pruned['cheer:1:20:0']).toBeUndefined();
+        });
+
+        it('never prunes a follow grant, even far past the cap', async () => {
+            // The anti-refarm guarantee: if this key ages out, an unfollow and
+            // refollow pays the bonus again, forever.
+            const grants: Record<string, number> = { 'follow:1': 0 };
+            for (let i = 0; i < 200; i += 1) grants[`cheer:1:20:${i}`] = i + 1;
+
+            const pruned = await loadGrants(grants);
+
+            expect(pruned['follow:1']).toBe(0);
+            expect(Object.keys(pruned)).toHaveLength(65);
+        });
+
+        it('keeps every follow grant when they alone exceed the cap', async () => {
+            const grants: Record<string, number> = {};
+            for (let i = 0; i < 100; i += 1) grants[`follow:${i}`] = i;
+
+            expect(Object.keys(await loadGrants(grants))).toHaveLength(100);
+        });
+    });
+
+    describe('schema v2 migration', () => {
+        function v1File(viewers: Record<string, { displayName: string; balance: number }>) {
+            return JSON.stringify({ version: 1, scopes: { shared: { viewers } } });
+        }
+
+        it('loads a version 1 file with balances intact', async () => {
+            await writeFile(
+                dataPath,
+                v1File({ '10': { displayName: 'Tank', balance: 42 } }),
+                'utf8',
+            );
+            const store = new LoyaltyStore(dataPath, testLogger);
+            await store.load();
+
+            expect(store.getBalance(SHARED_SCOPE_KEY, '10')).toBe(42);
+            // A rejected file would have been quarantined and the balance lost.
+            const preserved = (await readdir(dir)).filter((n) =>
+                n.startsWith('loyalty.json.corrupt-'),
+            );
+            expect(preserved).toHaveLength(0);
+        });
+
+        it('round-trips a version 2 file', async () => {
+            // Pre-fix this fails by *silently starting empty*, not by throwing:
+            // z.literal(1) rejects v2, the file is quarantined, balances vanish.
+            const v2 = JSON.stringify({
+                version: 2,
+                scopes: { shared: { viewers: { '10': { displayName: 'Tank', balance: 7 } } } },
+                decisions: [],
+                redemptions: [],
+            });
+            await writeFile(dataPath, v2, 'utf8');
+            const store = new LoyaltyStore(dataPath, testLogger);
+            await store.load();
+
+            expect(store.getBalance(SHARED_SCOPE_KEY, '10')).toBe(7);
+        });
+
+        it('writes a one-time v1 snapshot before the first v2 persist', async () => {
+            const original = v1File({ '10': { displayName: 'Tank', balance: 5 } });
+            await writeFile(dataPath, original, 'utf8');
+            const store = new LoyaltyStore(dataPath, testLogger);
+            await store.load();
+
+            await store.awardMany(SHARED_SCOPE_KEY, [
+                { chatterId: '10', displayName: 'Tank', amount: 1 },
+            ]);
+            await store.flush();
+
+            // The snapshot is the pristine v1 file, so a rollback to a v1 build
+            // can recover rather than quarantining a v2 file it cannot parse.
+            expect(await readFile(`${dataPath}.v1`, 'utf8')).toBe(original);
+        });
+
+        it('never overwrites an existing v1 snapshot', async () => {
+            const original = v1File({ '10': { displayName: 'Tank', balance: 5 } });
+            await writeFile(dataPath, original, 'utf8');
+            const store = new LoyaltyStore(dataPath, testLogger);
+            await store.load();
+            await store.awardMany(SHARED_SCOPE_KEY, [
+                { chatterId: '10', displayName: 'Tank', amount: 1 },
+            ]);
+            await store.flush();
+
+            // A second run must not clobber the snapshot with v2 content.
+            const reloaded = new LoyaltyStore(dataPath, testLogger);
+            await reloaded.load();
+            await reloaded.awardMany(SHARED_SCOPE_KEY, [
+                { chatterId: '10', displayName: 'Tank', amount: 1 },
+            ]);
+            await reloaded.flush();
+
+            expect(await readFile(`${dataPath}.v1`, 'utf8')).toBe(original);
+        });
+
+        it('leaves a v1 file untouched when nothing is ever written', async () => {
+            const original = v1File({ '10': { displayName: 'Tank', balance: 5 } });
+            await writeFile(dataPath, original, 'utf8');
+            const store = new LoyaltyStore(dataPath, testLogger);
+            await store.load();
+            await store.flush();
+
+            // Migration is lazy: starting the bot and earning nothing must not
+            // rewrite the file, so the operation stays idempotent.
+            expect(await readFile(dataPath, 'utf8')).toBe(original);
+            expect(await readdir(dir)).toEqual(['loyalty.json']);
+        });
+    });
+
     function storedFile(scope: Record<string, unknown>) {
         return JSON.stringify({ version: 1, scopes: { shared: { viewers: {}, ...scope } } });
     }
