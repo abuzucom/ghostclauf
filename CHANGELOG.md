@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Security
 
+- Added `security.md` documenting the security architecture, defense posture,
+  threat model, operator responsibilities, and GitHub-based responsible
+  disclosure process.
 - Pin transitive dependency `nanoid` to 3.3.18 via `overrides`, clearing a
   high-severity advisory (GHSA-2v37-7h3g-55p8: custom generators can loop
   indefinitely when size is zero). Reached only through `vitest` ->
