@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
     applyAward,
     buildLeaderboard,
+    parseEsdAmount,
     renderBalance,
     renderLeaderboard,
 } from '../src/plugins/loyalty/loyalty.js';
@@ -126,5 +127,48 @@ describe('renderLeaderboard', () => {
     it('keeps a balance reply inside the chat limit', () => {
         const rendered = renderBalance('esports dollars', 'y'.repeat(600), 1);
         expect([...rendered].length).toBe(500);
+    });
+});
+
+describe('parseEsdAmount', () => {
+    it('accepts a plain whole number', () => {
+        expect(parseEsdAmount('100')).toBe(100);
+        expect(parseEsdAmount('0')).toBe(0);
+    });
+
+    // !setESD/!giveESD/!takeESD write straight into a balance, so the
+    // argument must be a plain decimal integer literal and nothing else - no
+    // arithmetic, no expression evaluation, no alternate bases or notations.
+    // Number() and parseInt() are both unsafe here: Number('') is 0 (a
+    // missing argument would parse as a valid zero), Number('1e3') is 1000,
+    // and parseInt silently partial-parses '10+5' to 10 and '5abc' to 5.
+    const badAmounts: ReadonlyArray<[string, string]> = [
+        ['an arithmetic expression', '10+5'],
+        ['scientific notation', '1e3'],
+        ['hexadecimal', '0x10'],
+        ['a numeric separator', '1_000'],
+        ['a trailing decimal', '1.0'],
+        ['a fractional value', '1.5'],
+        ['a leading plus', '+5'],
+        ['surrounding whitespace', ' 5 '],
+        ['a negative value', '-3'],
+        ['digits with a suffix', '5abc'],
+        ['a number word', 'one'],
+        ['Infinity', 'Infinity'],
+        ['NaN', 'NaN'],
+        ['empty', ''],
+        ['a fullwidth digit', '\uFF15'],
+    ];
+
+    it.each(badAmounts)('rejects %s (%s)', (_label, token) => {
+        expect(parseEsdAmount(token)).toBeNull();
+    });
+
+    it('rejects a missing token', () => {
+        expect(parseEsdAmount(undefined)).toBeNull();
+    });
+
+    it('rejects a token past the 10-digit length bound', () => {
+        expect(parseEsdAmount('12345678901')).toBeNull();
     });
 });

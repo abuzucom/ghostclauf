@@ -10,9 +10,21 @@ import { DateTime, Duration } from 'luxon';
 import { z } from 'zod';
 import type { BotContext, ChatCommandEvent, Plugin } from '../../core/types.js';
 import { CooldownGate } from '../../core/cooldown.js';
-import { buildLeaderboard, renderBalance, renderLeaderboard } from './loyalty.js';
-import { LoyaltyStore, SHARED_SCOPE_KEY } from './store.js';
-import type { Award } from './store.js';
+import { parseLogin } from '../../core/logins.js';
+import {
+    buildLeaderboard,
+    parseEsdAmount,
+    renderAdjustDone,
+    renderAdminUnknownUser,
+    renderAdminUsage,
+    renderBalance,
+    renderLeaderboard,
+    renderUndoDone,
+    renderUndoNone,
+} from './loyalty.js';
+import type { EsdDecisionKind } from './loyalty.js';
+import { LoyaltyStore, MAX_BALANCE, SHARED_SCOPE_KEY } from './store.js';
+import type { Award, DecisionKind } from './store.js';
 
 const DEFAULT_DATA_PATH = './data/loyalty.json';
 const DEFAULT_CURRENCY_NAME = 'esports dollars';
@@ -112,6 +124,136 @@ function registerLeaderboardCommand(ctx: BotContext, runtime: LoyaltyRuntime): v
 }
 
 /**
+ * Resolve the @user argument of a broadcaster-only balance command via Helix,
+ * not the local viewer store - unlike streak's admin commands, this lets the
+ * broadcaster target any Twitch user, not only one the bot has already seen
+ * chat from. Replies and returns null on a missing or unresolvable argument.
+ */
+async function resolveEsdTarget(
+    event: ChatCommandEvent,
+    ctx: BotContext,
+    usage: string,
+): Promise<{ id: string; displayName: string } | null> {
+    const login = parseLogin(event.args[0]);
+    if (!login) {
+        await reply(ctx, event, renderAdminUsage(usage));
+        return null;
+    }
+    const user = await ctx.helix.getUserByLogin(login);
+    if (!user) {
+        await reply(ctx, event, renderAdminUnknownUser(login));
+        return null;
+    }
+    return { id: user.id, displayName: user.displayName };
+}
+
+/**
+ * Parse and range-check the !setESD/!giveESD/!takeESD amount argument.
+ * `set` accepts [0, MAX_BALANCE]; `give`/`take` require >= 1 (adjusting by
+ * zero is a no-op) and are likewise capped at MAX_BALANCE.
+ */
+function parseEsdAmountForKind(kind: DecisionKind, token: string | undefined): number | null {
+    const amount = parseEsdAmount(token);
+    if (amount === null || amount > MAX_BALANCE) return null;
+    if (kind !== 'set' && amount < 1) return null;
+    return amount;
+}
+
+function registerAdjustCommand(
+    ctx: BotContext,
+    runtime: LoyaltyRuntime,
+    trigger: string,
+    kind: DecisionKind,
+    usage: string,
+): void {
+    ctx.command({
+        trigger,
+        allow: ['broadcaster'],
+        description: `Broadcaster-only: ${kind} a viewer's ${runtime.currencyName} balance.`,
+        handler: async (event, ctx) => {
+            const amount = parseEsdAmountForKind(kind, event.args[1]);
+            if (amount === null) {
+                await reply(ctx, event, renderAdminUsage(usage));
+                return;
+            }
+            const target = await resolveEsdTarget(event, ctx, usage);
+            if (!target) return;
+            const scopeKey = scopeKeyFor(runtime, event.broadcasterId);
+            const result = await runtime.store.applyDecision({
+                scopeKey,
+                kind,
+                chatterId: target.id,
+                chatterName: target.displayName,
+                displayName: target.displayName,
+                requestedAmount: amount,
+                createdByChatterId: event.chatterId,
+                createdByChatterName: event.chatterDisplayName,
+                createdInBroadcasterId: event.broadcasterId,
+                now: runtime.now(),
+            });
+            if (!result.ok) {
+                await reply(ctx, event, renderAdminUsage(usage));
+                return;
+            }
+            const { beforeBalance, afterBalance } = result.decision;
+            const actualAmount =
+                kind === 'set'
+                    ? afterBalance
+                    : kind === 'give'
+                      ? afterBalance - beforeBalance
+                      : beforeBalance - afterBalance;
+            await reply(
+                ctx,
+                event,
+                renderAdjustDone(
+                    runtime.currencyName,
+                    kind,
+                    target.displayName,
+                    amount,
+                    actualAmount,
+                    afterBalance,
+                ),
+            );
+        },
+    });
+}
+
+function registerUndoCommand(
+    ctx: BotContext,
+    runtime: LoyaltyRuntime,
+    trigger: string,
+    kind: EsdDecisionKind,
+    usage: string,
+): void {
+    ctx.command({
+        trigger,
+        allow: ['broadcaster'],
+        description: `Broadcaster-only: undo the last !${kind}ESD for a viewer.`,
+        handler: async (event, ctx) => {
+            const target = await resolveEsdTarget(event, ctx, usage);
+            if (!target) return;
+            const scopeKey = scopeKeyFor(runtime, event.broadcasterId);
+            const result = await runtime.store.undoLatest(
+                scopeKey,
+                target.id,
+                kind,
+                { chatterId: event.chatterId },
+                runtime.now(),
+            );
+            if (!result.ok) {
+                await reply(ctx, event, renderUndoNone(kind, target.displayName));
+                return;
+            }
+            await reply(
+                ctx,
+                event,
+                renderUndoDone(runtime.currencyName, kind, target.displayName, result.balance),
+            );
+        },
+    });
+}
+
+/**
  * Build the loyalty plugin. `now` is injectable so cooldown timing is
  * deterministically testable; production use relies on the real clock.
  */
@@ -183,6 +325,16 @@ export function createLoyaltyPlugin(now: () => DateTime = () => DateTime.utc()):
 
             registerBalanceCommand(ctx, runtime);
             registerLeaderboardCommand(ctx, runtime);
+
+            // Broadcaster-only balance overrides. Every configured broadcaster
+            // is the operator's own channel or persona, so `allow: ['broadcaster']`
+            // alone is a correct gate here - see the Phase 1b note in README.md.
+            registerAdjustCommand(ctx, runtime, 'setesd', 'set', '!setESD @user <amount>');
+            registerAdjustCommand(ctx, runtime, 'giveesd', 'give', '!giveESD @user <amount>');
+            registerAdjustCommand(ctx, runtime, 'takeesd', 'take', '!takeESD @user <amount>');
+            registerUndoCommand(ctx, runtime, 'undosetesd', 'set', '!undosetESD @user');
+            registerUndoCommand(ctx, runtime, 'undogiveesd', 'give', '!undogiveESD @user');
+            registerUndoCommand(ctx, runtime, 'undotakeesd', 'take', '!undotakeESD @user');
 
             // Chat-activity tracking: a chatter who sends any chat message
             // while their channel is live is credited on the next tick. Not

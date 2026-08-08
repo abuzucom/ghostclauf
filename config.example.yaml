@@ -205,3 +205,11 @@ plugins:
             cooldownSeconds: 10
             # Rows shown by !economy.
             leaderboardSize: 5
+            # Broadcaster-only balance overrides: !setESD @user <amount> sets a
+            # balance exactly; !giveESD/!takeESD adjust it by amount. Each has a
+            # matching undo (!undosetESD/!undogiveESD/!undotakeESD) that reverses
+            # only its own kind, so an undo can reach past a newer command of a
+            # different kind without discarding it. Gated on the broadcaster
+            # badge alone - see the README for why that is safe only while
+            # every broadcaster configured above is the operator's own channel
+            # or persona, and the pooling warning if shareAcrossChannels is true.

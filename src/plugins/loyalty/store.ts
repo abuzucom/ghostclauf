@@ -4,11 +4,13 @@
 
 import { constants } from 'node:fs';
 import { copyFile, readFile, rename } from 'node:fs/promises';
+import { randomUUID } from 'node:crypto';
+import { DateTime } from 'luxon';
 import { z } from 'zod';
 import { AtomicJsonFile } from '../../core/atomicFile.js';
 import type { Logger } from '../../core/types.js';
 import { applyAward } from './loyalty.js';
-import type { LoyaltyData, LoyaltyScope, ViewerRecord } from './types.js';
+import type { BalanceDecision, LoyaltyData, LoyaltyScope, ViewerRecord } from './types.js';
 
 /** Scope key used when balances are pooled across every configured channel. */
 export const SHARED_SCOPE_KEY = 'shared';
@@ -33,6 +35,13 @@ const MAX_GRANT_KEYS_PER_VIEWER = 64;
  * costs nothing. Every other prefix is time-bucketed and safe to age out.
  */
 const PERMANENT_GRANT_PREFIX = 'follow:';
+
+/**
+ * Bound on resolved (undone) balance decisions kept per viewer, matching
+ * streak's MAX_RESOLVED_PER_VIEWER. An 'applied' decision is never pruned -
+ * it must stay reachable for undo indefinitely.
+ */
+const MAX_RESOLVED_DECISIONS_PER_VIEWER = 50;
 
 /** Bound on a grant/redemption key, matching the other key bounds. */
 const MAX_GRANT_KEY_LENGTH = 128;
@@ -186,11 +195,67 @@ function pruneAllGrants(scopes: Record<string, LoyaltyScope>): void {
     }
 }
 
+/**
+ * Trim resolved (undone) balance decisions to the newest
+ * MAX_RESOLVED_DECISIONS_PER_VIEWER per (scope, chatterId). An 'applied'
+ * decision is kept regardless of count - undo must always be able to reach
+ * it. Runs at load() only, matching decisionStore's pruneHistory.
+ */
+function pruneDecisions(decisions: BalanceDecision[]): BalanceDecision[] {
+    const resolvedByViewer = new Map<string, BalanceDecision[]>();
+    for (const decision of decisions) {
+        if (decision.status !== 'undone') continue;
+        const key = `${decision.scope}\u0000${decision.chatterId}`;
+        const list = resolvedByViewer.get(key);
+        if (list) list.push(decision);
+        else resolvedByViewer.set(key, [decision]);
+    }
+    const dropped = new Set<BalanceDecision>();
+    for (const resolved of resolvedByViewer.values()) {
+        if (resolved.length <= MAX_RESOLVED_DECISIONS_PER_VIEWER) continue;
+        resolved.sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+        for (const decision of resolved.slice(
+            0,
+            resolved.length - MAX_RESOLVED_DECISIONS_PER_VIEWER,
+        )) {
+            dropped.add(decision);
+        }
+    }
+    if (dropped.size === 0) return decisions;
+    return decisions.filter((decision) => !dropped.has(decision));
+}
+
 export interface Award {
     chatterId: string;
     displayName: string;
     amount: number;
 }
+
+export type DecisionKind = 'set' | 'give' | 'take';
+
+export interface ApplyDecisionInput {
+    scopeKey: string;
+    kind: DecisionKind;
+    chatterId: string;
+    chatterName: string;
+    displayName: string;
+    /** What the operator asked for. For `set`, the target balance; for
+     *  `give`/`take`, the amount to add or subtract. */
+    requestedAmount: number;
+    createdByChatterId: string;
+    createdByChatterName: string;
+    createdInBroadcasterId: string;
+    now: DateTime;
+}
+
+export type ApplyDecisionResult =
+    { ok: true; decision: BalanceDecision } | { ok: false; reason: 'unstorable' | 'viewer-cap' };
+
+export interface UndoActor {
+    chatterId: string;
+}
+
+export type UndoResult = { ok: true; decision: BalanceDecision; balance: number } | { ok: false };
 
 export class LoyaltyStore {
     private data: LoyaltyData = emptyData();
@@ -224,6 +289,7 @@ export class LoyaltyStore {
             this.data = parsed.data;
             this.upgradedFromV1 = parsed.wasV1;
             pruneAllGrants(this.data.scopes);
+            this.data.decisions = pruneDecisions(this.data.decisions);
             this.file.markExisting();
         } catch (err) {
             await this.backupCorruptFile(err);
@@ -349,6 +415,113 @@ export class LoyaltyStore {
             // loses the rollback convenience. Surfacing it beats failing the write.
             this.logger.warn({ err, snapshotPath }, 'could not preserve v1 loyalty data');
         }
+    }
+
+    /**
+     * Apply a broadcaster-issued balance change (!setESD/!giveESD/!takeESD)
+     * and journal it in one write.
+     *
+     * The read-modify-write of the balance and the journal push happen
+     * synchronously, before the only `await` in this method - Node cannot
+     * interleave another call in between, so two admin commands issued back
+     * to back cannot race each other's before/after snapshot.
+     */
+    async applyDecision(input: ApplyDecisionInput): Promise<ApplyDecisionResult> {
+        if (!isStorableKey(input.chatterId)) return { ok: false, reason: 'unstorable' };
+        const scope = this.scope(input.scopeKey);
+        const existing = scope.viewers[input.chatterId];
+        if (!existing && Object.keys(scope.viewers).length >= MAX_VIEWERS_PER_SCOPE) {
+            return { ok: false, reason: 'viewer-cap' };
+        }
+        const before = existing?.balance ?? 0;
+        const raw =
+            input.kind === 'set'
+                ? input.requestedAmount
+                : input.kind === 'give'
+                  ? before + input.requestedAmount
+                  : before - input.requestedAmount;
+        const after = Math.max(0, Math.min(MAX_BALANCE, raw));
+        scope.viewers[input.chatterId] = {
+            ...existing,
+            displayName: boundDisplayName(input.displayName, input.chatterId),
+            balance: after,
+        };
+        const decision: BalanceDecision = {
+            id: randomUUID(),
+            scope: input.scopeKey,
+            kind: input.kind,
+            chatterId: input.chatterId,
+            chatterName: input.chatterName,
+            displayName: input.displayName,
+            beforeBalance: before,
+            afterBalance: after,
+            requestedAmount: input.requestedAmount,
+            createdAt: input.now.toUTC().toISO() ?? input.now.toISO()!,
+            createdByChatterId: input.createdByChatterId,
+            createdByChatterName: input.createdByChatterName,
+            createdInBroadcasterId: input.createdInBroadcasterId,
+            status: 'applied',
+            undoneAt: null,
+            undoneByChatterId: null,
+        };
+        this.data.decisions.push(decision);
+        await this.persist();
+        return { ok: true, decision };
+    }
+
+    /**
+     * Reverse the newest still-applied decision of `kind` for this viewer.
+     *
+     * Reverses the recorded delta (`afterBalance - beforeBalance`), not an
+     * absolute restore to `beforeBalance` - so undoing a `give` leaves an
+     * intervening `take` (or any earnings) standing, and undoing an old `set`
+     * does not erase balance the viewer has earned since. Filtering by `kind`
+     * means `!undogiveESD` reaches past an intervening `take` or `set` to the
+     * last `give`, rather than only ever reversing the single latest change.
+     *
+     * The search, the mutation, and the journal update are synchronous, ahead
+     * of the only `await` - the same no-interleaving guarantee as
+     * `applyDecision`.
+     */
+    async undoLatest(
+        scopeKey: string,
+        chatterId: string,
+        kind: DecisionKind,
+        undoneBy: UndoActor,
+        now: DateTime,
+    ): Promise<UndoResult> {
+        let target: BalanceDecision | undefined;
+        for (let i = this.data.decisions.length - 1; i >= 0; i -= 1) {
+            const candidate = this.data.decisions[i]!;
+            if (
+                candidate.scope === scopeKey &&
+                candidate.chatterId === chatterId &&
+                candidate.kind === kind &&
+                candidate.status === 'applied'
+            ) {
+                target = candidate;
+                break;
+            }
+        }
+        if (!target) return { ok: false };
+        const scope = this.scope(scopeKey);
+        const existing = scope.viewers[chatterId];
+        const currentBalance = existing?.balance ?? 0;
+        const delta = target.afterBalance - target.beforeBalance;
+        const restored = Math.max(0, Math.min(MAX_BALANCE, currentBalance - delta));
+        // A decision can only exist for a viewer applyDecision already created,
+        // so `existing` is always present in practice; the fallback keeps the
+        // write well-typed rather than assuming that invariant holds forever.
+        scope.viewers[chatterId] = {
+            ...existing,
+            displayName: existing?.displayName ?? chatterId,
+            balance: restored,
+        };
+        target.status = 'undone';
+        target.undoneAt = now.toUTC().toISO() ?? now.toISO()!;
+        target.undoneByChatterId = undoneBy.chatterId;
+        await this.persist();
+        return { ok: true, decision: target, balance: restored };
     }
 
     private persist(): Promise<void> {

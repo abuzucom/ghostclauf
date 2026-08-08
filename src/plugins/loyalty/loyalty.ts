@@ -9,6 +9,22 @@ export function applyAward(currentBalance: number, amount: number): number {
     return Math.max(0, currentBalance + amount);
 }
 
+/**
+ * Digits only, length-bounded before Number() ever runs. !setESD/!giveESD/
+ * !takeESD write straight into a balance, so the argument must be a plain
+ * decimal integer literal - no arithmetic, no expression evaluation, no
+ * alternate bases or notations. Matches the pattern funfact's parseFactId and
+ * streak's parseStreakValue already use for the same reason.
+ */
+const ESD_AMOUNT_PATTERN = /^[0-9]{1,10}$/;
+
+/** Parse a !setESD/!giveESD/!takeESD amount argument. */
+export function parseEsdAmount(token: string | undefined): number | null {
+    if (token === undefined || !ESD_AMOUNT_PATTERN.test(token)) return null;
+    const amount = Number(token);
+    return Number.isSafeInteger(amount) ? amount : null;
+}
+
 /** Twitch's chat message limit; `ctx.say` throws past it, which would drop
  * the whole reply rather than shortening it. */
 const MAX_CHAT_MESSAGE_LENGTH = 500;
@@ -44,6 +60,62 @@ export function renderLeaderboard(currencyName: string, entries: LeaderboardEntr
         ranked.push(row);
     }
     return truncateForChat(prefix + ranked.join(', '));
+}
+
+/** Which broadcaster-only balance command produced a decision. Mirrors
+ * `DecisionKind` in ./store.ts by value - not imported from it, since store.ts
+ * already imports this module and a cross-import would cycle. */
+export type EsdDecisionKind = 'set' | 'give' | 'take';
+
+/** Render a usage hint for a malformed or missing admin-command argument. */
+export function renderAdminUsage(usage: string): string {
+    return truncateForChat(`Usage: ${usage}`);
+}
+
+/** Render a reply when an admin command's @user argument names no known Twitch user. */
+export function renderAdminUnknownUser(login: string): string {
+    return truncateForChat(`Could not find a Twitch user named ${login}.`);
+}
+
+/**
+ * Render the result of !setESD/!giveESD/!takeESD. `requestedAmount` and
+ * `actualAmount` differ when give/take clamped at 0 or MAX_BALANCE, which
+ * gets called out rather than silently reported as if nothing clamped.
+ */
+export function renderAdjustDone(
+    currencyName: string,
+    kind: EsdDecisionKind,
+    displayName: string,
+    requestedAmount: number,
+    actualAmount: number,
+    balance: number,
+): string {
+    if (kind === 'set') {
+        return truncateForChat(`Set ${displayName}'s ${currencyName} to ${balance}.`);
+    }
+    const clampedNote = actualAmount !== requestedAmount ? ' (clamped)' : '';
+    const verb = kind === 'give' ? 'Gave' : 'Took';
+    const preposition = kind === 'give' ? 'to' : 'from';
+    return truncateForChat(
+        `${verb} ${actualAmount} ${currencyName} ${preposition} ${displayName}${clampedNote}. New balance: ${balance}.`,
+    );
+}
+
+/** Render the result of a successful !undo*ESD. */
+export function renderUndoDone(
+    currencyName: string,
+    kind: EsdDecisionKind,
+    displayName: string,
+    balance: number,
+): string {
+    return truncateForChat(
+        `Undid the last !${kind}ESD for ${displayName}. New balance: ${balance} ${currencyName}.`,
+    );
+}
+
+/** Render the reply when there is nothing of that kind left to undo. */
+export function renderUndoNone(kind: EsdDecisionKind, displayName: string): string {
+    return truncateForChat(`Nothing to undo: no applied !${kind}ESD found for ${displayName}.`);
 }
 
 /** Sort viewer records into a leaderboard, highest balance first, ties broken by name. */
