@@ -27,7 +27,7 @@ repos:
             name: Check for unjustified MD5/SHA-1
             entry: python scripts/check_weak_hashing.py
             language: python
-            files: ^(src|test|scripts)/.*\.(ts|py)$
+            files: ^(src|test|scripts|hooks)/.*\.(ts|py)$
           - id: check-dockerfile-root
             name: Check for non-root containers
             entry: python scripts/check_dockerfile_root.py
@@ -37,4 +37,4 @@ repos:
             name: Check for likely secrets
             entry: python scripts/check_secrets_heuristic.py
             language: python
-            files: ^(src|test|scripts)/.*\.(ts|py)$|^(\.github/workflows/.*\.ya?ml|\.pre-commit-config\.yaml|Makefile|Dockerfile.*|docker-compose.*\.ya?ml)$
+            files: ^(src|test|scripts|hooks)/.*\.(ts|py)$|^(\.github/workflows/.*\.ya?ml|\.pre-commit-config\.yaml|Makefile|Dockerfile.*|docker-compose.*\.ya?ml)$

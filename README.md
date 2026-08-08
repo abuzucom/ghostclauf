@@ -30,6 +30,7 @@ The design borrows the _spirit_ of [eggdrop](https://github.com/eggheads/eggdrop
 - [Testing](#testing)
 - [Troubleshooting](#troubleshooting)
 - [AGENTS.md compliance checks](#agentsmd-compliance-checks)
+- [Claude Code hook example](#claude-code-hook-example)
 - [License](#license)
 
 ## Features (v1)
@@ -669,6 +670,23 @@ own git identity with no `Co-authored-by` trailer; pair it with
 platform-level bot blocks. All ten scripts came from
 [`abuzucom/agents`](https://github.com/abuzucom/agents), the upstream
 template this repo's `AGENTS.md` tracks.
+
+## Claude Code hook example
+
+`hooks/block_destructive_bash.py` and `hooks/claude-code-settings.example.json`
+also came from `abuzucom/agents`: a Claude-Code-specific defense-in-depth
+example, not part of the `AGENTS.md` rules themselves (`AGENTS.md` stays
+tool-agnostic and is synced byte-identical to non-Claude tools). A
+`PreToolUse` hook on the `Bash` matcher blocks `rm -rf /`, `~`, or `$HOME`,
+a bare `git push --force`/`-f`, and `git reset --hard`, mirroring rule 2
+and the history-safety rule in Workflow as a mechanical backstop for a
+single tool, independent of whether the model remembers the rule. It is a
+heuristic, not a sandbox: it does not parse the shell, so a command hidden
+behind a variable, alias, or wrapper script is invisible to it.
+
+Unlike upstream's own repo, which ships the example inactive, this repo
+wires the hook into `.claude/settings.json`, so it runs for every Claude
+Code session working in this checkout.
 
 ## License
 

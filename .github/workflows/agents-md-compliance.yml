@@ -61,12 +61,12 @@ jobs:
             - name: Check for unjustified MD5/SHA-1
               run: |
                   python3 scripts/check_weak_hashing.py \
-                    $(find src test scripts -name '*.ts' -o -name '*.py')
+                    $(find src test scripts hooks -name '*.ts' -o -name '*.py')
             - name: Check for non-root containers
               run: python3 scripts/check_dockerfile_root.py Dockerfile docker-compose.yml
             - name: Check for likely secrets
               run: |
                   python3 scripts/check_secrets_heuristic.py \
-                    $(find src test scripts -name '*.ts' -o -name '*.py') \
+                    $(find src test scripts hooks -name '*.ts' -o -name '*.py') \
                     .github/workflows/*.yml .pre-commit-config.yaml Makefile \
                     Dockerfile docker-compose.yml

@@ -28,6 +28,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   making the container's already-non-root runtime user (`Dockerfile`'s
   `USER node`) explicit at the compose level too; `check_dockerfile_root.py`
   checks each compose service independently of the image's own `USER`.
+- Added `hooks/block_destructive_bash.py` and
+  `hooks/claude-code-settings.example.json` from `abuzucom/agents` v1.7.0: a
+  Claude Code `PreToolUse` hook blocking `rm -rf /`/`~`/`$HOME`, a bare
+  `git push --force`/`-f`, and `git reset --hard`. Wired it into
+  `.claude/settings.json` so it runs for this repo's Claude Code sessions,
+  and extended `check_weak_hashing.py` / `check_secrets_heuristic.py`'s
+  scanned globs (in `Makefile`, `.pre-commit-config.yaml`, and
+  `agents-md-compliance.yml`) to cover `hooks/`. Added a README "Claude Code
+  hook example" section documenting it.
 
 ### Changed
 
