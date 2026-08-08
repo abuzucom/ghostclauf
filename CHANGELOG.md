@@ -7,6 +7,53 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Added ten `scripts/check_*.py` checkers from `abuzucom/agents`, wired into
+  two CI workflows and `.pre-commit-config.yaml`: `check_banned_agents.py`
+  (commit author/committer/`Co-authored-by` trailers and PR author against
+  the xAI/Grok denylist), `check_branch_name.py`, `check_commit_message.py`,
+  `check_persist_credentials.py` (Rule 11), `check_weak_hashing.py`
+  (Rule 7), `check_dockerfile_root.py` (Rule 12), `check_secrets_heuristic.py`
+  (Rule 8), `check_ascii.py` (dash/ASCII style, `AGENTS.md` only), and the
+  warning-only `check_us_spelling.py` / `check_english_only.py` (also
+  `AGENTS.md` only). `.github/workflows/agents-md-compliance.yml` is new
+  (banned-agents, branch-name, and commit-message checks run on pull
+  requests only, since they need a base/head commit range; the
+  security/style static checks run on every push and pull request);
+  `agents-sync.yml` gained the three `AGENTS.md`-scoped style checks. Added
+  a `make agents-lint` target running everything locally, and a README
+  "AGENTS.md compliance checks" section documenting each script.
+- Added `user: node` to the `ghostclauf` service in `docker-compose.yml`,
+  making the container's already-non-root runtime user (`Dockerfile`'s
+  `USER node`) explicit at the compose level too; `check_dockerfile_root.py`
+  checks each compose service independently of the image's own `USER`.
+
+### Changed
+
+- Synced `AGENTS.md` (and its tool-specific copies) with upstream
+  `abuzucom/agents` through v1.7.0: four new non-negotiable rules (verify
+  state before assuming workflow intent, `persist-credentials: false` on
+  GitHub Actions checkout steps, non-root Docker containers by default, back
+  every enforcement claim with a real check); a "No suppressing checks"
+  workflow rule; a history-safety rule against rewriting pushed commits on a
+  shared branch without consent; a stricter dash rule banning `--`, `---`,
+  and spaced-hyphen substitutes for em/en dashes, alongside a "No run-on
+  sentences" rule; American English spelling and English-only style rules;
+  and replaced the emoji Bad/Good markers throughout with ASCII text,
+  matching the repo's own no-emoji rule. Corrected the Banned agents
+  section's enforcement claim, which cited CI enforcement this repo did not
+  have; now that `check_banned_agents.py` is wired into CI (see Added), the
+  claim is accurate. Fixed a pre-existing markdown-escaping bug in the
+  SQL/shell injection example (an unescaped backtick inside a
+  single-backtick code span, present since the file was first adopted)
+  using double-backtick delimiters. Also added `persist-credentials: false`
+  to the `agents-sync.yml` checkout step, which predates the new rule and
+  was the one workflow missing it. Reworded the remaining spaced-hyphen
+  asides in the Commands/Do not touch/Gotchas sections (semicolons or
+  colons instead), since those now sit in a file `check_ascii.py` lints as
+  blocking.
+
 ### Security
 
 - Pin transitive dependency `nanoid` to 3.3.18 via `overrides`, clearing a

@@ -3,6 +3,7 @@ services:
         build: .
         image: ghostclauf:latest
         restart: unless-stopped
+        user: node
         env_file: .env
         environment:
             # Token store lives on the named volume so it survives restarts.
