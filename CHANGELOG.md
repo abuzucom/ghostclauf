@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Synced `AGENTS.md` (and its tool-specific copies) with upstream
+  `abuzucom/agents` through v1.7.0: four new non-negotiable rules (verify
+  state before assuming workflow intent, `persist-credentials: false` on
+  GitHub Actions checkout steps, non-root Docker containers by default, back
+  every enforcement claim with a real check); a "No suppressing checks"
+  workflow rule; a history-safety rule against rewriting pushed commits on a
+  shared branch without consent; a stricter dash rule banning `--`, `---`,
+  and spaced-hyphen substitutes for em/en dashes, alongside a "No run-on
+  sentences" rule; American English spelling and English-only style rules;
+  and replaced the emoji Bad/Good markers throughout with ASCII text,
+  matching the repo's own no-emoji rule. Corrected the Banned agents
+  section's enforcement claim, which cited CI enforcement this repo does not
+  have, per the new "back enforcement claims with real checks" rule; a
+  mechanical check is proposed, not yet added. Fixed a pre-existing
+  markdown-escaping bug in the SQL/shell injection example (an unescaped
+  backtick inside a single-backtick code span, present since the file was
+  first adopted) using double-backtick delimiters. Also added
+  `persist-credentials: false` to the `agents-sync.yml` checkout step,
+  which predates the new rule and was the one workflow missing it.
+
 ### Security
 
 - Pin transitive dependency `nanoid` to 3.3.18 via `overrides`, clearing a
