@@ -286,4 +286,30 @@ describe('loyalty admin commands', () => {
             expect(store.getBalance(SHARED_SCOPE_KEY, TARGET_USER.id)).toBe(0);
         });
     });
+
+    describe('Helix lookup failure', () => {
+        it('replies instead of leaving the broadcaster with no response', async () => {
+            const plugin = createLoyaltyPlugin(() => clock);
+            const harness = makeHarness(
+                'loyalty',
+                { dataPath },
+                {
+                    getUserByLogin: async () => {
+                        throw new Error('simulated Twitch outage');
+                    },
+                },
+            );
+            await plugin.init(harness.ctx);
+
+            await harness.registry.handle(
+                commandFrom('!setESD @target 100', ['everyone', 'broadcaster']),
+            );
+
+            expect(harness.say).toHaveBeenCalledWith(
+                'Could not reach Twitch right now. Try again.',
+                'msg-1',
+                '1',
+            );
+        });
+    });
 });

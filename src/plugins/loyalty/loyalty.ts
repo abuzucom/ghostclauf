@@ -77,6 +77,9 @@ export function renderAdminUnknownUser(login: string): string {
     return truncateForChat(`Could not find a Twitch user named ${login}.`);
 }
 
+/** Reply when the Helix lookup behind an admin command's @user argument fails. */
+export const ADMIN_LOOKUP_FAILED_MESSAGE = 'Could not reach Twitch right now. Try again.';
+
 /** Render the reply when a new viewer cannot be added: the scope is at its cap. */
 export function renderAdminViewerCap(displayName: string): string {
     return truncateForChat(

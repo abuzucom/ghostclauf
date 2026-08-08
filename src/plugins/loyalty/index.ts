@@ -12,6 +12,7 @@ import type { BotContext, ChatCommandEvent, Plugin } from '../../core/types.js';
 import { CooldownGate } from '../../core/cooldown.js';
 import { parseLogin } from '../../core/logins.js';
 import {
+    ADMIN_LOOKUP_FAILED_MESSAGE,
     buildLeaderboard,
     parseEsdAmount,
     renderAdjustDone,
@@ -140,7 +141,14 @@ async function resolveEsdTarget(
         await reply(ctx, event, renderAdminUsage(usage));
         return null;
     }
-    const user = await ctx.helix.getUserByLogin(login);
+    let user;
+    try {
+        user = await ctx.helix.getUserByLogin(login);
+    } catch (err) {
+        ctx.logger.error({ err, login }, 'loyalty admin command: Helix user lookup failed');
+        await reply(ctx, event, ADMIN_LOOKUP_FAILED_MESSAGE);
+        return null;
+    }
     if (!user) {
         await reply(ctx, event, renderAdminUnknownUser(login));
         return null;
