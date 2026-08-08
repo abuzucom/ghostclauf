@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Security
 
+- Pin transitive dependency `nanoid` to 3.3.18 via `overrides`, clearing a
+  high-severity advisory (GHSA-2v37-7h3g-55p8: custom generators can loop
+  indefinitely when size is zero). Reached only through `vitest` ->
+  `vite` -> `postcss`, so it is a dev-only dependency and never shipped in
+  the bot, but it failed the `npm audit --audit-level=high` CI gate on
+  every branch.
 - Pin transitive dependency `brace-expansion` to 5.0.9 via `overrides`,
   clearing a high-severity DoS advisory (GHSA-rgw5-rvv9-x895) that bypassed
   the CVE-2026-14257 mitigation. Reached only through `eslint` ->
