@@ -255,10 +255,16 @@ quotes. See the `quotes:` block in [`config.example.yaml`](config.example.yaml).
 Viewers passively earn a configurable currency (`esports dollars` by default) for
 being active in chat while the channel is live.
 
-| Command    | Who      | Effect                                               |
-| ---------- | -------- | ---------------------------------------------------- |
-| `!wallet`  | everyone | Report your balance.                                 |
-| `!economy` | everyone | Show the top `leaderboardSize` balances (default 5). |
+| Command        | Who         | Effect                                                                      |
+| -------------- | ----------- | --------------------------------------------------------------------------- |
+| `!wallet`      | everyone    | Report your balance.                                                        |
+| `!economy`     | everyone    | Show the top `leaderboardSize` balances (default 5).                        |
+| `!setESD`      | broadcaster | `!setESD @user <amount>` - set a viewer's balance exactly.                  |
+| `!giveESD`     | broadcaster | `!giveESD @user <amount>` - add to a viewer's balance.                      |
+| `!takeESD`     | broadcaster | `!takeESD @user <amount>` - subtract from a viewer's balance, clamped at 0. |
+| `!undosetESD`  | broadcaster | Reverse a viewer's most recent `!setESD`.                                   |
+| `!undogiveESD` | broadcaster | Reverse a viewer's most recent `!giveESD`.                                  |
+| `!undotakeESD` | broadcaster | Reverse a viewer's most recent `!takeESD`.                                  |
 
 **Earning is a chat-activity proxy, not real Twitch watch-time.** Every
 `tickIntervalMinutes` (default 5), each chatter who sent at least one chat
@@ -272,9 +278,30 @@ broadcasters and moderators are exempt.
 
 Balances are pooled across every configured broadcaster by default
 (`shareAcrossChannels: true`); set it to false to keep each channel's
-balances independent. There is no spend/redemption yet - this is v1
-(earn + balance + leaderboard only). See the `loyalty:` block in
+balances independent. With pooling on, a `!setESD`/`!giveESD`/`!takeESD` run
+in one channel changes the balance everywhere - the same tradeoff already
+documented for the `streak` plugin's shared pool. There is no
+spend/redemption yet. See the `loyalty:` block in
 [`config.example.yaml`](config.example.yaml).
+
+`!setESD`, `!giveESD`, and `!takeESD` write straight into a balance and are
+gated on the broadcaster badge alone - no secondary allowlist. **This is
+safe only because every broadcaster configured above is assumed to be the
+operator's own channel or persona.** If a third party's channel is ever
+added to this bot's config, that broadcaster gains the ability to set
+balances in the shared pool, and a handler-level allowlist would need to be
+added.
+
+The amount argument accepts a plain decimal integer only - no arithmetic, no
+scientific notation, no alternate bases. `!giveESD`/`!takeESD` clamp at the
+balance cap and report when they did.
+
+Each undo command reverses only the matching kind's most recent applied
+change, by delta rather than by restoring an absolute value - so
+`!undogiveESD` after a `!giveESD` followed by a `!takeESD` leaves the
+`!takeESD` standing rather than discarding it. There are no refunds for
+`!redeem` (not yet implemented); `!setESD` is the correction path for any
+mistake in a viewer's balance.
 
 ## Now playing (`nowplaying` plugin)
 

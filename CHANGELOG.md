@@ -66,6 +66,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   a file it cannot parse. Grant keys are pruned to the newest 64 per viewer at
   load, except `follow:` keys, which are never pruned - the follow bonus pays
   once ever, so letting its key age out would reopen an unfollow/refollow farm.
+- `loyalty` plugin: broadcaster-only balance overrides. `!setESD @user
+<amount>` sets a viewer's balance exactly; `!giveESD`/`!takeESD` adjust it
+  by an amount, clamped to `[0, MAX_BALANCE]` and reporting when they clamp.
+  Each has a matching undo (`!undosetESD`/`!undogiveESD`/`!undotakeESD`) that
+  reverses only its own kind's most recent applied change, and reverses it by
+  delta rather than restoring an absolute value - so undoing a `!giveESD`
+  leaves an intervening `!takeESD` (or earnings since) standing rather than
+  discarding it. All six commands are gated on the broadcaster badge alone,
+  since every configured broadcaster is assumed to be the operator's own
+  channel or persona - see the README for the caveat if a third party's
+  channel is ever added. The amount argument accepts a plain decimal integer
+  only; arithmetic, scientific notation, hex, and similar are rejected rather
+  than partially parsed. Every override and undo is journaled in the same
+  atomic write as the balance change it makes, in the `decisions` array added
+  by the schema v2 migration above. The `@user` target is resolved via Helix
+  (`ctx.helix.getUserByLogin`), so an admin command can target any Twitch
+  user, not only one the bot has already seen chat from.
 - `loyalty` plugin (v1: earn + balance + leaderboard, no spend/redemption
   yet): viewers passively earn a configurable currency (`esports dollars` by
   default) for chat activity while the channel is live. Every

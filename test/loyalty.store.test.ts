@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { DateTime } from 'luxon';
 import { LoyaltyStore, SHARED_SCOPE_KEY } from '../src/plugins/loyalty/store.js';
 import { makeSpyLogger, testLogger } from './helpers.js';
 
@@ -198,6 +199,332 @@ describe('LoyaltyStore', () => {
             for (let i = 0; i < 100; i += 1) grants[`follow:${i}`] = i;
 
             expect(Object.keys(await loadGrants(grants))).toHaveLength(100);
+        });
+    });
+
+    describe('applyDecision / undoLatest', () => {
+        const clock = DateTime.utc(2026, 8, 4, 12, 0, 0);
+        const admin = { chatterId: '1', chatterName: 'broadcaster' };
+
+        function decisionInput(
+            kind: 'set' | 'give' | 'take',
+            requestedAmount: number,
+            overrides: Partial<Parameters<LoyaltyStore['applyDecision']>[0]> = {},
+        ) {
+            return {
+                scopeKey: SHARED_SCOPE_KEY,
+                kind,
+                chatterId: '10',
+                chatterName: 'viewer',
+                displayName: 'Viewer',
+                requestedAmount,
+                createdByChatterId: admin.chatterId,
+                createdByChatterName: admin.chatterName,
+                createdInBroadcasterId: '1',
+                now: clock,
+                ...overrides,
+            };
+        }
+
+        it('set writes the balance exactly and records before/after', async () => {
+            const store = await makeStore();
+            const result = await store.applyDecision(decisionInput('set', 100));
+
+            expect(result.ok).toBe(true);
+            if (!result.ok) return;
+            expect(result.decision.beforeBalance).toBe(0);
+            expect(result.decision.afterBalance).toBe(100);
+            expect(result.decision.requestedAmount).toBe(100);
+            expect(result.decision.kind).toBe('set');
+            expect(result.decision.status).toBe('applied');
+            expect(store.getBalance(SHARED_SCOPE_KEY, '10')).toBe(100);
+        });
+
+        it('falls back to the system clock for createdAt when now is an invalid DateTime', async () => {
+            const store = await makeStore();
+            const result = await store.applyDecision(
+                decisionInput('set', 100, { now: DateTime.invalid('test') }),
+            );
+
+            expect(result.ok).toBe(true);
+            if (!result.ok) return;
+            expect(result.decision.createdAt).not.toBeNull();
+            expect(DateTime.fromISO(result.decision.createdAt).isValid).toBe(true);
+        });
+
+        it('falls back to the system clock for undoneAt when now is an invalid DateTime', async () => {
+            const store = await makeStore();
+            await store.applyDecision(decisionInput('set', 100));
+            const undo = await store.undoLatest(
+                SHARED_SCOPE_KEY,
+                '10',
+                'set',
+                admin,
+                DateTime.invalid('test'),
+            );
+
+            expect(undo.ok).toBe(true);
+            if (!undo.ok) return;
+            expect(undo.decision.undoneAt).not.toBeNull();
+            expect(DateTime.fromISO(undo.decision.undoneAt!).isValid).toBe(true);
+        });
+
+        it('give adds to the existing balance', async () => {
+            const store = await makeStore();
+            await store.applyDecision(decisionInput('set', 100));
+            const result = await store.applyDecision(decisionInput('give', 50));
+
+            expect(result.ok).toBe(true);
+            if (!result.ok) return;
+            expect(result.decision.beforeBalance).toBe(100);
+            expect(result.decision.afterBalance).toBe(150);
+            expect(store.getBalance(SHARED_SCOPE_KEY, '10')).toBe(150);
+        });
+
+        it('take subtracts from the existing balance', async () => {
+            const store = await makeStore();
+            await store.applyDecision(decisionInput('set', 100));
+            const result = await store.applyDecision(decisionInput('take', 30));
+
+            expect(result.ok).toBe(true);
+            if (!result.ok) return;
+            expect(result.decision.afterBalance).toBe(70);
+            expect(store.getBalance(SHARED_SCOPE_KEY, '10')).toBe(70);
+        });
+
+        it('take clamps at 0 rather than going negative, and records what actually happened', async () => {
+            const store = await makeStore();
+            await store.applyDecision(decisionInput('set', 30));
+            const result = await store.applyDecision(decisionInput('take', 50));
+
+            expect(result.ok).toBe(true);
+            if (!result.ok) return;
+            expect(result.decision.requestedAmount).toBe(50);
+            expect(result.decision.beforeBalance).toBe(30);
+            expect(result.decision.afterBalance).toBe(0);
+            expect(store.getBalance(SHARED_SCOPE_KEY, '10')).toBe(0);
+        });
+
+        it('give clamps at MAX_BALANCE', async () => {
+            const store = await makeStore();
+            await store.applyDecision(decisionInput('set', 999_999_999));
+            const result = await store.applyDecision(decisionInput('give', 100));
+
+            expect(result.ok).toBe(true);
+            if (!result.ok) return;
+            expect(result.decision.afterBalance).toBe(1_000_000_000);
+        });
+
+        it('set on a brand new viewer creates the record', async () => {
+            const store = await makeStore();
+            const result = await store.applyDecision(decisionInput('set', 5));
+
+            expect(result.ok).toBe(true);
+            expect(store.getBalance(SHARED_SCOPE_KEY, '10')).toBe(5);
+            expect(store.getDisplayName(SHARED_SCOPE_KEY, '10')).toBe('Viewer');
+        });
+
+        it('persists the decision to the journal, in the same write as the balance', async () => {
+            const store = await makeStore();
+            await store.applyDecision(decisionInput('set', 100));
+            await store.flush();
+
+            const written = JSON.parse(await readFile(dataPath, 'utf8')) as {
+                decisions: Array<{ kind: string; afterBalance: number }>;
+            };
+            expect(written.decisions).toHaveLength(1);
+            expect(written.decisions[0]).toMatchObject({ kind: 'set', afterBalance: 100 });
+        });
+
+        it('undoLatest reverses a set by its recorded delta, keeping earnings made after it', async () => {
+            const store = await makeStore();
+            await store.applyDecision(decisionInput('set', 100));
+            // Earnings after the set must survive the undo - undo removes the
+            // set's effect, it does not pin the viewer back to beforeBalance.
+            await store.awardMany(SHARED_SCOPE_KEY, [
+                { chatterId: '10', displayName: 'Viewer', amount: 20 },
+            ]);
+
+            const undo = await store.undoLatest(SHARED_SCOPE_KEY, '10', 'set', admin, clock);
+
+            expect(undo.ok).toBe(true);
+            if (!undo.ok) return;
+            // 120 - (100 - 0) = 20: the untouched pre-set balance plus the award.
+            // An absolute restore would give 0, discarding the award - this is
+            // the case that tells the two strategies apart.
+            expect(undo.balance).toBe(20);
+            expect(store.getBalance(SHARED_SCOPE_KEY, '10')).toBe(20);
+        });
+
+        it('undo reverses only its own kind, keeping an intervening operation of a different kind', async () => {
+            // The worked example from the plan: give then take, undo the give.
+            // Chosen so delta reversal and absolute restore disagree - proof the
+            // undo is genuinely reversing a delta, not resetting to beforeBalance.
+            const store = await makeStore();
+            await store.applyDecision(decisionInput('set', 200));
+            await store.applyDecision(decisionInput('give', 50)); // 200 -> 250
+            await store.applyDecision(decisionInput('take', 30)); // 250 -> 220
+
+            const undo = await store.undoLatest(SHARED_SCOPE_KEY, '10', 'give', admin, clock);
+
+            expect(undo.ok).toBe(true);
+            if (!undo.ok) return;
+            // 220 - (250 - 200) = 170: the take's -30 survives the give's undo.
+            // Absolute restore to the give's beforeBalance would give 200,
+            // silently discarding the take - a different, wrong answer.
+            expect(undo.balance).toBe(170);
+            expect(store.getBalance(SHARED_SCOPE_KEY, '10')).toBe(170);
+        });
+
+        it('marks the reversed decision undone and records who/when', async () => {
+            const store = await makeStore();
+            await store.applyDecision(decisionInput('set', 100));
+            await store.undoLatest(SHARED_SCOPE_KEY, '10', 'set', admin, clock);
+            await store.flush();
+
+            const written = JSON.parse(await readFile(dataPath, 'utf8')) as {
+                decisions: Array<{
+                    status: string;
+                    undoneAt: string | null;
+                    undoneByChatterId: string | null;
+                }>;
+            };
+            expect(written.decisions[0]!.status).toBe('undone');
+            expect(written.decisions[0]!.undoneAt).not.toBeNull();
+            expect(written.decisions[0]!.undoneByChatterId).toBe(admin.chatterId);
+        });
+
+        it('reports nothing to undo when there is no applied decision of that kind', async () => {
+            const store = await makeStore();
+            const undo = await store.undoLatest(SHARED_SCOPE_KEY, '10', 'give', admin, clock);
+            expect(undo.ok).toBe(false);
+        });
+
+        it('reports nothing to undo on a second undo of the same kind', async () => {
+            const store = await makeStore();
+            await store.applyDecision(decisionInput('set', 100));
+            await store.undoLatest(SHARED_SCOPE_KEY, '10', 'set', admin, clock);
+            const second = await store.undoLatest(SHARED_SCOPE_KEY, '10', 'set', admin, clock);
+            expect(second.ok).toBe(false);
+        });
+
+        it('undoing one kind does not consume the undo availability of another kind', async () => {
+            const store = await makeStore();
+            await store.applyDecision(decisionInput('give', 50));
+            await store.applyDecision(decisionInput('take', 20));
+            const undoTake = await store.undoLatest(SHARED_SCOPE_KEY, '10', 'take', admin, clock);
+            expect(undoTake.ok).toBe(true);
+            // The give is still reversible after the take's undo.
+            const undoGive = await store.undoLatest(SHARED_SCOPE_KEY, '10', 'give', admin, clock);
+            expect(undoGive.ok).toBe(true);
+            if (!undoGive.ok) return;
+            expect(undoGive.balance).toBe(0);
+        });
+
+        it('rejects a new viewer at the cap without mutating or journaling anything', async () => {
+            const viewers: Record<string, { displayName: string; balance: number }> = {};
+            for (let i = 0; i < 100_000; i += 1) {
+                viewers[String(i)] = { displayName: 'V', balance: 1 };
+            }
+            await writeFile(dataPath, storedFile({ viewers }), 'utf8');
+            const store = new LoyaltyStore(dataPath, testLogger);
+            await store.load();
+
+            // '10' collides with an existing key in the 0..99999 range seeded
+            // above, so a chatter id outside that range is what makes this a
+            // genuinely new viewer.
+            const result = await store.applyDecision(
+                decisionInput('set', 100, { chatterId: 'brand-new-viewer' }),
+            );
+
+            expect(result).toEqual({ ok: false, reason: 'viewer-cap' });
+            expect(store.getBalance(SHARED_SCOPE_KEY, 'brand-new-viewer')).toBe(0);
+            await store.flush();
+            expect(await readdir(dir).catch(() => [])).toEqual(['loyalty.json']);
+        });
+
+        it('does not apply the cap to an existing viewer already in the scope', async () => {
+            const viewers: Record<string, { displayName: string; balance: number }> = {};
+            for (let i = 0; i < 100_000; i += 1) {
+                viewers[String(i)] = { displayName: 'V', balance: 1 };
+            }
+            await writeFile(dataPath, storedFile({ viewers }), 'utf8');
+            const store = new LoyaltyStore(dataPath, testLogger);
+            await store.load();
+
+            const result = await store.applyDecision(decisionInput('give', 5, { chatterId: '0' }));
+
+            expect(result.ok).toBe(true);
+            expect(store.getBalance(SHARED_SCOPE_KEY, '0')).toBe(6);
+        });
+    });
+
+    describe('decision journal retention', () => {
+        function retentionInput(minute: number) {
+            return {
+                scopeKey: SHARED_SCOPE_KEY,
+                kind: 'give' as const,
+                chatterId: '10',
+                chatterName: 'viewer',
+                displayName: 'Viewer',
+                requestedAmount: 1,
+                createdByChatterId: '1',
+                createdByChatterName: 'broadcaster',
+                createdInBroadcasterId: '1',
+                // .plus, not a raw minute field: DateTime.utc does not
+                // normalize an overflowing minute (60+), it returns an
+                // Invalid DateTime, silently persisting createdAt as null.
+                now: DateTime.utc(2026, 8, 4, 12, 0, 0).plus({ minutes: minute }),
+            };
+        }
+
+        it('never prunes an applied decision, however many accumulate', async () => {
+            const store = await makeStore();
+            for (let i = 0; i < 80; i += 1) {
+                await store.applyDecision(retentionInput(i));
+            }
+            await store.flush();
+
+            const reloaded = new LoyaltyStore(dataPath, testLogger);
+            await reloaded.load();
+            // Force a write so the post-load (pruned) state lands on disk.
+            await reloaded.applyDecision({ ...retentionInput(999), chatterId: 'force-write' });
+            await reloaded.flush();
+
+            const written = JSON.parse(await readFile(dataPath, 'utf8')) as {
+                decisions: Array<{ status: string }>;
+            };
+            const applied = written.decisions.filter((d) => d.status === 'applied');
+            // 80 from the loop, plus the force-write itself - also applied.
+            expect(applied).toHaveLength(81);
+        });
+
+        it('prunes undone decisions to the newest 50 per viewer at load()', async () => {
+            const store = await makeStore();
+            for (let i = 0; i < 80; i += 1) {
+                const input = retentionInput(i);
+                await store.applyDecision(input);
+                await store.undoLatest(
+                    SHARED_SCOPE_KEY,
+                    '10',
+                    'give',
+                    { chatterId: '1' },
+                    input.now,
+                );
+            }
+            await store.flush();
+
+            const reloaded = new LoyaltyStore(dataPath, testLogger);
+            await reloaded.load();
+            // Force a write so the post-load (pruned) state lands on disk.
+            await reloaded.applyDecision({ ...retentionInput(999), chatterId: 'force-write' });
+            await reloaded.flush();
+
+            const written = JSON.parse(await readFile(dataPath, 'utf8')) as {
+                decisions: Array<{ status: string }>;
+            };
+            const undone = written.decisions.filter((d) => d.status === 'undone');
+            expect(undone).toHaveLength(50);
         });
     });
 
