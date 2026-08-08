@@ -13,6 +13,9 @@ on:
             - .copilot-instructions
             - .github/copilot-instructions.md
             - scripts/sync.py
+            - scripts/check_ascii.py
+            - scripts/check_us_spelling.py
+            - scripts/check_english_only.py
     pull_request:
         paths:
             - AGENTS.md
@@ -25,6 +28,9 @@ on:
             - .copilot-instructions
             - .github/copilot-instructions.md
             - scripts/sync.py
+            - scripts/check_ascii.py
+            - scripts/check_us_spelling.py
+            - scripts/check_english_only.py
 
 jobs:
     check:
@@ -34,3 +40,6 @@ jobs:
               with:
                   persist-credentials: false
             - run: python3 scripts/sync.py --check
+            - run: python3 scripts/check_ascii.py AGENTS.md
+            - run: python3 scripts/check_us_spelling.py AGENTS.md
+            - run: python3 scripts/check_english_only.py AGENTS.md

@@ -1,0 +1,72 @@
+name: AGENTS.md compliance
+
+on:
+    push:
+        branches:
+            - main
+    pull_request:
+        branches:
+            - main
+
+permissions:
+    contents: read
+
+jobs:
+    banned-agents:
+        if: github.event_name == 'pull_request'
+        runs-on: ubuntu-latest
+        steps:
+            - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+              with:
+                  persist-credentials: false
+                  fetch-depth: 0
+            - name: Check banned-agent authorship
+              run: |
+                  python3 scripts/check_banned_agents.py \
+                    --base "origin/${{ github.event.pull_request.base.ref }}" \
+                    --head "${{ github.event.pull_request.head.sha }}"
+
+    branch-name:
+        if: github.event_name == 'pull_request'
+        runs-on: ubuntu-latest
+        steps:
+            - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+              with:
+                  persist-credentials: false
+            - name: Check branch name
+              run: python3 scripts/check_branch_name.py
+
+    commit-message:
+        if: github.event_name == 'pull_request'
+        runs-on: ubuntu-latest
+        steps:
+            - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+              with:
+                  persist-credentials: false
+                  fetch-depth: 0
+            - name: Check commit messages
+              run: |
+                  python3 scripts/check_commit_message.py \
+                    --base "origin/${{ github.event.pull_request.base.ref }}" \
+                    --head "${{ github.event.pull_request.head.sha }}"
+
+    static-checks:
+        runs-on: ubuntu-latest
+        steps:
+            - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+              with:
+                  persist-credentials: false
+            - name: Check persist-credentials on checkout steps
+              run: python3 scripts/check_persist_credentials.py .github/workflows/*.yml
+            - name: Check for unjustified MD5/SHA-1
+              run: |
+                  python3 scripts/check_weak_hashing.py \
+                    $(find src test scripts -name '*.ts' -o -name '*.py')
+            - name: Check for non-root containers
+              run: python3 scripts/check_dockerfile_root.py Dockerfile docker-compose.yml
+            - name: Check for likely secrets
+              run: |
+                  python3 scripts/check_secrets_heuristic.py \
+                    $(find src test scripts -name '*.ts' -o -name '*.py') \
+                    .github/workflows/*.yml .pre-commit-config.yaml Makefile \
+                    Dockerfile docker-compose.yml
