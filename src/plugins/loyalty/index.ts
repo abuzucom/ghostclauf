@@ -17,6 +17,7 @@ import {
     renderAdjustDone,
     renderAdminUnknownUser,
     renderAdminUsage,
+    renderAdminViewerCap,
     renderBalance,
     renderLeaderboard,
     renderUndoDone,
@@ -192,6 +193,17 @@ function registerAdjustCommand(
                 now: runtime.now(),
             });
             if (!result.ok) {
+                if (result.reason === 'viewer-cap') {
+                    await reply(ctx, event, renderAdminViewerCap(target.displayName));
+                    return;
+                }
+                // 'unstorable': target.id came from Helix, a trusted numeric
+                // Twitch id, so this should be unreachable - log it rather
+                // than silently reporting it as if the syntax were wrong.
+                ctx.logger.error(
+                    { chatterId: target.id, kind },
+                    'loyalty admin command: unstorable chatter id from Helix',
+                );
                 await reply(ctx, event, renderAdminUsage(usage));
                 return;
             }

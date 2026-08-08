@@ -1,6 +1,6 @@
 import { DateTime } from 'luxon';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createLoyaltyPlugin } from '../src/plugins/loyalty/index.js';
@@ -254,6 +254,36 @@ describe('loyalty admin commands', () => {
                 'msg-1',
                 '1',
             );
+        });
+    });
+
+    describe('viewer cap', () => {
+        async function seedFullScope() {
+            // Prefixed keys so they cannot collide with TARGET_USER.id ('10').
+            const viewers: Record<string, { displayName: string; balance: number }> = {};
+            for (let i = 0; i < 100_000; i += 1) {
+                viewers[`v${i}`] = { displayName: 'V', balance: 1 };
+            }
+            await writeFile(
+                dataPath,
+                JSON.stringify({ version: 1, scopes: { shared: { viewers } } }),
+                'utf8',
+            );
+        }
+
+        it('reports the pool is full for a new viewer, distinct from a usage error', async () => {
+            await seedFullScope();
+            const { registry, say } = await setup();
+            await registry.handle(commandFrom('!setESD @target 100', ['everyone', 'broadcaster']));
+            expect(say).toHaveBeenCalledWith(
+                'Cannot add Target: this loyalty pool is full. Ask an operator to prune it.',
+                'msg-1',
+                '1',
+            );
+
+            const store = new LoyaltyStore(dataPath, testLogger);
+            await store.load();
+            expect(store.getBalance(SHARED_SCOPE_KEY, TARGET_USER.id)).toBe(0);
         });
     });
 });

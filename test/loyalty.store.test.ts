@@ -391,6 +391,43 @@ describe('LoyaltyStore', () => {
             if (!undoGive.ok) return;
             expect(undoGive.balance).toBe(0);
         });
+
+        it('rejects a new viewer at the cap without mutating or journaling anything', async () => {
+            const viewers: Record<string, { displayName: string; balance: number }> = {};
+            for (let i = 0; i < 100_000; i += 1) {
+                viewers[String(i)] = { displayName: 'V', balance: 1 };
+            }
+            await writeFile(dataPath, storedFile({ viewers }), 'utf8');
+            const store = new LoyaltyStore(dataPath, testLogger);
+            await store.load();
+
+            // '10' collides with an existing key in the 0..99999 range seeded
+            // above, so a chatter id outside that range is what makes this a
+            // genuinely new viewer.
+            const result = await store.applyDecision(
+                decisionInput('set', 100, { chatterId: 'brand-new-viewer' }),
+            );
+
+            expect(result).toEqual({ ok: false, reason: 'viewer-cap' });
+            expect(store.getBalance(SHARED_SCOPE_KEY, 'brand-new-viewer')).toBe(0);
+            await store.flush();
+            expect(await readdir(dir).catch(() => [])).toEqual(['loyalty.json']);
+        });
+
+        it('does not apply the cap to an existing viewer already in the scope', async () => {
+            const viewers: Record<string, { displayName: string; balance: number }> = {};
+            for (let i = 0; i < 100_000; i += 1) {
+                viewers[String(i)] = { displayName: 'V', balance: 1 };
+            }
+            await writeFile(dataPath, storedFile({ viewers }), 'utf8');
+            const store = new LoyaltyStore(dataPath, testLogger);
+            await store.load();
+
+            const result = await store.applyDecision(decisionInput('give', 5, { chatterId: '0' }));
+
+            expect(result.ok).toBe(true);
+            expect(store.getBalance(SHARED_SCOPE_KEY, '0')).toBe(6);
+        });
     });
 
     describe('decision journal retention', () => {

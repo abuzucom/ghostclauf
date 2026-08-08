@@ -77,6 +77,13 @@ export function renderAdminUnknownUser(login: string): string {
     return truncateForChat(`Could not find a Twitch user named ${login}.`);
 }
 
+/** Render the reply when a new viewer cannot be added: the scope is at its cap. */
+export function renderAdminViewerCap(displayName: string): string {
+    return truncateForChat(
+        `Cannot add ${displayName}: this loyalty pool is full. Ask an operator to prune it.`,
+    );
+}
+
 /**
  * Render the result of !setESD/!giveESD/!takeESD. `requestedAmount` and
  * `actualAmount` differ when give/take clamped at 0 or MAX_BALANCE, which
