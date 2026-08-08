@@ -49,6 +49,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `loyalty` plugin: on-disk schema v2. Adds per-viewer `grants` (idempotency
+  keys for one-shot and time-bucketed bonuses), `spent`, and `redeemed`
+  counters, plus `decisions` and `redemptions` audit journals - the shapes the
+  upcoming admin-override and redemption commands write to. A version 1 file
+  migrates in place with balances intact; the migration is lazy, so a bot that
+  starts and earns nothing leaves the file untouched. Before the first v2
+  write, the pristine v1 file is copied once to `<dataPath>.v1` and never
+  overwritten, so a rollback to a v1 build can recover rather than quarantining
+  a file it cannot parse. Grant keys are pruned to the newest 64 per viewer at
+  load, except `follow:` keys, which are never pruned - the follow bonus pays
+  once ever, so letting its key age out would reopen an unfollow/refollow farm.
 - `loyalty` plugin (v1: earn + balance + leaderboard, no spend/redemption
   yet): viewers passively earn a configurable currency (`esports dollars` by
   default) for chat activity while the channel is live. Every
