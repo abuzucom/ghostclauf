@@ -193,6 +193,40 @@ describe('loyalty plugin', () => {
             expect(say).toHaveBeenCalledWith('Active has 0 esports dollars.', 'msg-1', '1');
         });
 
+        it('preserves pending activity across an unverified offline', async () => {
+            vi.useFakeTimers();
+            vi.setSystemTime(clock.toJSDate());
+            const { bus, registry, say, ctx, plugin } = await setup({ dollarsPerTick: 3 });
+
+            bus.emit('streamOnline', {
+                broadcasterId: '1',
+                broadcasterName: 'streamer',
+                broadcasterDisplayName: 'Streamer',
+                startedAt: clock,
+            });
+            bus.emit('chatMessage', chatFrom('200', 'Active'));
+            // Verification failed - the channel might still be live, so this
+            // must not discard the tick's pending activity the way a real
+            // offline does.
+            bus.emit('streamOffline', {
+                broadcasterId: '1',
+                broadcasterName: 'streamer',
+                broadcasterDisplayName: 'Streamer',
+                verified: false,
+            });
+
+            await vi.advanceTimersByTimeAsync(FIVE_MINUTES_MS);
+            await plugin.dispose?.(ctx);
+
+            const activeMsg = makeMessage('!wallet', ['everyone'], {
+                chatterId: '200',
+                chatterDisplayName: 'Active',
+                broadcasterName: 'streamer',
+            });
+            await registry.handle(activeMsg);
+            expect(say).toHaveBeenCalledWith('Active has 3 esports dollars.', 'msg-1', '1');
+        });
+
         it('resets activity between ticks so a chatter is credited once per tick', async () => {
             vi.useFakeTimers();
             vi.setSystemTime(clock.toJSDate());

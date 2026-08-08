@@ -172,6 +172,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- `loyalty` plugin: `streamOffline` no longer discards pending tick activity
+  on an unverified offline. `event.verified === false` means Twitch
+  verification failed and the channel may still be live; treating it as a
+  real offline dropped `activeSinceLastTick` unconditionally, costing every
+  active chatter up to a full tick of earned dollars for what could be a
+  transient verification failure. Absent `verified` is still optimistically
+  treated as verified, matching how `streak` already handles this same
+  field. Pre-existing since the `loyalty` plugin's initial merge (#42).
 - Tests: `!streakset` is pinned to whole-number arguments only. The parser
   already rejected arithmetic, scientific notation, hex, fractions, and
   partial matches, but nothing asserted it - a refactor to `parseInt` would

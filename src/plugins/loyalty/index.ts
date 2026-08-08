@@ -374,6 +374,13 @@ export function createLoyaltyPlugin(now: () => DateTime = () => DateTime.utc()):
                 liveBroadcasters.add(event.broadcasterId);
             });
             ctx.on('streamOffline', (event) => {
+                // An unverified offline must not cost anyone their tick
+                // activity: verification can fail transiently, and treating
+                // it as a real offline would discard up to a full tick of
+                // earned activity for a channel that is probably still live.
+                // Absent is optimistically treated as verified, matching
+                // streak's handling of the same field.
+                if (event.verified === false) return;
                 liveBroadcasters.delete(event.broadcasterId);
                 activeSinceLastTick.delete(event.broadcasterId);
             });
