@@ -225,6 +225,17 @@ function pruneDecisions(decisions: BalanceDecision[]): BalanceDecision[] {
     return decisions.filter((decision) => !dropped.has(decision));
 }
 
+/**
+ * Render a journal timestamp. `toISO()` returns null only for an Invalid
+ * DateTime, which never happens on the real `now()` clock - but a ledger
+ * timestamp is exactly the kind of field that should never be allowed to
+ * persist as `null`, so this falls all the way back to the system clock
+ * rather than asserting a value that is not actually guaranteed.
+ */
+function toJournalTimestamp(now: DateTime): string {
+    return now.toUTC().toISO() ?? now.toISO() ?? new Date().toISOString();
+}
+
 export interface Award {
     chatterId: string;
     displayName: string;
@@ -456,7 +467,7 @@ export class LoyaltyStore {
             beforeBalance: before,
             afterBalance: after,
             requestedAmount: input.requestedAmount,
-            createdAt: input.now.toUTC().toISO() ?? input.now.toISO()!,
+            createdAt: toJournalTimestamp(input.now),
             createdByChatterId: input.createdByChatterId,
             createdByChatterName: input.createdByChatterName,
             createdInBroadcasterId: input.createdInBroadcasterId,
@@ -518,7 +529,7 @@ export class LoyaltyStore {
             balance: restored,
         };
         target.status = 'undone';
-        target.undoneAt = now.toUTC().toISO() ?? now.toISO()!;
+        target.undoneAt = toJournalTimestamp(now);
         target.undoneByChatterId = undoneBy.chatterId;
         await this.persist();
         return { ok: true, decision: target, balance: restored };

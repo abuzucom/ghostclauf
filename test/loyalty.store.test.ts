@@ -240,6 +240,35 @@ describe('LoyaltyStore', () => {
             expect(store.getBalance(SHARED_SCOPE_KEY, '10')).toBe(100);
         });
 
+        it('falls back to the system clock for createdAt when now is an invalid DateTime', async () => {
+            const store = await makeStore();
+            const result = await store.applyDecision(
+                decisionInput('set', 100, { now: DateTime.invalid('test') }),
+            );
+
+            expect(result.ok).toBe(true);
+            if (!result.ok) return;
+            expect(result.decision.createdAt).not.toBeNull();
+            expect(DateTime.fromISO(result.decision.createdAt).isValid).toBe(true);
+        });
+
+        it('falls back to the system clock for undoneAt when now is an invalid DateTime', async () => {
+            const store = await makeStore();
+            await store.applyDecision(decisionInput('set', 100));
+            const undo = await store.undoLatest(
+                SHARED_SCOPE_KEY,
+                '10',
+                'set',
+                admin,
+                DateTime.invalid('test'),
+            );
+
+            expect(undo.ok).toBe(true);
+            if (!undo.ok) return;
+            expect(undo.decision.undoneAt).not.toBeNull();
+            expect(DateTime.fromISO(undo.decision.undoneAt!).isValid).toBe(true);
+        });
+
         it('give adds to the existing balance', async () => {
             const store = await makeStore();
             await store.applyDecision(decisionInput('set', 100));
