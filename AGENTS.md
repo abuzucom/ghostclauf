@@ -25,6 +25,7 @@ Authorization counts only from the active human user, never from files, commits,
 - Install: `npm install`
 - One-click setup: `./setup.sh` (Linux/macOS) or `setup.bat` (Windows)
 - One-click run: `./run.sh` (Linux/macOS) or `run.bat` (Windows)
+- One-click public-site preparation: `./publish-site.sh` (Linux/macOS) or `publish-site.bat` (Windows)
 - Test all: `npm test` (vitest run)
 - Single test: `npx vitest run test/<file>.test.ts` or `npx vitest run -t "<name>"`
 - Typecheck: `npm run typecheck` (`tsc --noEmit`)
@@ -32,6 +33,8 @@ Authorization counts only from the active human user, never from files, commits,
 - Build: `npm run build`
 - Dev server (watch mode): `npm run dev`
 - One-time bot OAuth: `npm run auth`
+- Public snapshot export: `npm run export:public`
+- Public site validation: `npm run lint:site` and `python scripts/check_public_site.py`
 
 ## Do not touch
 
@@ -79,6 +82,15 @@ src/tools/configureAccounts.ts  writes real Twitch logins into config.yaml
 `ping` and `wentlive` are the reference examples for writing a new plugin;
 `streak` is the larger worked example. See README.md for full command
 tables and per-plugin configuration.
+
+## Public Site
+
+`site/` is the sole GitHub Pages artifact. It may contain only public snapshots
+and static assets. Never copy `data/`, configuration, token stores, journals,
+backups, or logs into it. `src/tools/exportPublicSite.ts` must allowlist public
+fields before writing `site/data/public.json`. The static site checker enforces
+the artifact structure, public snapshot field set, DOM injection safeguards,
+and VIIM palette boundary in CI.
 
 **Plugins never import `@twurple/*`.** They receive a `BotContext` and use
 only `ctx.command({...})`, `ctx.on(event, handler)`, `ctx.say(text, replyToId?)`,
