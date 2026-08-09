@@ -33,6 +33,6 @@ export default tseslint.config(
         },
     },
     {
-        ignores: ['dist/', 'node_modules/', 'test/fixtures/'],
+        ignores: ['dist/', 'node_modules/', 'site/', 'test/fixtures/'],
     },
 );
