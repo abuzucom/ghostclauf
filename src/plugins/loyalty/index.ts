@@ -1,7 +1,7 @@
 // Loyalty plugin: viewers passively earn esports dollars for being active in
 // chat while the channel is live. Every tickIntervalMinutes, each chatter who
 // sent at least one message since the last tick is awarded dollarsPerTick.
-// This is a CHAT-ACTIVITY PROXY, not real Twitch viewership - the bot only
+// This is a chat-activity proxy, not real Twitch viewership. The bot only
 // sees chat messages, never the viewer list, so it cannot know who is actually
 // watching versus merely chatting. !wallet reports a balance; !economy shows
 // the top earners. No spend/redemption yet.
@@ -9,7 +9,7 @@
 import { DateTime, Duration } from 'luxon';
 import { z } from 'zod';
 import { resolveConfigField } from '../../core/configField.js';
-import type { BotContext, ChatCommandEvent, Plugin } from '../../core/types.js';
+import type { BotContext, ChatCommandEvent, Logger, Plugin } from '../../core/types.js';
 import { CooldownGate } from '../../core/cooldown.js';
 import { parseLogin } from '../../core/logins.js';
 import {
@@ -258,6 +258,33 @@ function registerUndoCommand(
 }
 
 /**
+ * Award one interval to chatters who were active while their channel was live.
+ * Clear each channel's snapshot before scheduling its write. A later message is
+ * therefore credited by the next interval instead of being awarded twice.
+ */
+function awardActiveChatters(
+    store: LoyaltyStore,
+    logger: Logger,
+    runtime: LoyaltyRuntime,
+    activeSinceLastTick: Map<string, Map<string, string>>,
+    dollarsPerTick: number,
+): void {
+    for (const [broadcasterId, chatters] of activeSinceLastTick) {
+        if (chatters.size === 0) continue;
+        const scopeKey = scopeKeyFor(runtime, broadcasterId);
+        const awards: Award[] = [...chatters].map(([chatterId, displayName]) => ({
+            chatterId,
+            displayName,
+            amount: dollarsPerTick,
+        }));
+        chatters.clear();
+        void store.awardMany(scopeKey, awards).catch((error: unknown) => {
+            logger.error({ err: error, scopeKey, broadcasterId }, 'loyalty tick award failed');
+        });
+    }
+}
+
+/**
  * Build the loyalty plugin. `now` is injectable so cooldown timing is
  * deterministically testable; production use relies on the real clock.
  */
@@ -280,6 +307,7 @@ export function createLoyaltyPlugin(now: () => DateTime = () => DateTime.utc()):
             );
             store = new LoyaltyStore(dataPath, ctx.logger);
             await store.load();
+            const loyaltyStore = store;
 
             const currencyName = resolveConfigField(
                 'loyalty',
@@ -331,7 +359,7 @@ export function createLoyaltyPlugin(now: () => DateTime = () => DateTime.utc()):
             );
 
             const runtime: LoyaltyRuntime = {
-                store,
+                store: loyaltyStore,
                 cooldown: new CooldownGate(
                     Duration.fromObject({ seconds: cooldownSeconds }).as('milliseconds'),
                 ),
@@ -344,9 +372,9 @@ export function createLoyaltyPlugin(now: () => DateTime = () => DateTime.utc()):
             registerBalanceCommand(ctx, runtime);
             registerLeaderboardCommand(ctx, runtime);
 
-            // Broadcaster-only balance overrides. Every configured broadcaster
-            // is the operator's own channel or persona, so `allow: ['broadcaster']`
-            // alone is a correct gate here - see the Phase 1b note in README.md.
+            // Broadcaster-only overrides are safe only when every configured
+            // broadcaster belongs to the same trusted operator. A shared pool
+            // makes every configured broadcaster an administrator of that pool.
             registerAdjustCommand(ctx, runtime, 'setesd', 'set', '!setESD @user <amount>');
             registerAdjustCommand(ctx, runtime, 'giveesd', 'give', '!giveESD @user <amount>');
             registerAdjustCommand(ctx, runtime, 'takeesd', 'take', '!takeESD @user <amount>');
@@ -354,9 +382,8 @@ export function createLoyaltyPlugin(now: () => DateTime = () => DateTime.utc()):
             registerUndoCommand(ctx, runtime, 'undogiveesd', 'give', '!undogiveESD @user');
             registerUndoCommand(ctx, runtime, 'undotakeesd', 'take', '!undotakeESD @user');
 
-            // Chat-activity tracking: a chatter who sends any chat message
-            // while their channel is live is credited on the next tick. Not
-            // real watch-time - see the module comment above.
+            // A chatter who sends any chat message while their channel is live
+            // is credited on the next tick. This does not measure watch time.
             const liveBroadcasters = new Set<string>();
             const activeSinceLastTick = new Map<string, Map<string, string>>();
 
@@ -389,24 +416,13 @@ export function createLoyaltyPlugin(now: () => DateTime = () => DateTime.utc()):
 
             tickTimer = setInterval(
                 () => {
-                    for (const [broadcasterId, chatters] of activeSinceLastTick) {
-                        if (chatters.size === 0) continue;
-                        const scopeKey = scopeKeyFor(runtime, broadcasterId);
-                        const awards: Award[] = [...chatters].map(([chatterId, displayName]) => ({
-                            chatterId,
-                            displayName,
-                            amount: dollarsPerTick,
-                        }));
-                        chatters.clear();
-                        store
-                            ?.awardMany(scopeKey, awards)
-                            .catch((err: unknown) =>
-                                ctx.logger.error(
-                                    { err, scopeKey, broadcasterId },
-                                    'loyalty tick award failed',
-                                ),
-                            );
-                    }
+                    awardActiveChatters(
+                        loyaltyStore,
+                        ctx.logger,
+                        runtime,
+                        activeSinceLastTick,
+                        dollarsPerTick,
+                    );
                 },
                 Duration.fromObject({ minutes: tickIntervalMinutes }).as('milliseconds'),
             );

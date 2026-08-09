@@ -543,7 +543,11 @@ export class LoyaltyStore {
             await this.file.write(JSON.stringify(this.data, null, 2));
         });
         this.pendingWrite = write;
-        this.saveChain = write.catch(() => {});
+        // Keep the queue usable after a failed write. The caller still receives
+        // `write` and its rejection, while later commands can attempt recovery.
+        this.saveChain = write.catch((error: unknown) => {
+            this.logger.error({ err: error }, 'loyalty store write failed');
+        });
         return write;
     }
 
