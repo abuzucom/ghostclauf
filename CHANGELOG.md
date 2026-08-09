@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Updated all CodeQL Action SARIF uploads to v4.37.6. This removes the
+  deprecated Node 20 runtime from the affected GitHub Actions workflows.
 - Added architecture, plugin-authoring, and operations guides. Cross-linked
   README, configuration, and security documentation. Added targeted code
   documentation for lifecycle, persistence, and recovery behavior.
