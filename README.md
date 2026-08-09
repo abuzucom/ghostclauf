@@ -29,6 +29,8 @@ The design borrows the _spirit_ of [eggdrop](https://github.com/eggheads/eggdrop
 - [Writing a plugin](#writing-a-plugin)
 - [Testing](#testing)
 - [Troubleshooting](#troubleshooting)
+- [AGENTS.md compliance checks](#agentsmd-compliance-checks)
+- [Claude Code hook example](#claude-code-hook-example)
 - [License](#license)
 
 ## Features (v1)
@@ -638,6 +640,53 @@ a broadcaster/mod running `!streakopen`), or the stream already ended
 [Attendance / watch streaks](#attendance--watch-streaks-streak-plugin)). Set
 `requireStreamDay: false` if you want check-ins to work regardless of live
 status.
+
+## AGENTS.md compliance checks
+
+`AGENTS.md` is the canonical source for this repo's AI-agent instructions;
+`make sync` (or `python scripts/sync.py`) propagates it to `CLAUDE.md` and
+the other tool-specific copies, and `make check` (or `--check`) verifies
+they are in sync. `.github/workflows/agents-sync.yml` and
+`.github/workflows/agents-md-compliance.yml` enforce the checks below in
+CI; `.pre-commit-config.yaml` runs the fast, path-scoped ones locally
+before a commit or push. `make agents-lint` runs everything below in one
+pass.
+
+| Script                         | Backs                                               | Exit code                          |
+| ------------------------------ | --------------------------------------------------- | ---------------------------------- |
+| `check_banned_agents.py`       | Banned agents                                       | 1, blocking (PRs only)             |
+| `check_branch_name.py`         | Branch naming                                       | 1, blocking                        |
+| `check_commit_message.py`      | Commit-message style                                | 1, blocking (PRs only)             |
+| `check_persist_credentials.py` | Rule 11                                             | 1, blocking                        |
+| `check_weak_hashing.py`        | Rule 7                                              | 1, blocking                        |
+| `check_dockerfile_root.py`     | Rule 12                                             | 1, blocking                        |
+| `check_secrets_heuristic.py`   | Rule 8 (heuristic, not entropy-based)               | 1, blocking                        |
+| `check_ascii.py`               | No run-on sentences/dashes; No non-ASCII characters | 1, blocking (`AGENTS.md` only)     |
+| `check_us_spelling.py`         | American spelling                                   | 0, warning only (`AGENTS.md` only) |
+| `check_english_only.py`        | English only                                        | 0, warning only (`AGENTS.md` only) |
+
+`check_banned_agents.py` cannot catch an agent committing under a human's
+own git identity with no `Co-authored-by` trailer; pair it with
+platform-level bot blocks. All ten scripts came from
+[`abuzucom/agents`](https://github.com/abuzucom/agents), the upstream
+template this repo's `AGENTS.md` tracks.
+
+## Claude Code hook example
+
+`hooks/block_destructive_bash.py` and `hooks/claude-code-settings.example.json`
+also came from `abuzucom/agents`: a Claude-Code-specific defense-in-depth
+example, not part of the `AGENTS.md` rules themselves (`AGENTS.md` stays
+tool-agnostic and is synced byte-identical to non-Claude tools). A
+`PreToolUse` hook on the `Bash` matcher blocks `rm -rf /`, `~`, or `$HOME`,
+a bare `git push --force`/`-f`, and `git reset --hard`, mirroring rule 2
+and the history-safety rule in Workflow as a mechanical backstop for a
+single tool, independent of whether the model remembers the rule. It is a
+heuristic, not a sandbox: it does not parse the shell, so a command hidden
+behind a variable, alias, or wrapper script is invisible to it.
+
+Unlike upstream's own repo, which ships the example inactive, this repo
+wires the hook into `.claude/settings.json`, so it runs for every Claude
+Code session working in this checkout.
 
 ## License
 

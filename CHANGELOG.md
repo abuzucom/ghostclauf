@@ -7,6 +7,113 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Added four GitHub code-scanning workflows, adapted from itsjustatank's
+  draft PRs (#63-#66) with fixes: `.github/workflows/ossar.yml` (OSSAR
+  static analysis), `.github/workflows/powershell.yml` (PSScriptAnalyzer),
+  `.github/workflows/osv-scanner.yml` (OSV-Scanner dependency
+  vulnerability scanning), and `.github/workflows/scorecard.yml` (OpenSSF
+  Scorecard). Fixes applied: added `persist-credentials: false` to the
+  two checkout steps that were missing it (Rule 11); SHA-pinned every
+  action that was still on a mutable tag (`actions/checkout`,
+  `github/ossar-action`, `github/codeql-action/upload-sarif`); bumped the
+  `google/osv-scanner-action` reusable-workflow pin from v1.7.1 to v2.5.0,
+  since v1.7.1's `scan-pr` job unconditionally failed (it called the
+  now-hard-deprecated `actions/upload-artifact@v3`); corrected the
+  `powershell.yml` header comment, which linked a repo name
+  (`microsoft/action-psscriptanalyzer`) different from the one the `uses:`
+  line actually references (`microsoft/psscriptanalyzer-action`).
+
+### Changed
+
+- Merged the 3 open dependabot PRs whose CI was green: `postcss` 8.5.21
+  -> 8.5.26 (dev-only, via vite; also clears the pre-existing moderate
+  `npm audit` finding GHSA-fxqj-rqcc-2cmp), `vitest` 3.2.7 -> 4.1.10. Also
+  merged `@twurple/api` 7.4.0 -> 8.1.4 (PR #70), but bumped `@twurple/auth`
+  and `@twurple/eventsub-ws` to 8.1.4 alongside it: the PR as opened only
+  bumped `@twurple/api`, which broke `npm ci` outright (ERESOLVE - `@twurple/api@8.1.4`
+  peer-requires `@twurple/auth@8.1.4`) and violated this repo's own
+  "@twurple/* packages ... keep them in lockstep" rule (see Gotchas).
+  Verified after all three bumps: typecheck, lint, `npm test` (571/571),
+  and `npm run build` all pass. `zod` 3.25.76 -> 4.4.3 (PR #67) is
+  intentionally excluded; it breaks typecheck across `src/core/config.ts`
+  and four plugins and needs a dedicated migration.
+
+- Added ten `scripts/check_*.py` checkers from `abuzucom/agents`, wired into
+  two CI workflows and `.pre-commit-config.yaml`: `check_banned_agents.py`
+  (commit author/committer/`Co-authored-by` trailers and PR author against
+  the xAI/Grok denylist), `check_branch_name.py`, `check_commit_message.py`,
+  `check_persist_credentials.py` (Rule 11), `check_weak_hashing.py`
+  (Rule 7), `check_dockerfile_root.py` (Rule 12), `check_secrets_heuristic.py`
+  (Rule 8), `check_ascii.py` (dash/ASCII style, `AGENTS.md` only), and the
+  warning-only `check_us_spelling.py` / `check_english_only.py` (also
+  `AGENTS.md` only). `.github/workflows/agents-md-compliance.yml` is new
+  (banned-agents, branch-name, and commit-message checks run on pull
+  requests only, since they need a base/head commit range; the
+  security/style static checks run on every push and pull request);
+  `agents-sync.yml` gained the three `AGENTS.md`-scoped style checks. Added
+  a `make agents-lint` target running everything locally, and a README
+  "AGENTS.md compliance checks" section documenting each script.
+- Added `user: node` to the `ghostclauf` service in `docker-compose.yml`,
+  making the container's already-non-root runtime user (`Dockerfile`'s
+  `USER node`) explicit at the compose level too; `check_dockerfile_root.py`
+  checks each compose service independently of the image's own `USER`.
+- Added `hooks/block_destructive_bash.py` and
+  `hooks/claude-code-settings.example.json` from `abuzucom/agents` v1.7.0: a
+  Claude Code `PreToolUse` hook blocking `rm -rf /`/`~`/`$HOME`, a bare
+  `git push --force`/`-f`, and `git reset --hard`. Wired it into
+  `.claude/settings.json` so it runs for this repo's Claude Code sessions,
+  and extended `check_weak_hashing.py` / `check_secrets_heuristic.py`'s
+  scanned globs (in `Makefile`, `.pre-commit-config.yaml`, and
+  `agents-md-compliance.yml`) to cover `hooks/`. Added a README "Claude Code
+  hook example" section documenting it.
+
+### Changed
+
+- Synced `AGENTS.md` (and its tool-specific copies) with upstream
+  `abuzucom/agents` through v1.7.0: four new non-negotiable rules (verify
+  state before assuming workflow intent, `persist-credentials: false` on
+  GitHub Actions checkout steps, non-root Docker containers by default, back
+  every enforcement claim with a real check); a "No suppressing checks"
+  workflow rule; a history-safety rule against rewriting pushed commits on a
+  shared branch without consent; a stricter dash rule banning `--`, `---`,
+  and spaced-hyphen substitutes for em/en dashes, alongside a "No run-on
+  sentences" rule; American English spelling and English-only style rules;
+  and replaced the emoji Bad/Good markers throughout with ASCII text,
+  matching the repo's own no-emoji rule. Corrected the Banned agents
+  section's enforcement claim, which cited CI enforcement this repo did not
+  have; now that `check_banned_agents.py` is wired into CI (see Added), the
+  claim is accurate. Fixed a pre-existing markdown-escaping bug in the
+  SQL/shell injection example (an unescaped backtick inside a
+  single-backtick code span, present since the file was first adopted)
+  using double-backtick delimiters. Also added `persist-credentials: false`
+  to the `agents-sync.yml` checkout step, which predates the new rule and
+  was the one workflow missing it. Reworded the remaining spaced-hyphen
+  asides in the Commands/Do not touch/Gotchas sections (semicolons or
+  colons instead), since those now sit in a file `check_ascii.py` lints as
+  blocking.
+
+### Fixed
+
+- `.github/dependabot.yml`: ignore `typescript` versions `>=6.1.0`. The
+  pinned `typescript-eslint@8.65.0` peer-depends on typescript 4.8.4
+  through 6.0.x; dependabot's PR #59 (5.9.3 -> 7.0.2, skipping the 6.x
+  line entirely) violated that range and failed every CI build/test job.
+- `.github/workflows/agents-md-compliance.yml`: the `branch-name` and
+  `commit-message` jobs now skip when `github.actor == 'dependabot[bot]'`.
+  Dependabot's branch names and commit subjects never match the
+  human-authored conventions those checks enforce, so every dependabot PR
+  failed them regardless of the dependency change's own merit.
+
+### Changed
+
+- Merged the 6 open dependabot PRs whose CI was green: `dotenv` 16.6.1 ->
+  17.4.2, `pino` 9.14.0 -> 10.3.1, `@types/node` 22.20.1 -> 26.1.2, `tsx`
+  4.23.0 -> 4.23.9, `actions/checkout` v4.3.1 -> v7.0.1 (all four
+  workflows), and `actions/setup-node` v4.4.0 -> v7.0.0 (`ci.yml`). The
+  `typescript` 7.0.2 bump (PR #59) is excluded; see Fixed above.
+
 ### Security
 
 - Added `security.md` documenting the security architecture, defense posture,
@@ -175,6 +282,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- `loyalty` plugin: `streamOffline` no longer discards pending tick activity
+  on an unverified offline. `event.verified === false` means Twitch
+  verification failed and the channel may still be live; treating it as a
+  real offline dropped `activeSinceLastTick` unconditionally, costing every
+  active chatter up to a full tick of earned dollars for what could be a
+  transient verification failure. Absent `verified` is still optimistically
+  treated as verified, matching how `streak` already handles this same
+  field. Pre-existing since the `loyalty` plugin's initial merge (#42).
 - Tests: `!streakset` is pinned to whole-number arguments only. The parser
   already rejected arithmetic, scientific notation, hex, fractions, and
   partial matches, but nothing asserted it - a refactor to `parseInt` would
