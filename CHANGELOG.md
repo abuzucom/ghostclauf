@@ -9,6 +9,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Added four GitHub code-scanning workflows, adapted from itsjustatank's
+  draft PRs (#63-#66) with fixes: `.github/workflows/ossar.yml` (OSSAR
+  static analysis), `.github/workflows/powershell.yml` (PSScriptAnalyzer),
+  `.github/workflows/osv-scanner.yml` (OSV-Scanner dependency
+  vulnerability scanning), and `.github/workflows/scorecard.yml` (OpenSSF
+  Scorecard). Fixes applied: added `persist-credentials: false` to the
+  two checkout steps that were missing it (Rule 11); SHA-pinned every
+  action that was still on a mutable tag (`actions/checkout`,
+  `github/ossar-action`, `github/codeql-action/upload-sarif`); bumped the
+  `google/osv-scanner-action` reusable-workflow pin from v1.7.1 to v2.5.0,
+  since v1.7.1's `scan-pr` job unconditionally failed (it called the
+  now-hard-deprecated `actions/upload-artifact@v3`); corrected the
+  `powershell.yml` header comment, which linked a repo name
+  (`microsoft/action-psscriptanalyzer`) different from the one the `uses:`
+  line actually references (`microsoft/psscriptanalyzer-action`).
+
+### Changed
+
+- Merged the 3 open dependabot PRs whose CI was green: `postcss` 8.5.21
+  -> 8.5.26 (dev-only, via vite; also clears the pre-existing moderate
+  `npm audit` finding GHSA-fxqj-rqcc-2cmp), `vitest` 3.2.7 -> 4.1.10. Also
+  merged `@twurple/api` 7.4.0 -> 8.1.4 (PR #70), but bumped `@twurple/auth`
+  and `@twurple/eventsub-ws` to 8.1.4 alongside it: the PR as opened only
+  bumped `@twurple/api`, which broke `npm ci` outright (ERESOLVE - `@twurple/api@8.1.4`
+  peer-requires `@twurple/auth@8.1.4`) and violated this repo's own
+  "@twurple/* packages ... keep them in lockstep" rule (see Gotchas).
+  Verified after all three bumps: typecheck, lint, `npm test` (571/571),
+  and `npm run build` all pass. `zod` 3.25.76 -> 4.4.3 (PR #67) is
+  intentionally excluded; it breaks typecheck across `src/core/config.ts`
+  and four plugins and needs a dedicated migration.
+
 - Added ten `scripts/check_*.py` checkers from `abuzucom/agents`, wired into
   two CI workflows and `.pre-commit-config.yaml`: `check_banned_agents.py`
   (commit author/committer/`Co-authored-by` trailers and PR author against
