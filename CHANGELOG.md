@@ -63,6 +63,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   colons instead), since those now sit in a file `check_ascii.py` lints as
   blocking.
 
+### Fixed
+
+- `.github/dependabot.yml`: ignore `typescript` versions `>=6.1.0`. The
+  pinned `typescript-eslint@8.65.0` peer-depends on typescript 4.8.4
+  through 6.0.x; dependabot's PR #59 (5.9.3 -> 7.0.2, skipping the 6.x
+  line entirely) violated that range and failed every CI build/test job.
+- `.github/workflows/agents-md-compliance.yml`: the `branch-name` and
+  `commit-message` jobs now skip when `github.actor == 'dependabot[bot]'`.
+  Dependabot's branch names and commit subjects never match the
+  human-authored conventions those checks enforce, so every dependabot PR
+  failed them regardless of the dependency change's own merit.
+
 ### Security
 
 - Added `security.md` documenting the security architecture, defense posture,

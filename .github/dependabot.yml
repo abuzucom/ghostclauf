@@ -4,6 +4,13 @@ updates:
       directory: /
       schedule:
           interval: weekly
+      ignore:
+          # typescript-eslint@8.65.0 peer-depends on typescript ">=4.8.4
+          # <6.1.0"; anything at or above 6.1.0 (including the 7.x native
+          # compiler line) breaks typecheck/lint until that peer range
+          # widens.
+          - dependency-name: 'typescript'
+            versions: ['>=6.1.0']
     - package-ecosystem: github-actions
       directory: /
       schedule:
