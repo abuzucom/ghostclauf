@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+    <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <meta
+            name="description"
+            content="Ghostclauf community fun facts, quotes, and esports dollars leaderboard."
+        >
+        <title>ghostclauf</title>
+        <link rel="stylesheet" href="styles.css">
+        <script type="module" src="app.js"></script>
+    </head>
+    <body>
+        <header class="site-header">
+            <a class="wordmark" href="#top">ghostclauf</a>
+            <nav aria-label="Primary navigation">
+                <a href="#facts">Facts</a>
+                <a href="#quotes">Quotes</a>
+                <a href="#economy">Economy</a>
+            </nav>
+            <label class="theme-control">
+                Theme
+                <select id="theme" name="theme">
+                    <option value="dark">Dark</option>
+                    <option value="grey">Grey</option>
+                    <option value="light">Light</option>
+                </select>
+            </label>
+        </header>
+        <main id="top">
+            <section class="intro" aria-labelledby="site-title">
+                <p class="eyebrow">Community archive</p>
+                <h1 id="site-title">The things chat remembers.</h1>
+                <p>
+                    Search the public collection of fun facts and quotes. Track the community's
+                    esports dollars below.
+                </p>
+            </section>
+            <section class="search" aria-labelledby="search-title">
+                <h2 id="search-title">Find a fact or quote</h2>
+                <label for="query">Search archive</label>
+                <input id="query" type="search" autocomplete="off" placeholder="Type to filter">
+                <p id="result-count" class="utility" aria-live="polite"></p>
+            </section>
+            <section id="facts" class="archive-section" aria-labelledby="facts-title">
+                <div class="section-heading">
+                    <p class="eyebrow">01</p>
+                    <h2 id="facts-title">Fun facts</h2>
+                </div>
+                <div id="facts-list" class="archive-list"></div>
+            </section>
+            <section id="quotes" class="archive-section" aria-labelledby="quotes-title">
+                <div class="section-heading">
+                    <p class="eyebrow">02</p>
+                    <h2 id="quotes-title">Quotes</h2>
+                </div>
+                <div id="quotes-list" class="archive-list"></div>
+            </section>
+            <section id="economy" class="economy" aria-labelledby="economy-title">
+                <div class="section-heading">
+                    <p class="eyebrow">03</p>
+                    <h2 id="economy-title">Esports dollars</h2>
+                </div>
+                <div class="economy-summary">
+                    <p><span id="participant-count">0</span> participants</p>
+                    <p><span id="total-balance">0</span> esports dollars in circulation</p>
+                </div>
+                <ol id="leaderboard" class="leaderboard"></ol>
+            </section>
+        </main>
+        <footer>
+            <p>Updated <time id="updated-at">when the archive is published</time>.</p>
+        </footer>
+    </body>
+</html>

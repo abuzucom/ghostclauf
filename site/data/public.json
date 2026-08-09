@@ -1,0 +1,12 @@
+{
+  "version": 1,
+  "generatedAt": "2026-08-09T20:49:28.718Z",
+  "facts": [],
+  "quotes": [],
+  "loyalty": {
+    "currencyName": "esports dollars",
+    "participantCount": 0,
+    "totalBalance": 0,
+    "leaderboard": []
+  }
+}

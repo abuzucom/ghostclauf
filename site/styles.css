@@ -1,0 +1,282 @@
+@font-face {
+    font-family: "Libre Franklin";
+    font-style: normal;
+    font-weight: 400 900;
+    font-display: swap;
+    src: url("fonts/LibreFranklin.woff2") format("woff2");
+}
+
+@font-face {
+    font-family: Cousine;
+    font-style: normal;
+    font-weight: 400;
+    font-display: swap;
+    src: url("fonts/Cousine-Regular.woff2") format("woff2");
+}
+
+@font-face {
+    font-family: Cousine;
+    font-style: normal;
+    font-weight: 700;
+    font-display: swap;
+    src: url("fonts/Cousine-Bold.woff2") format("woff2");
+}
+
+:root {
+    color-scheme: dark;
+
+    --background: #0b0b0b;
+    --raised: #242424;
+    --primary: #eae7e1;
+    --secondary: #a6a39d;
+    --detail: #74777a;
+    --emphasis: #eae7e1;
+}
+
+:root[data-theme='grey'] {
+    color-scheme: light;
+
+    --background: #d6d3cd;
+    --raised: #c2bfb8;
+    --primary: #3d3d3a;
+    --secondary: #74777a;
+    --detail: #a6a39d;
+    --emphasis: #0b0b0b;
+}
+
+:root[data-theme='light'] {
+    color-scheme: light;
+
+    --background: #f5f3ee;
+    --raised: #eae7e1;
+    --primary: #171716;
+    --secondary: #3d3d3a;
+    --detail: #a6a39d;
+    --emphasis: #0b0b0b;
+}
+
+* {
+    box-sizing: border-box;
+}
+
+body {
+    max-width: 80rem;
+    margin: 0 auto;
+    padding: 1.5rem;
+    background: var(--background);
+    color: var(--primary);
+    font-family: 'Libre Franklin', Arial, sans-serif;
+    font-size: 1rem;
+    line-height: 1.6;
+}
+
+a {
+    color: inherit;
+}
+
+.site-header,
+.site-header nav,
+.theme-control,
+.economy-summary,
+.leaderboard li {
+    display: flex;
+    align-items: center;
+}
+
+.site-header {
+    justify-content: space-between;
+    gap: 1.5rem;
+    border-bottom: 1px solid var(--detail);
+    padding-bottom: 1rem;
+}
+
+.wordmark,
+h1,
+h2 {
+    font-weight: 900;
+}
+
+.wordmark {
+    font-size: 1.25rem;
+    text-decoration: none;
+}
+
+.site-header nav {
+    gap: 1rem;
+}
+
+.theme-control,
+.utility,
+.eyebrow,
+label,
+select,
+input,
+.leaderboard,
+footer {
+    font-family: Cousine, 'Courier New', monospace;
+}
+
+.theme-control {
+    gap: 0.5rem;
+    color: var(--secondary);
+    font-size: 0.75rem;
+}
+
+select,
+input {
+    border: 1px solid var(--detail);
+    border-radius: 0;
+    background: var(--raised);
+    color: var(--primary);
+    padding: 0.6rem;
+}
+
+main {
+    padding: 5rem 0;
+}
+
+.intro {
+    max-width: 46rem;
+    margin-bottom: 5rem;
+}
+
+.eyebrow {
+    color: var(--secondary);
+    font-size: 0.75rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+}
+
+h1 {
+    max-width: 11ch;
+    margin: 0;
+    color: var(--emphasis);
+    font-size: clamp(3rem, 9vw, 7rem);
+    line-height: 0.9;
+}
+
+h2 {
+    margin: 0;
+    font-size: clamp(1.75rem, 4vw, 3rem);
+}
+
+.search {
+    border-top: 1px solid var(--detail);
+    border-bottom: 1px solid var(--detail);
+    padding: 2rem 0;
+}
+
+.search label {
+    display: block;
+    margin-top: 1rem;
+    color: var(--secondary);
+    font-size: 0.75rem;
+}
+
+.search input {
+    width: 100%;
+    margin-top: 0.5rem;
+}
+
+.archive-section,
+.economy {
+    padding: 4rem 0;
+    border-bottom: 1px solid var(--detail);
+}
+
+.section-heading {
+    display: grid;
+    grid-template-columns: 3rem 1fr;
+    gap: 1rem;
+    align-items: baseline;
+    margin-bottom: 2rem;
+}
+
+.section-heading .eyebrow {
+    margin: 0;
+}
+
+.archive-list {
+    display: grid;
+    gap: 1px;
+    background: var(--detail);
+    border: 1px solid var(--detail);
+}
+
+.archive-entry {
+    padding: 1.25rem;
+    background: var(--background);
+}
+
+.archive-entry p {
+    margin: 0;
+}
+
+.archive-entry .utility {
+    margin-top: 0.75rem;
+    color: var(--secondary);
+    font-size: 0.75rem;
+}
+
+.empty {
+    color: var(--secondary);
+}
+
+.economy-summary {
+    gap: 2rem;
+    margin-bottom: 1.5rem;
+    color: var(--secondary);
+}
+
+.economy-summary span {
+    color: var(--primary);
+    font-family: Cousine, 'Courier New', monospace;
+    font-weight: 700;
+}
+
+.leaderboard {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+.leaderboard li {
+    justify-content: space-between;
+    gap: 1rem;
+    border-top: 1px solid var(--detail);
+    padding: 0.9rem 0;
+}
+
+.leaderboard li span:first-child {
+    color: var(--secondary);
+}
+
+footer {
+    padding-bottom: 1.5rem;
+    color: var(--secondary);
+    font-size: 0.75rem;
+}
+
+@media (width <= 40rem) {
+    .site-header {
+        align-items: flex-start;
+        flex-wrap: wrap;
+    }
+
+    .site-header nav {
+        order: 3;
+        width: 100%;
+    }
+
+    main {
+        padding: 3rem 0;
+    }
+
+    .intro {
+        margin-bottom: 3rem;
+    }
+
+    .economy-summary {
+        display: block;
+    }
+}
