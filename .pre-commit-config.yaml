@@ -11,7 +11,7 @@ repos:
             name: Check ASCII/dash style
             entry: python scripts/check_ascii.py
             language: python
-            files: ^AGENTS\.md$
+            files: ^(AGENTS\.md|README\.md|CHANGELOG\.md|security\.md)$
           - id: check-branch-name
             name: Check branch name
             entry: python scripts/check_branch_name.py

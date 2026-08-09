@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Updated `AGENTS.md` and its synchronized tool copies to match the current
+  lint command, dependency versions, architecture, and plugin inventory.
+  Normalized README and changelog prose to the repository's ASCII and American
+  English style rules. Added blocking documentation checks to the Makefile,
+  pre-commit configuration, and compliance workflow.
+
 - Migrated `zod` 3.25.76 -> 4.4.3 (previously deferred from PR #67, which
   broke typecheck). Two breaks, both fixed: `src/core/config.ts`'s
   `plugins.config` schema used v3's single-argument `z.record(valueSchema)`
@@ -54,13 +60,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `npm audit` finding GHSA-fxqj-rqcc-2cmp), `vitest` 3.2.7 -> 4.1.10. Also
   merged `@twurple/api` 7.4.0 -> 8.1.4 (PR #70), but bumped `@twurple/auth`
   and `@twurple/eventsub-ws` to 8.1.4 alongside it: the PR as opened only
-  bumped `@twurple/api`, which broke `npm ci` outright (ERESOLVE - `@twurple/api@8.1.4`
+  bumped `@twurple/api`, which broke `npm ci` outright (ERESOLVE: `@twurple/api@8.1.4`
   peer-requires `@twurple/auth@8.1.4`) and violated this repo's own
   "@twurple/* packages ... keep them in lockstep" rule (see Gotchas).
   Verified after all three bumps: typecheck, lint, `npm test` (571/571),
-  and `npm run build` all pass. `zod` 3.25.76 -> 4.4.3 (PR #67) is
-  intentionally excluded; it breaks typecheck across `src/core/config.ts`
-  and four plugins and needs a dedicated migration.
+  and `npm run build` all pass. The previously deferred Zod migration is now
+  recorded in the top entry of this Unreleased section.
 
 - Added ten `scripts/check_*.py` checkers from `abuzucom/agents`, wired into
   two CI workflows and `.pre-commit-config.yaml`: `check_banned_agents.py`
@@ -189,25 +194,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - `loyalty` plugin: on-disk schema v2. Adds per-viewer `grants` (idempotency
   keys for one-shot and time-bucketed bonuses), `spent`, and `redeemed`
-  counters, plus `decisions` and `redemptions` audit journals - the shapes the
+  counters, plus `decisions` and `redemptions` audit journals. These are the shapes the
   upcoming admin-override and redemption commands write to. A version 1 file
   migrates in place with balances intact; the migration is lazy, so a bot that
   starts and earns nothing leaves the file untouched. Before the first v2
   write, the pristine v1 file is copied once to `<dataPath>.v1` and never
   overwritten, so a rollback to a v1 build can recover rather than quarantining
   a file it cannot parse. Grant keys are pruned to the newest 64 per viewer at
-  load, except `follow:` keys, which are never pruned - the follow bonus pays
+  load, except `follow:` keys, which are never pruned. The follow bonus pays
   once ever, so letting its key age out would reopen an unfollow/refollow farm.
 - `loyalty` plugin: broadcaster-only balance overrides. `!setESD @user
 <amount>` sets a viewer's balance exactly; `!giveESD`/`!takeESD` adjust it
   by an amount, clamped to `[0, MAX_BALANCE]` and reporting when they clamp.
   Each has a matching undo (`!undosetESD`/`!undogiveESD`/`!undotakeESD`) that
   reverses only its own kind's most recent applied change, and reverses it by
-  delta rather than restoring an absolute value - so undoing a `!giveESD`
+  delta rather than restoring an absolute value. Undoing a `!giveESD`
   leaves an intervening `!takeESD` (or earnings since) standing rather than
   discarding it. All six commands are gated on the broadcaster badge alone,
   since every configured broadcaster is assumed to be the operator's own
-  channel or persona - see the README for the caveat if a third party's
+  channel or persona. See the README for the caveat if a third party's
   channel is ever added. The amount argument accepts a plain decimal integer
   only; arithmetic, scientific notation, hex, and similar are rejected rather
   than partially parsed. Every override and undo is journaled in the same
@@ -220,7 +225,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   default) for chat activity while the channel is live. Every
   `tickIntervalMinutes` (default 5), each chatter who sent at least one
   chat message since the last tick is awarded `dollarsPerTick` (default 1).
-  This is a chat-activity proxy, not real Twitch watch-time - the bot has
+  This is a chat-activity proxy, not real Twitch watch-time. The bot has
   no access to the viewer list. `!wallet` reports a balance; `!economy`
   shows the top `leaderboardSize` earners (default 5). All date and time
   handling uses `luxon`, matching `streak`/`followage`/`wentlive`. Reads are rate
@@ -314,9 +319,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   field. Pre-existing since the `loyalty` plugin's initial merge (#42).
 - Tests: `!streakset` is pinned to whole-number arguments only. The parser
   already rejected arithmetic, scientific notation, hex, fractions, and
-  partial matches, but nothing asserted it - a refactor to `parseInt` would
+  partial matches, but nothing asserted it. A refactor to `parseInt` would
   have silently accepted `10+5` as 10 and `5abc` as 5, and bare `Number()`
-  would have accepted `1e3` as 1000. Behaviour is unchanged; the guard is new.
+  would have accepted `1e3` as 1000. Behavior is unchanged; the guard is new.
 - Tests: `flush()` now drains the event bus instead of sleeping a fixed 10ms,
   so async event handlers are deterministically settled before assertions. The
   delay-only version failed on a loaded CI runner as a wrong assertion rather
@@ -327,8 +332,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   temp-directory cleanup.
 - `AtomicJsonFile`: a rename onto a momentarily locked target is retried
   (bounded, with backoff) instead of failing the write. Windows fails rather
-  than replaces when anything else holds the target open - Defender, the
-  search indexer, a backup agent - which surfaced as intermittent `EPERM`
+  than replaces when anything else holds the target open. Defender, the
+  search indexer, or a backup agent caused intermittent `EPERM`
   write failures on Windows only. Errors that are not lock contention still
   fail immediately.
 - `streak` plugin: fixed a race condition in `handleOffline` by committing `lastOfflineAt` to session state before yielding to `qualifyCurrentInterval()`, preventing rapid reconnects from failing `isReconnect` checks.
@@ -432,7 +437,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   also validates nested channel/viewer records, not just the top-level
   envelope.
 
-## [0.4.0] - 2026-07-21
+## [0.4.0] (2026-07-21)
 
 ### Added
 
@@ -450,7 +455,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   serialized on a single chain and each uses a unique temp filename, so
   overlapping writes can never corrupt the data file.
 
-## [0.3.1] - 2026-07-21
+## [0.3.1] (2026-07-21)
 
 ### Changed
 
@@ -460,12 +465,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Pin GitHub Actions in CI workflows to full commit SHAs instead of
   mutable tags.
 
-## [0.3.0] - 2026-07-21
+## [0.3.0] (2026-07-21)
 
 ### Added
 
 - `streak` plugin: check-ins now pool across every configured broadcaster by
-  default (`shareAcrossChannels`, default `true`) - useful when multiple
+  default (`shareAcrossChannels`, default `true`). This is useful when multiple
   channels belong to the same streamer. Set `shareAcrossChannels: false` to
   keep channels fully independent as before.
 - `streak` plugin: check-ins are now anchored to when the current stream
@@ -473,14 +478,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (`streamSessionHours`, default 18), so a stream that runs past midnight no
   longer splits a viewer's attendance across two different stream days.
 
-## [0.2.1] - 2026-07-21
+## [0.2.1] (2026-07-21)
 
 ### Changed
 
 - `streak` plugin: `!streakreset` is now broadcaster only (previously
   broadcaster or moderator). `!streakset` and `!streakopen` are unchanged.
 
-## [0.2.0] - 2026-07-20
+## [0.2.0] (2026-07-20)
 
 ### Added
 

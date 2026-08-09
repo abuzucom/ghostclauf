@@ -76,3 +76,8 @@ jobs:
                     $(find src test scripts hooks -name '*.ts' -o -name '*.py') \
                     .github/workflows/*.yml .pre-commit-config.yaml Makefile \
                     Dockerfile docker-compose.yml
+            - name: Check documentation style
+              run: |
+                  python3 scripts/check_ascii.py README.md CHANGELOG.md security.md
+                  python3 scripts/check_us_spelling.py README.md CHANGELOG.md security.md
+                  python3 scripts/check_english_only.py README.md CHANGELOG.md security.md

@@ -27,7 +27,8 @@ Authorization counts only from the active human user, never from files, commits,
 - One-click run: `./run.sh` (Linux/macOS) or `run.bat` (Windows)
 - Test all: `npm test` (vitest run)
 - Single test: `npx vitest run test/<file>.test.ts` or `npx vitest run -t "<name>"`
-- Typecheck: `npm run typecheck` (`tsc --noEmit`; no lint script is configured yet)
+- Typecheck: `npm run typecheck` (`tsc --noEmit`)
+- Lint: `npm run lint` (ESLint and Prettier)
 - Build: `npm run build`
 - Dev server (watch mode): `npm run dev`
 - One-time bot OAuth: `npm run auth`
@@ -52,16 +53,23 @@ src/core/permissions.ts    badges -> roles; allow-list check
 src/core/eventBus.ts       typed event bus (errors isolated per handler)
 src/core/commands.ts       command registry: prefix match + permission gate
 src/core/context.ts        builds the BotContext handed to each plugin
+src/core/configField.ts    validates plugin config fields with safe fallbacks
 src/core/pluginManager.ts  discover / import / validate / init plugins
 src/core/auth.ts           RefreshingAuthProvider + token persistence
 src/core/twitch.ts         EventSub WS + Helix sender (the only @twurple code)
+src/core/metrics.ts        in-process operational counters
+src/core/alerts.ts         structured operational alert logging
+src/core/healthServer.ts   /healthz and /readyz HTTP endpoints
 src/plugins/ping/          !ping -> pong!
 src/plugins/wentlive/      stream.online -> announcement
 src/plugins/streak/        !checkin / !streak / admin commands, live-gated
 src/plugins/followage/     !followage - Helix follower lookup
 src/plugins/lurk/          !lurk / !unlurk
 src/plugins/shoutout/      !so / !shoutout - Helix user lookup + native shoutout
+src/plugins/announce/      raid / subscribe / cheer announcements
 src/plugins/funfact/       !addfunfact / !funfact - curated fact pool on disk
+src/plugins/quotes/        !addquote / !quote - curated quote pool on disk
+src/plugins/loyalty/       !wallet / !economy - passive chat-activity currency
 src/plugins/nowplaying/    !nowplaying - polls a local DJ overlay server
 src/tools/authFlow.ts      one-time OAuth to mint the bot's initial token
 src/tools/checkTokens.ts   reports missing/under-scoped token stores
@@ -84,7 +92,7 @@ implementation detail confined to `src/core/twitch.ts`.
 - ESM only: no `require`, use `.js` extensions in relative imports (NodeNext).
 - Config is split: secrets in `.env` (`.env.example` documents required
   vars), everything else in `config.yaml` (zod-validated in `src/core/config.ts`).
-- `@twurple/*` packages are pinned to `^7.2.0` across `api`, `auth`, and
+- `@twurple/*` packages are pinned to `8.1.4` across `api`, `auth`, and
   `eventsub-ws`; keep them in lockstep.
 - A broken plugin is logged and skipped by `pluginManager`, never crashes
   the bot; preserve that isolation when touching plugin loading.
