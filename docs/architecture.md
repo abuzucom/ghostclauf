@@ -71,6 +71,14 @@ order, stops the transport, and closes the health server. Plugin disposal calls
 `ctx.drain()` before flushing stores. This prevents asynchronous event handlers
 from writing after the final flush.
 
+## Public Site Export
+
+`src/tools/exportPublicSite.ts` reads configured local stores on a trusted host
+and writes the fixed `site/data/public.json` artifact. Its snapshot builder
+allowlists public fields before serialization. GitHub Pages deploys only
+`site/`; it never receives the private `data/` directory, configuration, or
+token stores.
+
 ## Operational Signals
 
 `GET /healthz` reports whether the HTTP server is listening. `GET /readyz`

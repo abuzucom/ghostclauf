@@ -21,6 +21,7 @@ no vendored code.
 - [Quotes (`quotes`)](#quotes-quotes-plugin)
 - [Loyalty (`loyalty`)](#loyalty-loyalty-plugin)
 - [Now playing (`nowplaying`)](#now-playing-nowplaying-plugin)
+- [Public site](#public-site)
 - [How it talks to Twitch](#how-it-talks-to-twitch)
 - [Architecture](#architecture)
 - [Developer documentation](#developer-documentation)
@@ -59,6 +60,15 @@ no vendored code.
   activity while live; `!wallet` / `!economy` (see below).
 - **Now playing**: `!nowplaying` reports the track(s) currently on air from a
   local DJ overlay server (see below).
+
+## Public Site
+
+The static GitHub Pages site at `ghost.clauf.org` publishes a reviewed snapshot
+of public fun facts, quotes, and esports dollars leaderboard data. Run
+`./publish-site.sh` on Linux or macOS, or double-click `publish-site.bat` on
+Windows, on the trusted bot host. The script exports and validates the snapshot.
+Review the output before committing it. See [`docs/public-site.md`](docs/public-site.md)
+for the public data boundary and publishing procedure.
 
 `ping` and `wentlive` are the reference examples for writing your own
 (`src/plugins/ping`, `src/plugins/wentlive`); `src/plugins/streak` is the

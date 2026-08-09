@@ -45,6 +45,19 @@ store that cannot validate data should fail safely instead of overwriting it.
 Keep the health server loopback-only unless an authenticated reverse proxy
 provides the required access controls.
 
+## Public Site
+
+Run `./publish-site.sh` on Linux or macOS, or `publish-site.bat` on Windows,
+only on a host that can read the private plugin stores. The script exports,
+lints, and validates the snapshot. Review `site/data/public.json` before
+committing it. The export is manual and static, not real time.
+
+GitHub Pages deploys only `site/` to `ghost.clauf.org`. Keep `data/`, token
+stores, configuration files, journals, backups, and logs out of that artifact.
+To remove public content, remove it from the private source, export again, and
+publish the new snapshot. Roll back an unwanted deployment by reverting its
+site commit.
+
 ## Incident Response
 
 If a secret or token is exposed, revoke or rotate it first. Reauthorize the

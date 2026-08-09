@@ -60,6 +60,20 @@ The primary assets are:
 Tokens and secrets are credentials. They must never be committed, pasted into
 public issues, or included in logs, bug reports, screenshots, or crash dumps.
 
+## Public Site Boundary
+
+The GitHub Pages artifact is limited to `site/`. The public export allowlists
+fact text, quote text and speakers, plus leaderboard display names and balances.
+It excludes store keys, Twitch IDs, curator identities, timestamps, grants,
+redemptions, journals, configuration, backups, and credentials. Review the
+generated snapshot before publishing because public display names remain
+personal data.
+
+Client rendering uses text nodes rather than HTML interpolation. Search uses
+literal string matching, so search input is not converted into executable
+patterns. GitHub Pages is public infrastructure. Treat every deployed artifact
+as publicly readable and remove sensitive content through a new deployment.
+
 ## Defense Posture
 
 ### Credentials and OAuth
