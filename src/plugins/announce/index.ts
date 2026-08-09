@@ -18,6 +18,7 @@
 // from starting (see README).
 
 import { z } from 'zod';
+import { resolveConfigField } from '../../core/configField.js';
 import type {
     BotContext,
     CheerEvent,
@@ -81,23 +82,6 @@ const CONFIG_FIELD_SCHEMAS = {
     minBits: z.number().int().min(0).max(MAX_MIN_BITS),
 } as const;
 
-/** Validate one config field, warning and falling back when it is invalid. */
-function resolveField<K extends keyof typeof CONFIG_FIELD_SCHEMAS>(
-    field: K,
-    configured: unknown,
-    fallback: z.infer<(typeof CONFIG_FIELD_SCHEMAS)[K]>,
-    logger: BotContext['logger'],
-): z.infer<(typeof CONFIG_FIELD_SCHEMAS)[K]> {
-    if (configured === undefined) return fallback;
-    const result = CONFIG_FIELD_SCHEMAS[field].safeParse(configured);
-    if (result.success) return result.data;
-    logger.warn(
-        { field, configured, issues: result.error.issues },
-        'invalid announce config value; falling back to default',
-    );
-    return fallback;
-}
-
 function resolveEventConfig(
     raw: unknown,
     defaultTemplate: string,
@@ -105,8 +89,22 @@ function resolveEventConfig(
 ): EventConfig {
     const block = (raw ?? {}) as Record<string, unknown>;
     return {
-        enabled: resolveField('enabled', block.enabled, true, logger),
-        template: resolveField('template', block.template, defaultTemplate, logger),
+        enabled: resolveConfigField(
+            'announce',
+            'enabled',
+            CONFIG_FIELD_SCHEMAS.enabled,
+            block.enabled,
+            true,
+            logger,
+        ),
+        template: resolveConfigField(
+            'announce',
+            'template',
+            CONFIG_FIELD_SCHEMAS.template,
+            block.template,
+            defaultTemplate,
+            logger,
+        ),
     };
 }
 
@@ -190,8 +188,10 @@ export function createAnnouncePlugin(): Plugin {
             );
             const cheer = resolveEventConfig(config.cheer, DEFAULT_CHEER_TEMPLATE, ctx.logger);
             const cheerBlock = (config.cheer ?? {}) as Record<string, unknown>;
-            const minBits = resolveField(
+            const minBits = resolveConfigField(
+                'announce',
                 'minBits',
+                CONFIG_FIELD_SCHEMAS.minBits,
                 cheerBlock.minBits,
                 DEFAULT_MIN_BITS,
                 ctx.logger,

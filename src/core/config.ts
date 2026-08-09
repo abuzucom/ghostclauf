@@ -41,7 +41,7 @@ const RawFileConfigSchema = z
                 // names (legacy allow-list behavior); `disabled` is ignored then.
                 enabled: z.array(z.string()).optional(),
                 disabled: z.array(z.string()).default([]),
-                config: z.record(z.record(z.unknown())).default({}),
+                config: z.record(z.string(), z.record(z.string(), z.unknown())).default({}),
             })
             .default({ directories: ['./dist/plugins'], disabled: [], config: {} }),
     })

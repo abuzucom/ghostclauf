@@ -1,0 +1,10 @@
+broadcaster:
+  login: nested_streamer
+bot:
+  login: nested_bot
+plugins:
+  config:
+    announce:
+      minBits: 100
+      cheer:
+        enabled: true

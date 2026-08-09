@@ -8,6 +8,7 @@
 
 import { DateTime, Duration } from 'luxon';
 import { z } from 'zod';
+import { resolveConfigField } from '../../core/configField.js';
 import type { BotContext, ChatCommandEvent, Plugin } from '../../core/types.js';
 import { CooldownGate } from '../../core/cooldown.js';
 import { parseLogin } from '../../core/logins.js';
@@ -50,23 +51,6 @@ const CONFIG_FIELD_SCHEMAS = {
     cooldownSeconds: z.number().int().min(0).max(MAX_COOLDOWN_SECONDS),
     leaderboardSize: z.number().int().min(1).max(MAX_LEADERBOARD_SIZE),
 } as const;
-
-/** Validate one config field, warning and falling back when it is invalid. */
-function resolveField<K extends keyof typeof CONFIG_FIELD_SCHEMAS>(
-    field: K,
-    configured: unknown,
-    fallback: z.infer<(typeof CONFIG_FIELD_SCHEMAS)[K]>,
-    logger: BotContext['logger'],
-): z.infer<(typeof CONFIG_FIELD_SCHEMAS)[K]> {
-    if (configured === undefined) return fallback;
-    const result = CONFIG_FIELD_SCHEMAS[field].safeParse(configured);
-    if (result.success) return result.data;
-    logger.warn(
-        { field, configured, issues: result.error.issues },
-        'invalid loyalty config value; falling back to default',
-    );
-    return fallback;
-}
 
 interface LoyaltyRuntime {
     store: LoyaltyStore;
@@ -286,8 +270,10 @@ export function createLoyaltyPlugin(now: () => DateTime = () => DateTime.utc()):
         version: '1.0.0',
         async init(ctx: BotContext): Promise<void> {
             const config = ctx.config ?? {};
-            const dataPath = resolveField(
+            const dataPath = resolveConfigField(
+                'loyalty',
                 'dataPath',
+                CONFIG_FIELD_SCHEMAS.dataPath,
                 config.dataPath,
                 DEFAULT_DATA_PATH,
                 ctx.logger,
@@ -295,38 +281,50 @@ export function createLoyaltyPlugin(now: () => DateTime = () => DateTime.utc()):
             store = new LoyaltyStore(dataPath, ctx.logger);
             await store.load();
 
-            const currencyName = resolveField(
+            const currencyName = resolveConfigField(
+                'loyalty',
                 'currencyName',
+                CONFIG_FIELD_SCHEMAS.currencyName,
                 config.currencyName,
                 DEFAULT_CURRENCY_NAME,
                 ctx.logger,
             );
-            const shareAcrossChannels = resolveField(
+            const shareAcrossChannels = resolveConfigField(
+                'loyalty',
                 'shareAcrossChannels',
+                CONFIG_FIELD_SCHEMAS.shareAcrossChannels,
                 config.shareAcrossChannels,
                 true,
                 ctx.logger,
             );
-            const dollarsPerTick = resolveField(
+            const dollarsPerTick = resolveConfigField(
+                'loyalty',
                 'dollarsPerTick',
+                CONFIG_FIELD_SCHEMAS.dollarsPerTick,
                 config.dollarsPerTick,
                 DEFAULT_DOLLARS_PER_TICK,
                 ctx.logger,
             );
-            const tickIntervalMinutes = resolveField(
+            const tickIntervalMinutes = resolveConfigField(
+                'loyalty',
                 'tickIntervalMinutes',
+                CONFIG_FIELD_SCHEMAS.tickIntervalMinutes,
                 config.tickIntervalMinutes,
                 DEFAULT_TICK_INTERVAL_MINUTES,
                 ctx.logger,
             );
-            const cooldownSeconds = resolveField(
+            const cooldownSeconds = resolveConfigField(
+                'loyalty',
                 'cooldownSeconds',
+                CONFIG_FIELD_SCHEMAS.cooldownSeconds,
                 config.cooldownSeconds,
                 DEFAULT_COOLDOWN_SECONDS,
                 ctx.logger,
             );
-            const leaderboardSize = resolveField(
+            const leaderboardSize = resolveConfigField(
+                'loyalty',
                 'leaderboardSize',
+                CONFIG_FIELD_SCHEMAS.leaderboardSize,
                 config.leaderboardSize,
                 DEFAULT_LEADERBOARD_SIZE,
                 ctx.logger,
