@@ -4,6 +4,7 @@ import type {
     CommandHandler,
     Logger,
     Plugin,
+    StreamOfflineEvent,
     StreamOnlineEvent,
 } from '../../core/types.js';
 import { CooldownGate } from '../../core/cooldown.js';
@@ -30,6 +31,10 @@ import type {
     StreakMessages,
     StreakTriggers,
 } from './types.js';
+
+// Streaks use either the legacy previous-stream-day rule or the pooled
+// all-broadcasters rule. The latter tracks each broadcaster session separately
+// so a viewer is penalized only after missing qualifying sessions everywhere.
 
 interface ResolvedConfig {
     dataPath: string;
@@ -305,6 +310,33 @@ async function handleOffline(
         currentSession.pendingOfflineAt = null;
         await runtime.store.setSession(scope, broadcasterId, currentSession);
     }
+}
+
+async function handleStreamOnlineEvent(runtime: Runtime, event: StreamOnlineEvent): Promise<void> {
+    if (usesBroadcasterPolicy(runtime.cfg)) {
+        await handleOnline(runtime, event);
+        return;
+    }
+    await handleLegacyOnline(runtime, event);
+}
+
+async function handleStreamOfflinePendingEvent(
+    runtime: Runtime,
+    event: StreamOfflineEvent,
+): Promise<void> {
+    await handlePendingOffline(runtime, event.broadcasterId, event.observedAt ?? runtime.now());
+}
+
+async function handleStreamOfflineEvent(
+    runtime: Runtime,
+    event: StreamOfflineEvent,
+): Promise<void> {
+    await handleOffline(
+        runtime,
+        event.broadcasterId,
+        event.observedAt ?? runtime.now(),
+        event.verified !== false,
+    );
 }
 
 function checkinHandler(runtime: Runtime): CommandHandler {
@@ -749,22 +781,11 @@ export function createStreakPlugin(now: () => Date = () => new Date()): Plugin {
                 logger: ctx.logger,
             };
             registerCommands(ctx, runtime);
-            ctx.on('streamOnline', (event) =>
-                usesBroadcasterPolicy(runtime!.cfg)
-                    ? handleOnline(runtime!, event)
-                    : handleLegacyOnline(runtime!, event),
-            );
+            ctx.on('streamOnline', (event) => handleStreamOnlineEvent(runtime!, event));
             ctx.on('streamOfflinePending', (event) =>
-                handlePendingOffline(runtime!, event.broadcasterId, event.observedAt ?? now()),
+                handleStreamOfflinePendingEvent(runtime!, event),
             );
-            ctx.on('streamOffline', (event) =>
-                handleOffline(
-                    runtime!,
-                    event.broadcasterId,
-                    event.observedAt ?? now(),
-                    event.verified !== false,
-                ),
-            );
+            ctx.on('streamOffline', (event) => handleStreamOfflineEvent(runtime!, event));
         },
         async dispose(ctx) {
             if (!runtime) return;

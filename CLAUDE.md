@@ -82,7 +82,8 @@ tables and per-plugin configuration.
 
 **Plugins never import `@twurple/*`.** They receive a `BotContext` and use
 only `ctx.command({...})`, `ctx.on(event, handler)`, `ctx.say(text, replyToId?)`,
-`ctx.config`, and `ctx.logger` (all defined in `src/core/types.ts`). This is
+`ctx.config`, `ctx.broadcasters`, `ctx.helix`, `ctx.drain()`, and `ctx.logger`
+(all defined in `src/core/types.ts`). This is
 ghostclauf's own instance of the public-API-contract rule above: treat
 `BotContext` as the stable surface and `@twurple` as an internal
 implementation detail confined to `src/core/twitch.ts`.
@@ -332,6 +333,12 @@ Good: `const avg = count ? total / count : 0` (or throw)
 
 **Function size.** Limit functions to 60 lines and 10 local variables. Split into distinct execution stages.
 
+**Function clarity.** Use descriptive verb-noun names, meaningful return types, and docstrings where purpose, inputs, side effects, or failure behavior are not self-evident.
+
+**Anonymous functions.** Keep simple forwarding and collection callbacks inline. Extract callbacks with branching, I/O, error handling, state transitions, or business rules into named functions with explicit return types.
+
+**Simplicity.** Prefer the simplest behavior-equivalent code. Use guard clauses and direct boolean returns. Remove redundant temporary values. Do not hide named business concepts behind dense expressions.
+
 **Exit nested loops.** Extract nested loops into a helper function and use `return` rather than `break`.
 
 Good:
@@ -408,6 +415,8 @@ Good: `// Initialize the color palette and serialize the behavior config`
 **Variables.** Use names that state the variable's role (`activeUserRecords`, not `d`). Loop counters (`i, j, k`) and math variables (`x, y`) are exempt.
 
 **Functions.** Use verb-noun names indicating action (`normalizeUserEmails`, not `process`). Provide return type annotations.
+
+**Documentation.** Update README, CHANGELOG, configuration examples, security guidance, and developer or operator guides when a change affects their behavior. Comments explain why, invariants, trust boundaries, side effects, or recovery behavior. Remove comments that only restate code.
 
 Bad: `function calc(a: number, b: number) { return a * b * 0.0825; }`
 
