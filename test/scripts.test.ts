@@ -18,7 +18,7 @@ async function gitIndexMode(fileName: string): Promise<string> {
     return stdout.trim().split(' ')[0] ?? '';
 }
 
-describe.each(['setup.sh', 'run.sh'])('shell script %s', (fileName) => {
+describe.each(['setup.sh', 'run.sh', 'publish-site.sh'])('shell script %s', (fileName) => {
     const path = join(rootDir, fileName);
 
     it('exists with LF line endings and a POSIX shebang', async () => {
@@ -45,5 +45,26 @@ describe.each(['setup.sh', 'run.sh'])('shell script %s', (fileName) => {
         if (process.platform === 'win32') return;
         const stats = await stat(path);
         expect(stats.mode & 0o111).toBeGreaterThan(0);
+    });
+});
+
+describe('public-site scripts', () => {
+    it('exports and validates the public snapshot before publishing', async () => {
+        const shellScript = await readFile(join(rootDir, 'publish-site.sh'), 'utf8');
+        const batchScript = await readFile(join(rootDir, 'publish-site.bat'), 'utf8');
+
+        expect(shellScript.startsWith('#!/bin/sh')).toBe(true);
+        expect(shellScript).not.toContain('\r\n');
+        if (process.platform !== 'win32') {
+            await expect(
+                execFileAsync('bash', ['-n', join(rootDir, 'publish-site.sh')]),
+            ).resolves.not.toThrow();
+        }
+        for (const command of ['npm run export:public', 'npm run lint:site']) {
+            expect(shellScript).toContain(command);
+            expect(batchScript).toContain(command);
+        }
+        expect(shellScript).toContain('scripts/check_public_site.py');
+        expect(batchScript).toContain('scripts\\check_public_site.py');
     });
 });
