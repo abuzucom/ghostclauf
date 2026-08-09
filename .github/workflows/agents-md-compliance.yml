@@ -16,7 +16,7 @@ jobs:
         if: github.event_name == 'pull_request'
         runs-on: ubuntu-latest
         steps:
-            - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+            - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
               with:
                   persist-credentials: false
                   fetch-depth: 0
@@ -27,20 +27,26 @@ jobs:
                     --head "${{ github.event.pull_request.head.sha }}"
 
     branch-name:
-        if: github.event_name == 'pull_request'
+        # dependabot's branch names (dependabot/npm_and_yarn/...) never match
+        # the human <type>/<kebab-description> convention; skip rather than
+        # fail bot PRs on a check they cannot satisfy.
+        if: github.event_name == 'pull_request' && github.actor != 'dependabot[bot]'
         runs-on: ubuntu-latest
         steps:
-            - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+            - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
               with:
                   persist-credentials: false
             - name: Check branch name
               run: python3 scripts/check_branch_name.py
 
     commit-message:
-        if: github.event_name == 'pull_request'
+        # dependabot's generated subjects (chore(deps): bump x from a to b)
+        # never match the type: description convention; skip rather than
+        # fail bot PRs on a check they cannot satisfy.
+        if: github.event_name == 'pull_request' && github.actor != 'dependabot[bot]'
         runs-on: ubuntu-latest
         steps:
-            - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+            - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
               with:
                   persist-credentials: false
                   fetch-depth: 0
@@ -53,7 +59,7 @@ jobs:
     static-checks:
         runs-on: ubuntu-latest
         steps:
-            - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+            - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
               with:
                   persist-credentials: false
             - name: Check persist-credentials on checkout steps
