@@ -14,6 +14,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Normalized README and changelog prose to the repository's ASCII and American
   English style rules. Added blocking documentation checks to the Makefile,
   pre-commit configuration, and compliance workflow.
+- Updated the commit-message checker to skip generated merge commits while
+  continuing to validate ordinary commit subjects.
 
 - Migrated `zod` 3.25.76 -> 4.4.3 (previously deferred from PR #67, which
   broke typecheck). Two breaks, both fixed: `src/core/config.ts`'s

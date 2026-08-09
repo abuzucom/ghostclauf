@@ -258,16 +258,16 @@ quotes. See the `quotes:` block in [`config.example.yaml`](config.example.yaml).
 Viewers passively earn a configurable currency (`esports dollars` by default) for
 being active in chat while the channel is live.
 
-| Command        | Who         | Effect                                                                      |
-| -------------- | ----------- | --------------------------------------------------------------------------- |
-| `!wallet`      | everyone    | Report your balance.                                                        |
-| `!economy`     | everyone    | Show the top `leaderboardSize` balances (default 5).                        |
+| Command        | Who         | Effect                                                                     |
+| -------------- | ----------- | -------------------------------------------------------------------------- |
+| `!wallet`      | everyone    | Report your balance.                                                       |
+| `!economy`     | everyone    | Show the top `leaderboardSize` balances (default 5).                       |
 | `!setESD`      | broadcaster | `!setESD @user <amount>`: set a viewer's balance exactly.                  |
 | `!giveESD`     | broadcaster | `!giveESD @user <amount>`: add to a viewer's balance.                      |
 | `!takeESD`     | broadcaster | `!takeESD @user <amount>`: subtract from a viewer's balance, clamped at 0. |
-| `!undosetESD`  | broadcaster | Reverse a viewer's most recent `!setESD`.                                   |
-| `!undogiveESD` | broadcaster | Reverse a viewer's most recent `!giveESD`.                                  |
-| `!undotakeESD` | broadcaster | Reverse a viewer's most recent `!takeESD`.                                  |
+| `!undosetESD`  | broadcaster | Reverse a viewer's most recent `!setESD`.                                  |
+| `!undogiveESD` | broadcaster | Reverse a viewer's most recent `!giveESD`.                                 |
+| `!undotakeESD` | broadcaster | Reverse a viewer's most recent `!takeESD`.                                 |
 
 **Earning is a chat-activity proxy, not real Twitch watch-time.** Every
 `tickIntervalMinutes` (default 5), each chatter who sent at least one chat
@@ -655,18 +655,18 @@ before a commit or push. `make agents-lint` runs the locally applicable
 checks in one pass. Banned-agent and commit-message checks require a PR
 commit range and run only in their PR jobs.
 
-| Script                         | Backs                                               | Exit code                          |
-| ------------------------------ | --------------------------------------------------- | ---------------------------------- |
-| `check_banned_agents.py`       | Banned agents                                       | 1, blocking (PRs only)             |
-| `check_branch_name.py`         | Branch naming                                       | 1, blocking                        |
-| `check_commit_message.py`      | Commit-message style                                | 1, blocking (PRs only)             |
-| `check_persist_credentials.py` | Rule 11                                             | 1, blocking                        |
-| `check_weak_hashing.py`        | Rule 7                                              | 1, blocking                        |
-| `check_dockerfile_root.py`     | Rule 12                                             | 1, blocking                        |
-| `check_secrets_heuristic.py`   | Rule 8 (heuristic, not entropy-based)               | 1, blocking                        |
-| `check_ascii.py`               | No run-on sentences/dashes; No non-ASCII characters | 1, blocking                        |
-| `check_us_spelling.py`         | American spelling                                   | 0, warning only                    |
-| `check_english_only.py`        | English only                                        | 0, warning only                    |
+| Script                         | Backs                                               | Exit code              |
+| ------------------------------ | --------------------------------------------------- | ---------------------- |
+| `check_banned_agents.py`       | Banned agents                                       | 1, blocking (PRs only) |
+| `check_branch_name.py`         | Branch naming                                       | 1, blocking            |
+| `check_commit_message.py`      | Commit-message style                                | 1, blocking (PRs only) |
+| `check_persist_credentials.py` | Rule 11                                             | 1, blocking            |
+| `check_weak_hashing.py`        | Rule 7                                              | 1, blocking            |
+| `check_dockerfile_root.py`     | Rule 12                                             | 1, blocking            |
+| `check_secrets_heuristic.py`   | Rule 8 (heuristic, not entropy-based)               | 1, blocking            |
+| `check_ascii.py`               | No run-on sentences/dashes; No non-ASCII characters | 1, blocking            |
+| `check_us_spelling.py`         | American spelling                                   | 0, warning only        |
+| `check_english_only.py`        | English only                                        | 0, warning only        |
 
 `check_banned_agents.py` cannot catch an agent committing under a human's
 own git identity with no `Co-authored-by` trailer; pair it with
