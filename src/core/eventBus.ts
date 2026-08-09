@@ -21,17 +21,9 @@ export class EventBus {
     }
 
     on<E extends keyof BotEvents>(event: E, handler: EventHandler<E>): void {
-        this.emitter.on(event, (payload: BotEvents[E]) => {
-            const p: Promise<void> = Promise.resolve()
-                .then(() => handler(payload))
-                .catch((err: unknown) => {
-                    this.logger.error({ err, event }, 'event handler threw');
-                })
-                .finally(() => {
-                    this.inflight.delete(p);
-                });
-            this.inflight.add(p);
-        });
+        this.emitter.on(event, (payload: BotEvents[E]) =>
+            this.trackHandlerInvocation(event, handler, payload),
+        );
     }
 
     emit<E extends keyof BotEvents>(event: E, payload: BotEvents[E]): void {
@@ -44,5 +36,26 @@ export class EventBus {
      */
     async drain(): Promise<void> {
         await Promise.allSettled([...this.inflight]);
+    }
+
+    /**
+     * Invoke one plugin handler without allowing its failure to affect other
+     * listeners. Add the promise before it settles so drain() includes writes
+     * already started when shutdown begins.
+     */
+    private trackHandlerInvocation<E extends keyof BotEvents>(
+        event: E,
+        handler: EventHandler<E>,
+        payload: BotEvents[E],
+    ): void {
+        const invocation: Promise<void> = Promise.resolve()
+            .then(() => handler(payload))
+            .catch((error: unknown) => {
+                this.logger.error({ err: error, event }, 'event handler threw');
+            })
+            .finally(() => {
+                this.inflight.delete(invocation);
+            });
+        this.inflight.add(invocation);
     }
 }

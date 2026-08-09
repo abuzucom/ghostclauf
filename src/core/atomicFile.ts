@@ -47,6 +47,11 @@ async function renameWithRetry(from: string, to: string): Promise<void> {
     }
 }
 
+/**
+ * Persist one JSON document through atomic replacement. A single owning store
+ * must serialize write calls; this class protects file replacement, not the
+ * store's read-modify-write lifecycle.
+ */
 export class AtomicJsonFile {
     private writeSeq = 0;
     private hasPersisted = false;

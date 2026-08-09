@@ -92,16 +92,25 @@ export class PluginManager {
         let entries: string[];
         try {
             entries = await readdir(dir);
-        } catch {
-            logger.debug({ dir }, 'plugin directory not present, skipping');
+        } catch (error) {
+            if (isMissingPath(error)) {
+                logger.debug({ dir }, 'plugin directory not present, skipping');
+                return [];
+            }
+            logger.error({ err: error, dir }, 'could not read plugin directory, skipping');
             return [];
         }
 
         const candidates: string[] = [];
         for (const entry of entries) {
             const full = join(dir, entry);
-            const info = await stat(full).catch(() => null);
-            if (!info) continue;
+            let info;
+            try {
+                info = await stat(full);
+            } catch (error) {
+                logger.warn({ err: error, path: full }, 'could not inspect plugin entry, skipping');
+                continue;
+            }
             if (info.isDirectory()) {
                 const index = join(full, 'index.js');
                 if (await this.exists(index)) candidates.push(index);
@@ -158,7 +167,15 @@ export class PluginManager {
     }
 
     private async exists(path: string): Promise<boolean> {
-        return (await stat(path).catch(() => null)) !== null;
+        try {
+            await stat(path);
+            return true;
+        } catch (error) {
+            if (!isMissingPath(error)) {
+                this.deps.logger.warn({ err: error, path }, 'could not inspect plugin module');
+            }
+            return false;
+        }
     }
 
     /** Dispose all loaded plugins in reverse order. Errors are logged, not thrown. */
@@ -174,6 +191,15 @@ export class PluginManager {
             }
         }
     }
+}
+
+function isMissingPath(error: unknown): boolean {
+    return (
+        typeof error === 'object' &&
+        error !== null &&
+        'code' in error &&
+        (error as { code?: unknown }).code === 'ENOENT'
+    );
 }
 
 function assertPlugin(value: unknown, source: string): Plugin {

@@ -62,6 +62,18 @@ export interface TwitchTransport {
 }
 
 /**
+ * An offline notification held until Helix confirms the channel state. `active`
+ * identifies the stream that produced the notification. `attempts` bounds the
+ * confirmation retry so an API outage cannot leave the state pending forever.
+ */
+interface PendingOfflineConfirmation {
+    event: StreamOfflineEvent;
+    active: StreamOnlineEvent;
+    timer: NodeJS.Timeout;
+    attempts: number;
+}
+
+/**
  * The Twitch transport: the single place that touches twurple. It resolves the
  * broadcaster, opens one EventSub WebSocket for both chat and stream events,
  * normalizes them into transport-agnostic shapes, and exposes a `sender` that
@@ -109,15 +121,7 @@ export async function createTwitchTransport(
     const listener = new EventSubWsListener({ apiClient: api });
     const rateLimiter = new ChatRateLimiter();
     const activeStreams = new Map<string, StreamOnlineEvent>();
-    const pendingOffline = new Map<
-        string,
-        {
-            event: StreamOfflineEvent;
-            active: StreamOnlineEvent;
-            timer: NodeJS.Timeout;
-            attempts: number;
-        }
-    >();
+    const pendingOffline = new Map<string, PendingOfflineConfirmation>();
     const disconnectedUsers = new Set<string>();
     const revokedUserIds = new Set<string>();
     const offlineConfirmationMs = opts.offlineConfirmationMs ?? 60_000;
@@ -157,6 +161,11 @@ export async function createTwitchTransport(
         );
     });
 
+    /**
+     * Reconcile an online notification with pending offline confirmation before
+     * publishing it. This prevents a transient offline signal from closing the
+     * same stream, while a different stream closes the old one first.
+     */
     const emitStreamOnline = (event: StreamOnlineEvent): void => {
         const pending = pendingOffline.get(event.broadcasterId);
         if (pending) {
@@ -195,6 +204,7 @@ export async function createTwitchTransport(
         void handlers.onStreamOnline({ ...event, recovered: true });
     };
 
+    /** Confirm an offline notification through Helix before stateful plugins act on it. */
     const confirmOffline = async (broadcasterId: string): Promise<void> => {
         const pending = pendingOffline.get(broadcasterId);
         if (!pending) return;

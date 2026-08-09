@@ -2,14 +2,14 @@ import { z } from 'zod';
 import type { BotContext } from './types.js';
 
 /** Validate one config field against `schema`, warning and falling back when invalid. */
-export function resolveConfigField<S extends z.ZodTypeAny>(
+export function resolveConfigField<T>(
     pluginName: string,
     field: string,
-    schema: S,
+    schema: z.ZodType<T>,
     configured: unknown,
-    fallback: z.infer<S>,
+    fallback: T,
     logger: BotContext['logger'],
-): z.infer<S> {
+): T {
     if (configured === undefined) return fallback;
     const result = schema.safeParse(configured);
     if (result.success) return result.data;
