@@ -7,6 +7,7 @@
 // then narrows to broadcasters plus the configured cross-channel curators.
 
 import { z } from 'zod';
+import { resolveConfigField } from '../../core/configField.js';
 import type { BotContext, ChatCommandEvent, Plugin } from '../../core/types.js';
 import { CooldownGate } from '../../core/cooldown.js';
 import { LOGIN_PATTERN } from '../../core/logins.js';
@@ -83,23 +84,6 @@ const CONFIG_FIELD_SCHEMAS = {
         z.array(z.string().regex(LOGIN_ARGUMENT_PATTERN)).max(MAX_CURATORS_PER_CHANNEL),
     ),
 } as const;
-
-/** Validate one config field, warning and falling back when it is invalid. */
-function resolveField<K extends keyof typeof CONFIG_FIELD_SCHEMAS>(
-    field: K,
-    configured: unknown,
-    fallback: z.infer<(typeof CONFIG_FIELD_SCHEMAS)[K]>,
-    logger: BotContext['logger'],
-): z.infer<(typeof CONFIG_FIELD_SCHEMAS)[K]> {
-    if (configured === undefined) return fallback;
-    const result = CONFIG_FIELD_SCHEMAS[field].safeParse(configured);
-    if (result.success) return result.data;
-    logger.warn(
-        { field, configured, issues: result.error.issues },
-        'invalid quotes config value; falling back to default',
-    );
-    return fallback;
-}
 
 /** Shared state handed to each command binding. */
 interface QuotesRuntime {
@@ -241,16 +225,20 @@ export function createQuotesPlugin(
         version: '1.0.0',
         async init(ctx: BotContext): Promise<void> {
             const config = ctx.config ?? {};
-            const dataPath = resolveField(
+            const dataPath = resolveConfigField(
+                'quotes',
                 'dataPath',
+                CONFIG_FIELD_SCHEMAS.dataPath,
                 config.dataPath,
                 DEFAULT_DATA_PATH,
                 ctx.logger,
             );
             store = new QuoteStore(dataPath, ctx.logger);
             await store.load();
-            const cooldownSeconds = resolveField(
+            const cooldownSeconds = resolveConfigField(
+                'quotes',
                 'cooldownSeconds',
+                CONFIG_FIELD_SCHEMAS.cooldownSeconds,
                 config.cooldownSeconds,
                 DEFAULT_COOLDOWN_SECONDS,
                 ctx.logger,
@@ -259,10 +247,19 @@ export function createQuotesPlugin(
                 store,
                 cooldown: new CooldownGate(cooldownSeconds * MS_PER_SECOND),
                 elevationMap: buildElevationMap(
-                    resolveField('treatAsBroadcaster', config.treatAsBroadcaster, {}, ctx.logger),
+                    resolveConfigField(
+                        'quotes',
+                        'treatAsBroadcaster',
+                        CONFIG_FIELD_SCHEMAS.treatAsBroadcaster,
+                        config.treatAsBroadcaster,
+                        {},
+                        ctx.logger,
+                    ),
                 ),
-                shareAcrossChannels: resolveField(
+                shareAcrossChannels: resolveConfigField(
+                    'quotes',
                     'shareAcrossChannels',
+                    CONFIG_FIELD_SCHEMAS.shareAcrossChannels,
                     config.shareAcrossChannels,
                     true,
                     ctx.logger,
