@@ -1,4 +1,4 @@
-.PHONY: sync check agents-lint
+.PHONY: sync check docs-lint agents-lint
 
 sync:
 	python scripts/sync.py
@@ -6,10 +6,16 @@ sync:
 check:
 	python scripts/sync.py --check
 
+docs-lint:
+	python scripts/check_ascii.py README.md CHANGELOG.md security.md
+	python scripts/check_us_spelling.py README.md CHANGELOG.md security.md
+	python scripts/check_english_only.py README.md CHANGELOG.md security.md
+
 agents-lint:
 	python scripts/check_ascii.py AGENTS.md
 	python scripts/check_us_spelling.py AGENTS.md
 	python scripts/check_english_only.py AGENTS.md
+	$(MAKE) docs-lint
 	python scripts/check_branch_name.py
 	python scripts/check_persist_credentials.py .github/workflows/*.yml
 	python scripts/check_weak_hashing.py $(shell find src test scripts hooks -name '*.ts' -o -name '*.py')

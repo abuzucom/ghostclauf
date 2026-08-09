@@ -1,12 +1,13 @@
 # ghostclauf
 
 A lightweight, highly extensible chat bot. Its first deployment target is
-**Twitch chat**, but the extensibility layer is transport-agnostic — behaviours
+**Twitch chat**, but the extensibility layer is transport-agnostic; behaviors
 are added as drop-in **plugins**, not hard-coded against Twitch.
 
 The design borrows the _spirit_ of [eggdrop](https://github.com/eggheads/eggdrop)
 (event bindings + modules) and [ub3r-b0t](https://github.com/moiph/ub3r-b0t)
-(clean multi-command structure), but is written fresh — no fork, no vendored code.
+(clean multi-command structure), but is written fresh. It is not a fork and has
+no vendored code.
 
 ## Contents
 
@@ -35,27 +36,27 @@ The design borrows the _spirit_ of [eggdrop](https://github.com/eggheads/eggdrop
 
 ## Features (v1)
 
-- **`!ping` → `pong!`** — replies `pong!` when the **broadcaster, a moderator, a
+- **`!ping` to `pong!`**: replies `pong!` when the **broadcaster, a moderator, a
   VIP, or a subscriber** types `!ping`. Non-privileged viewers are ignored.
-- **Going-live announcement** — when the stream goes live, posts
+- **Going-live announcement**: when the stream goes live, posts
   `<streamer> has gone live at <UTC timestamp>` (template configurable).
-- **Attendance / watch streaks** — viewers `!checkin` while live to build a
+- **Attendance / watch streaks**: viewers `!checkin` while live to build a
   streak of consecutive stream days attended (see below).
-- **Follow age** - `!followage` (or `!followage @user`) replies with how long
+- **Follow age**: `!followage` (or `!followage @user`) replies with how long
   the viewer has followed the channel the command was typed in (see below).
-- **Lurk acknowledgement** — `!lurk` / `!unlurk` let viewers announce they're
+- **Lurk acknowledgement**: `!lurk` / `!unlurk` let viewers announce they are
   around without being active in chat (see below).
-- **Shoutouts** — `!so` / `!shoutout @channel` (moderators and the
+- **Shoutouts**: `!so` / `!shoutout @channel` (moderators and the
   broadcaster) plugs another streamer's channel (see below).
-- **Announcements** — posts a templated message on raid, subscribe, and
+- **Announcements**: posts a templated message on raid, subscribe, and
   cheer, each independently toggleable (see below).
-- **Fun facts** - the broadcaster curates a pool with `!addfunfact` /
+- **Fun facts**: the broadcaster curates a pool with `!addfunfact` /
   `!delfunfact`, and anyone can pull one with `!funfact` (see below).
-- **Quotes** - the broadcaster curates a pool of community quotes with
+- **Quotes**: the broadcaster curates a pool of community quotes with
   `!addquote` / `!delquote`, and anyone can pull one with `!quote` (see below).
-- **Loyalty** - viewers passively earn a configurable currency for chat
+- **Loyalty**: viewers passively earn a configurable currency for chat
   activity while live; `!wallet` / `!economy` (see below).
-- **Now playing** — `!nowplaying` reports the track(s) currently on air from a
+- **Now playing**: `!nowplaying` reports the track(s) currently on air from a
   local DJ overlay server (see below).
 
 `ping` and `wentlive` are the reference examples for writing your own
@@ -104,8 +105,8 @@ Commands (trigger words configurable):
 **Pooled channels share one administrative trust boundary.** With
 `shareAcrossChannels: true` (the default) the admin commands above act on the
 shared pool, so the broadcaster of _any_ configured channel can reset, set,
-repair, or undo streaks that every pooled channel sees. This is intended - the
-pool exists for one streamer's own channels - so only pool broadcasters you
+repair, or undo streaks that every pooled channel sees. This is intended:
+the pool exists for one streamer's own channels. Only pool broadcasters you
 trust equally. Set `shareAcrossChannels: false` to give each channel its own
 independent streaks and its own administrators.
 
@@ -132,7 +133,7 @@ API budget. Set `0` to disable.
 
 The lookup uses the Helix _Get Channel Followers_ endpoint, which requires the
 **broadcaster's** token to carry the `moderator:read:followers` scope. Tokens
-authorized before this plugin existed do not have it — re-run
+authorized before this plugin existed do not have it. Re-run
 `npm run auth -- --broadcaster <login>` once per broadcaster to grant it.
 
 ## Lurk (`lurk` plugin)
@@ -153,8 +154,8 @@ configurable. See the `lurk:` block in
 ## Shoutout (`shoutout` plugin)
 
 `!so @channel` (alias `!shoutout @channel`, moderators and the broadcaster
-only) posts a configurable plug — by default `Go check out @channel at
-twitch.tv/channel! They were last seen playing <game>.` — using the target's
+only) posts a configurable plug. The default is `Go check out @channel at
+twitch.tv/channel! They were last seen playing <game>.` The target's
 last-played category, falling back to `fallbackGame` when the channel has no
 category set.
 
@@ -180,7 +181,7 @@ template, all off the same `announce:` config block:
 Cheers below `cheer.minBits` (default 100) are not announced, to avoid chat
 spam from small cheers. Raids need no extra scope; subscribe requires
 `channel:read:subscriptions` and cheer requires `bits:read` on the
-**broadcaster's** token - re-run `npm run auth -- --broadcaster <login>` to
+**broadcaster's** token. Re-run `npm run auth -- --broadcaster <login>` to
 grant them if the broadcaster authorized before this plugin existed. A
 missing scope only disables that event's subscription (logged as a
 warning); it does not stop the bot from starting. See the `announce:` block
@@ -199,7 +200,7 @@ A curated pool of one-liners about the channel, stored on disk under `data/`.
 | `!funfactcount`      | everyone | Reports how many facts are stored.                |
 
 Curators are the broadcaster of the channel the command was typed in, plus any
-chatter listed for that channel under `treatAsBroadcaster` - the same
+chatter listed for that channel under `treatAsBroadcaster`. This is the same
 cross-channel pattern the `ping` plugin uses, so streamers who moderate each
 other's channels can curate in both. Moderators who are not listed cannot add
 or delete, and their attempts are ignored silently.
@@ -232,11 +233,11 @@ who added them.
 
 `!addquote` splits on the last `-` (space-hyphen-space) in the argument, so
 `!addquote well, actually - Tank` stores the text "well, actually" with
-speaker "Tank"; text with no `-` separator - including text that merely
-contains a hyphen with no surrounding spaces - has no speaker. Curators are
+speaker "Tank". Text with no `-` separator, including text that merely
+contains a hyphen with no surrounding spaces, has no speaker. Curators are
 the broadcaster of the channel the
 command was typed in, plus any chatter listed for that channel under
-`treatAsBroadcaster` - the same cross-channel pattern `funfact` and `ping`
+`treatAsBroadcaster`. This is the same cross-channel pattern `funfact` and `ping`
 use. Moderators who are not listed cannot add or delete, and their attempts
 are ignored silently.
 
@@ -257,22 +258,22 @@ quotes. See the `quotes:` block in [`config.example.yaml`](config.example.yaml).
 Viewers passively earn a configurable currency (`esports dollars` by default) for
 being active in chat while the channel is live.
 
-| Command        | Who         | Effect                                                                      |
-| -------------- | ----------- | --------------------------------------------------------------------------- |
-| `!wallet`      | everyone    | Report your balance.                                                        |
-| `!economy`     | everyone    | Show the top `leaderboardSize` balances (default 5).                        |
-| `!setESD`      | broadcaster | `!setESD @user <amount>` - set a viewer's balance exactly.                  |
-| `!giveESD`     | broadcaster | `!giveESD @user <amount>` - add to a viewer's balance.                      |
-| `!takeESD`     | broadcaster | `!takeESD @user <amount>` - subtract from a viewer's balance, clamped at 0. |
-| `!undosetESD`  | broadcaster | Reverse a viewer's most recent `!setESD`.                                   |
-| `!undogiveESD` | broadcaster | Reverse a viewer's most recent `!giveESD`.                                  |
-| `!undotakeESD` | broadcaster | Reverse a viewer's most recent `!takeESD`.                                  |
+| Command        | Who         | Effect                                                                     |
+| -------------- | ----------- | -------------------------------------------------------------------------- |
+| `!wallet`      | everyone    | Report your balance.                                                       |
+| `!economy`     | everyone    | Show the top `leaderboardSize` balances (default 5).                       |
+| `!setESD`      | broadcaster | `!setESD @user <amount>`: set a viewer's balance exactly.                  |
+| `!giveESD`     | broadcaster | `!giveESD @user <amount>`: add to a viewer's balance.                      |
+| `!takeESD`     | broadcaster | `!takeESD @user <amount>`: subtract from a viewer's balance, clamped at 0. |
+| `!undosetESD`  | broadcaster | Reverse a viewer's most recent `!setESD`.                                  |
+| `!undogiveESD` | broadcaster | Reverse a viewer's most recent `!giveESD`.                                 |
+| `!undotakeESD` | broadcaster | Reverse a viewer's most recent `!takeESD`.                                 |
 
 **Earning is a chat-activity proxy, not real Twitch watch-time.** Every
 `tickIntervalMinutes` (default 5), each chatter who sent at least one chat
 message since the last tick, while their channel was live, is awarded
-`dollarsPerTick` (default 1). The bot only sees chat messages - it has no
-access to the viewer list - so this measures chat participation, not
+`dollarsPerTick` (default 1). The bot only sees chat messages. It has no
+access to the viewer list, so this measures chat participation, not
 whether someone is actually watching. There is no earn command; earning is
 entirely passive. Reads (`!wallet`/`!economy`) are rate limited to one
 reply per chatter per channel every `cooldownSeconds` (default 10);
@@ -281,25 +282,26 @@ broadcasters and moderators are exempt.
 Balances are pooled across every configured broadcaster by default
 (`shareAcrossChannels: true`); set it to false to keep each channel's
 balances independent. With pooling on, a `!setESD`/`!giveESD`/`!takeESD` run
-in one channel changes the balance everywhere - the same tradeoff already
+in one channel changes the balance everywhere. This is the same tradeoff already
 documented for the `streak` plugin's shared pool. There is no
 spend/redemption yet. See the `loyalty:` block in
 [`config.example.yaml`](config.example.yaml).
 
 `!setESD`, `!giveESD`, and `!takeESD` write straight into a balance and are
-gated on the broadcaster badge alone - no secondary allowlist. **This is
+gated on the broadcaster badge alone, with no secondary allowlist. **This is
 safe only because every broadcaster configured above is assumed to be the
 operator's own channel or persona.** If a third party's channel is ever
 added to this bot's config, that broadcaster gains the ability to set
 balances in the shared pool, and a handler-level allowlist would need to be
 added.
 
-The amount argument accepts a plain decimal integer only - no arithmetic, no
+The amount argument accepts a plain decimal integer only. It supports no arithmetic,
+no
 scientific notation, no alternate bases. `!giveESD`/`!takeESD` clamp at the
 balance cap and report when they did.
 
 Each undo command reverses only the matching kind's most recent applied
-change, by delta rather than by restoring an absolute value - so
+change, by delta rather than by restoring an absolute value. Thus
 `!undogiveESD` after a `!giveESD` followed by a `!takeESD` leaves the
 `!takeESD` standing rather than discarding it. There are no refunds for
 `!redeem` (not yet implemented); `!setESD` is the correction path for any
@@ -360,11 +362,11 @@ when it ends.
 
 The bot serves two HTTP endpoints for external supervisors (systemd, Docker
 healthcheck, uptime monitors), reusing the port opened for the one-time OAuth
-callback (`AUTH_REDIRECT_URI`, default `3000` - the OAuth flow and the running
+callback (`AUTH_REDIRECT_URI`, default `3000`). The OAuth flow and the running
 bot never listen at the same time):
 
-- `GET /healthz` - always `200` once the process is listening (liveness).
-- `GET /readyz` - `200` once the EventSub transport has started and no
+- `GET /healthz`: always `200` once the process is listening (liveness).
+- `GET /readyz`: `200` once the EventSub transport has started and no
   configured broadcaster's token has been revoked, `503` otherwise
   (readiness). The response body also includes a snapshot of in-process
   counters: `eventsub_reconnects`, `eventsub_revocations`,
@@ -376,7 +378,7 @@ pipeline can alert on them without polling `/readyz`.
 
 Both endpoints bind loopback-only (`127.0.0.1`) by default, since `/readyz`'s
 metrics snapshot is operational data that should not be reachable off-box
-just because a container publishes the port - a same-host healthcheck
+just because a container publishes the port. A same-host healthcheck
 (`docker exec`, systemd) reaches loopback fine.
 
 ## Architecture
@@ -402,9 +404,9 @@ src/
     ping/               !ping -> pong!
     wentlive/           stream.online -> announcement
     streak/             !checkin / !streak / admin commands, live-gated
-    followage/          !followage - Helix follower lookup
+    followage/          !followage: Helix follower lookup
     lurk/               !lurk / !unlurk
-    shoutout/           !so / !shoutout - Helix user lookup + native shoutout
+    shoutout/           !so / !shoutout: Helix user lookup + native shoutout
     announce/           raid / subscribe / cheer -> templated announcement
     funfact/            !addfunfact / !funfact - curated fact pool on disk
     quotes/             !addquote / !quote - curated quote pool on disk
@@ -422,15 +424,15 @@ src/
 
 ## Prerequisites
 
-1. A **Twitch application** — register at
+1. A **Twitch application**: register at
    <https://dev.twitch.tv/console/apps>. Note the **Client ID** and
    **Client Secret**, and add `http://localhost:3000/callback` as a redirect URI.
 2. One or more **broadcaster accounts** whose channels the bot will monitor
-   (the examples throughout this README use two, but any number works — see
+   (the examples throughout this README use two, but any number works; see
    [Configuration](#configuration)).
 3. A **bot account** (a separate Twitch account the bot posts as).
 4. In each broadcaster's channel, make the bot a **moderator**, _or_ have the
-   broadcaster grant the `channel:bot` scope — either lets the bot post.
+   broadcaster grant the `channel:bot` scope. Either lets the bot post.
 
 The bot account authorizes these scopes: `user:read:chat`, `user:write:chat`,
 `user:bot`. Each broadcaster authorizes a user token for its EventSub
@@ -471,20 +473,20 @@ npm run auth -- --broadcaster second_streamer_login
 3. Double-click `run.bat` to start the bot.
 
 `setup.sh` / `setup.bat` does not overwrite an existing `.env` or `config.yaml`, and does
-not ask for account logins or touch OAuth — that all happens in `run.sh` / `run.bat` the
+not ask for account logins or touch OAuth. That all happens in `run.sh` / `run.bat` the
 first time it runs:
 
 - If `config.yaml` still has the `config.example.yaml` placeholder logins,
   `run.sh` / `run.bat` prompts for the real bot and broadcaster Twitch logins and saves
   them into `config.yaml` (comments and formatting preserved).
-- It then checks which of those accounts still need authorization - including
-  the bot token existing but missing a required scope (e.g. `user:write:chat`)
-    - and opens the OAuth flow for each one automatically.
+- It then checks which of those accounts still need authorization, including
+  an existing bot token that is missing a required scope such as
+  `user:write:chat`, and opens the OAuth flow for each one automatically.
 - No manual `npm run auth` commands. Once every account is configured and
   authorized, later runs skip straight to starting the bot.
 
 Every run of `run.sh` / `run.bat` also rebuilds (`npm run build`) before starting, so
-`git pull`-ing an update and running `./run.sh` (or `run.bat`) is enough - you never
+pulling an update with `git pull` and running `./run.sh` (or `run.bat`) is enough. You never
 need to manually rebuild before it picks up new code.
 
 **Authorize accounts.** Log into Twitch as the account being authorized, then run
@@ -529,7 +531,7 @@ docker compose up -d
 Both templates run `node dist/index.js` directly rather than `npm start`, so
 editing a `package.json` script cannot change what the service executes.
 
-- **Linux (Ubuntu - systemd):** Copy `scripts/ghostclauf.service` to `~/.config/systemd/user/ghostclauf.service`, update `WorkingDirectory` and `ReadWritePaths`, then enable and start it:
+- **Linux (Ubuntu, systemd):** Copy `scripts/ghostclauf.service` to `~/.config/systemd/user/ghostclauf.service`, update `WorkingDirectory` and `ReadWritePaths`, then enable and start it:
     ```bash
     systemctl --user daemon-reload
     systemctl --user enable --now ghostclauf
@@ -589,11 +591,11 @@ const plugin: Plugin = {
 export default plugin;
 ```
 
-It's enabled automatically — every plugin discovered in `plugins.directories`
+It's enabled automatically. Every plugin discovered in `plugins.directories`
 runs by default. To turn a specific plugin off, add its `name` to
 `plugins.disabled` in `config.yaml` (or set `plugins.enabled` to an explicit
 list to switch to an allow-list instead). Discovery, loading, and errors are
-isolated per-plugin — a broken plugin is logged and skipped, never crashing
+isolated per-plugin. A broken plugin is logged and skipped, never crashing
 the bot.
 
 ## Testing
@@ -606,7 +608,7 @@ npm run typecheck # tsc --noEmit
 ### Local end-to-end without going live
 
 Use the [Twitch CLI](https://dev.twitch.tv/docs/cli/) mock EventSub server to
-trigger events against a running bot — no live stream needed:
+trigger events against a running bot. No live stream is needed:
 
 ```bash
 twitch event websocket start-server
@@ -629,14 +631,14 @@ Re-run `npm run auth -- --broadcaster <login>` for that channel; `run.bat`
 also detects and prompts for this automatically via `checkTokens`.
 
 **`!so`/`!shoutout` posts the chat message but no native Twitch shoutout
-happens.** Same cause as above, but for `moderator:manage:shoutouts` — check
+happens.** Same cause as above, but for `moderator:manage:shoutouts`. Check
 the log for a `Twitch native shoutout call failed or was rate limited`
 warning, then re-authorize that broadcaster.
 
 **`!checkin` replies "check-in is not open yet."** Either the channel hasn't
 gone live yet this session (the bot needs the real `stream.online` event, or
 a broadcaster/mod running `!streakopen`), or the stream already ended
-(`stream.offline` closes check-in even if the day was already recorded — see
+(`stream.offline` closes check-in even if the day was already recorded; see
 [Attendance / watch streaks](#attendance--watch-streaks-streak-plugin)). Set
 `requireStreamDay: false` if you want check-ins to work regardless of live
 status.
@@ -649,21 +651,22 @@ the other tool-specific copies, and `make check` (or `--check`) verifies
 they are in sync. `.github/workflows/agents-sync.yml` and
 `.github/workflows/agents-md-compliance.yml` enforce the checks below in
 CI; `.pre-commit-config.yaml` runs the fast, path-scoped ones locally
-before a commit or push. `make agents-lint` runs everything below in one
-pass.
+before a commit or push. `make agents-lint` runs the locally applicable
+checks in one pass. Banned-agent and commit-message checks require a PR
+commit range and run only in their PR jobs.
 
-| Script                         | Backs                                               | Exit code                          |
-| ------------------------------ | --------------------------------------------------- | ---------------------------------- |
-| `check_banned_agents.py`       | Banned agents                                       | 1, blocking (PRs only)             |
-| `check_branch_name.py`         | Branch naming                                       | 1, blocking                        |
-| `check_commit_message.py`      | Commit-message style                                | 1, blocking (PRs only)             |
-| `check_persist_credentials.py` | Rule 11                                             | 1, blocking                        |
-| `check_weak_hashing.py`        | Rule 7                                              | 1, blocking                        |
-| `check_dockerfile_root.py`     | Rule 12                                             | 1, blocking                        |
-| `check_secrets_heuristic.py`   | Rule 8 (heuristic, not entropy-based)               | 1, blocking                        |
-| `check_ascii.py`               | No run-on sentences/dashes; No non-ASCII characters | 1, blocking (`AGENTS.md` only)     |
-| `check_us_spelling.py`         | American spelling                                   | 0, warning only (`AGENTS.md` only) |
-| `check_english_only.py`        | English only                                        | 0, warning only (`AGENTS.md` only) |
+| Script                         | Backs                                               | Exit code              |
+| ------------------------------ | --------------------------------------------------- | ---------------------- |
+| `check_banned_agents.py`       | Banned agents                                       | 1, blocking (PRs only) |
+| `check_branch_name.py`         | Branch naming                                       | 1, blocking            |
+| `check_commit_message.py`      | Commit-message style                                | 1, blocking (PRs only) |
+| `check_persist_credentials.py` | Rule 11                                             | 1, blocking            |
+| `check_weak_hashing.py`        | Rule 7                                              | 1, blocking            |
+| `check_dockerfile_root.py`     | Rule 12                                             | 1, blocking            |
+| `check_secrets_heuristic.py`   | Rule 8 (heuristic, not entropy-based)               | 1, blocking            |
+| `check_ascii.py`               | No run-on sentences/dashes; No non-ASCII characters | 1, blocking            |
+| `check_us_spelling.py`         | American spelling                                   | 0, warning only        |
+| `check_english_only.py`        | English only                                        | 0, warning only        |
 
 `check_banned_agents.py` cannot catch an agent committing under a human's
 own git identity with no `Co-authored-by` trailer; pair it with
