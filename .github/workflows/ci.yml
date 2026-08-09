@@ -38,6 +38,8 @@ jobs:
             - run: npm audit --audit-level=high
             - run: npm run typecheck
             - run: npm run lint
+            - run: npm run lint:site
+            - run: python scripts/check_public_site.py
             - run: npm test
             - run: npm run build
 

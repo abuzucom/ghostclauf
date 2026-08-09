@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Added a reviewed static GitHub Pages artifact for public fun facts, quotes,
+  and esports dollars leaderboard data. Added an allowlisted exporter, static
+  site validation, and a Pages deployment workflow for `ghost.clauf.org`.
+- Added `publish-site.sh` and `publish-site.bat` to export and validate a
+  reviewed public snapshot in one step before publishing.
+
 ### Changed
 
 - Updated all CodeQL Action SARIF uploads to v4.37.6. This removes the
