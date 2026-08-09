@@ -8,6 +8,11 @@ config.yaml
 tokens.json
 data/
 
+# The reviewed Pages snapshot is public. Keep every other site/data file ignored.
+!site/
+!site/data/
+!site/data/public.json
+
 # Editor / OS
 .DS_Store
 .vscode/
