@@ -75,6 +75,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   human-authored conventions those checks enforce, so every dependabot PR
   failed them regardless of the dependency change's own merit.
 
+### Changed
+
+- Merged the 6 open dependabot PRs whose CI was green: `dotenv` 16.6.1 ->
+  17.4.2, `pino` 9.14.0 -> 10.3.1, `@types/node` 22.20.1 -> 26.1.2, `tsx`
+  4.23.0 -> 4.23.9, `actions/checkout` v4.3.1 -> v7.0.1 (all four
+  workflows), and `actions/setup-node` v4.4.0 -> v7.0.0 (`ci.yml`). The
+  `typescript` 7.0.2 bump (PR #59) is excluded; see Fixed above.
+
 ### Security
 
 - Added `security.md` documenting the security architecture, defense posture,
