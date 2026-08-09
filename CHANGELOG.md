@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Added architecture, plugin-authoring, and operations guides. Cross-linked
+  README, configuration, and security documentation. Added targeted code
+  documentation for lifecycle, persistence, and recovery behavior.
 - Updated `AGENTS.md` and its synchronized tool copies to match the current
   lint command, dependency versions, architecture, and plugin inventory.
   Normalized README and changelog prose to the repository's ASCII and American

@@ -1,5 +1,7 @@
 # ── Ghostclauf configuration (non-secret) ────────────────────────────────────
 # Copy to config.yaml and edit. Secrets live in .env, never here.
+# See docs/operations.md before deploying. See docs/plugin-authoring.md before
+# adding an external plugin.
 
 # The channels the bot operates in. Each broadcaster needs its own OAuth token.
 broadcasters:

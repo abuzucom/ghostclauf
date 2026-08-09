@@ -10,6 +10,9 @@ plugins, and the core Twitch transport. It does not make the host operating
 system, Docker host, Twitch, third-party plugins, or configured local services
 secure by itself.
 
+See [`docs/architecture.md`](docs/architecture.md) for runtime boundaries and
+[`docs/operations.md`](docs/operations.md) for deployment and recovery steps.
+
 ## Architecture
 
 ghostclauf is a Node.js 20+ TypeScript application with an ESM runtime. The

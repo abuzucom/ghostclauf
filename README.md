@@ -23,6 +23,7 @@ no vendored code.
 - [Now playing (`nowplaying`)](#now-playing-nowplaying-plugin)
 - [How it talks to Twitch](#how-it-talks-to-twitch)
 - [Architecture](#architecture)
+- [Developer documentation](#developer-documentation)
 - [Prerequisites](#prerequisites)
 - [Setup](#setup)
 - [Run](#run)
@@ -420,7 +421,20 @@ src/
 
 **Plugins never import twurple.** They receive a `BotContext` and use only:
 `ctx.command({...})`, `ctx.on(event, handler)`, `ctx.say(text, replyToId?, broadcasterId?)`,
-`ctx.config`, and `ctx.logger`.
+`ctx.config`, `ctx.broadcasters`, `ctx.helix`, `ctx.drain()`, and `ctx.logger`.
+
+## Developer Documentation
+
+- [`docs/architecture.md`](docs/architecture.md) explains startup, events,
+  plugins, persistence, shutdown, and operational signals.
+- [`docs/plugin-authoring.md`](docs/plugin-authoring.md) explains the plugin
+  contract, configuration, persistence, lifecycle, and testing.
+- [`docs/operations.md`](docs/operations.md) explains authorization, health
+  checks, recovery, deployment, and incident response.
+
+Read the architecture guide first when reviewing the codebase. Read the plugin
+guide before adding a command or event handler. Read the operations guide before
+deploying or recovering persisted state.
 
 ## Prerequisites
 
