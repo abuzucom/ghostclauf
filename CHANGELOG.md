@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Migrated `zod` 3.25.76 -> 4.4.3 (previously deferred from PR #67, which
+  broke typecheck). Two breaks, both fixed: `src/core/config.ts`'s
+  `plugins.config` schema used v3's single-argument `z.record(valueSchema)`
+  shorthand, which v4 no longer accepts (`z.record` is now strictly
+  2-arity); switched to the explicit `z.record(z.string(), ...)` form.
+  Separately, an identical config-field-validation helper
+  (`resolveField`) was independently copy-pasted into all four plugins
+  that read their own config block (`announce`, `funfact`, `loyalty`,
+  `quotes`); v4's reworked generic inference broke its indexed-access
+  pattern (`CONFIG_FIELD_SCHEMAS[field].safeParse(...)` no longer narrows
+  to the right output type) in all four identically. Rather than patch
+  each copy, extracted a single shared `resolveConfigField` into the new
+  `src/core/configField.ts`, which takes the schema directly instead of
+  indexing a heterogeneous map by generic key (sidestepping the inference
+  break) and removes the duplication. Added a regression test
+  (`test/config.test.ts`) covering a populated, multi-level
+  `plugins.config` block, since the existing coverage only exercised the
+  empty-object default. Verified: typecheck, lint, `npm test` (572/572),
+  `npm run build`, and `npm audit --audit-level=high` all clean.
+
 ### Added
 
 - Added four GitHub code-scanning workflows, adapted from itsjustatank's

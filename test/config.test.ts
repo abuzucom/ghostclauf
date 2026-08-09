@@ -62,6 +62,16 @@ describe('loadFileConfig', () => {
         });
     });
 
+    it('preserves a populated, multi-level plugins.config block', () => {
+        const config = loadFileConfig(join(fixturesRoot, 'nested-plugin-config.yaml'));
+        expect(config.plugins.config).toEqual({
+            announce: {
+                minBits: 100,
+                cheer: { enabled: true },
+            },
+        });
+    });
+
     it('normalizes multiple broadcasters and preserves the first-channel alias', () => {
         const config = loadFileConfig(join(fixturesRoot, 'multi.yaml'));
 
