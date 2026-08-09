@@ -24,7 +24,7 @@
     "dependencies": {
         "@twurple/api": "7.4.0",
         "@twurple/auth": "7.4.0",
-        "@twurple/eventsub-ws": "7.4.0",
+        "@twurple/eventsub-ws": "8.1.4",
         "dotenv": "17.4.2",
         "luxon": "3.7.2",
         "pino": "10.3.1",
