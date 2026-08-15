@@ -2,9 +2,13 @@ name: Environment example change warning
 
 on:
     push:
+        paths:
+            - .env.example
     pull_request:
         branches:
             - main
+        paths:
+            - .env.example
 
 permissions:
     contents: read
