@@ -12,8 +12,18 @@ name: PSScriptAnalyzer
 on:
     push:
         branches: ['main']
+        paths:
+            - '**/*.ps1'
+            - '**/*.psm1'
+            - '**/*.psd1'
+            - '.github/workflows/powershell.yml'
     pull_request:
         branches: ['main']
+        paths:
+            - '**/*.ps1'
+            - '**/*.psm1'
+            - '**/*.psd1'
+            - '.github/workflows/powershell.yml'
     schedule:
         - cron: '16 11 * * 0'
 
