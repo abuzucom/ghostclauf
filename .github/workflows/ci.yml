@@ -4,15 +4,28 @@ on:
     push:
         branches:
             - main
-        paths-ignore:
-            - '**/*.md'
-            - LICENSE
+        paths: &ci-paths
+            - src/**
+            - test/**
+            - site/**
+            - scripts/**
+            - package.json
+            - package-lock.json
+            - tsconfig.json
+            - tsconfig.eslint.json
+            - eslint.config.mjs
+            - .prettierrc
+            - .prettierignore
+            - .htmlvalidate.json
+            - .stylelintrc.json
+            - config.example.yaml
+            - Dockerfile
+            - .dockerignore
+            - .github/workflows/ci.yml
     pull_request:
         branches:
             - main
-        paths-ignore:
-            - '**/*.md'
-            - LICENSE
+        paths: *ci-paths
 
 concurrency:
     group: ci-${{ github.workflow }}-${{ github.ref }}
