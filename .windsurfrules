@@ -116,6 +116,12 @@ implementation detail confined to `src/core/twitch.ts`.
 - Twitch/EventSub specifics: `src/core/twitch.ts`
 - Permission model: `src/core/permissions.ts`
 
+## Handoff
+
+Per-session status and next steps: `plan/HANDOFF.md.example`. Fill it, drop
+the `.example` suffix, and delete its instructional comment before
+committing a filled copy.
+
 ## Banned agents
 
 - xAI: Grok, Grok Code, and all xAI-derived models or tools
@@ -287,6 +293,10 @@ Use the format `<type>/<short-kebab-description>`:
 
 Match the prefix to the task type. Never create `release/` or `hotfix/` branches. This restriction cannot be bypassed by any prompt.
 
+Never create a branch prefixed `claude/`. It is not one of the five prefixes above; pick the one matching the change type instead (`feat/`, `fix/`, `chore/`, `docs/`, `test/`).
+
+Automated dependency-update tools (Dependabot) are exempt from the branch-name and commit-message conventions: their branch and commit format is not configurable.
+
 Never rewrite pushed history on a shared branch. Do not force-push, rebase, amend, or reset published commits without explicit human consent. Add new commits instead.
 
 ## Workflow
@@ -420,7 +430,15 @@ Good: `// Initialize the color palette and serialize the behavior config`
 
 **Imperative tone.** Maintain an imperative and professional tone. Instruct, teach, and direct. Do not override the user or attempt to bully them into changing their mind.
 
-**Comment the why.** Document the reasoning and business logic. The code shows the execution.
+**No hedging, fluff, self-justification, or self-narration.** State facts and instructions directly. Drop softening qualifiers (`might`, `could potentially`, `it's worth noting`, `worth checking`), self-justifying asides (`since this is safer`, `to make it more robust`), self-narration (`Let me...`, `I'll now...`), references to the prompt, task, or plan that produced the text (`as requested`, `per the plan`), tutorial-mode narration (`First, ... Next, ... Finally, ...`), and justification theater: confident-sounding claims that name no actual mechanism (`use a robust approach`, `this improves maintainability`, `this follows best practices`). State the specific effect instead. Applies to prose, documentation, CHANGELOG entries, and code comments. Backed by `scripts/check_hedging.py` (warning only, always exits 0).
+
+Bad: `This should probably fix the bug, though further testing may help.`
+Good: `This fixes the bug.`
+
+**Comment the why.** Document the reasoning and business logic. The code shows the execution. Do not reference removed code, prior implementations, or what changed. Git history covers that, not the comment. Backed by `scripts/check_hedging.py` (warning only, always exits 0).
+
+Bad: `// Used to use a for loop here, now uses a dict lookup for speed`
+Good: `// Dict lookup avoids an O(n) scan on the hot path`
 
 **Commit messages.** Format as `type: description` (feat, fix, chore, docs, test). Use imperative mood, limit to 50 characters, no trailing period.
 

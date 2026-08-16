@@ -1,0 +1,23 @@
+# Handoff
+
+<!-- Per-repo. Fill on adoption, update when a session ends mid-task.
+     Pair every status claim with a command that verifies it; do not
+     write plain status. No `I`, no `Let me`, no hedging (AGENTS.md
+     Style: No hedging, fluff, self-justification, or self-narration).
+     Do not narrate what changed or why; CHANGELOG.md and git log cover
+     that. State current state and what is next only. Delete this
+     comment before committing a filled copy. -->
+
+## Status
+
+- Tests: 42/42 passing. Verify: `pytest`
+- Build: clean. Verify: `make build`
+- Branch: `feat/example`, PR #123, draft.
+
+## Next
+
+- Add input validation to `parse_config`. Done when: `pytest tests/test_config.py` passes.
+
+## Blocked
+
+- None.
