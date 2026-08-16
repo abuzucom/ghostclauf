@@ -14,6 +14,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   site validation, and a Pages deployment workflow for `ghost.clauf.org`.
 - Added `publish-site.sh` and `publish-site.bat` to export and validate a
   reviewed public snapshot in one step before publishing.
+- Added a startup connectivity check that posts and deletes a short test
+  message in each configured channel, proving both the EventSub receive
+  path and the Helix chat-send path work before the bot reports itself
+  online. Failures raise `startup_reception_check_failed` /
+  `startup_send_check_failed` alerts without blocking startup. Requires
+  the bot account to hold the new `moderator:manage:chat_messages` scope;
+  `run.sh`/`run.bat` detect and fix a missing scope automatically, headless
+  deployments need `npm run auth -- --bot` once after upgrading.
 
 ### Changed
 

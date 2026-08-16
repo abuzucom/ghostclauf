@@ -462,7 +462,10 @@ deploying or recovering persisted state.
    broadcaster grant the `channel:bot` scope. Either lets the bot post.
 
 The bot account authorizes these scopes: `user:read:chat`, `user:write:chat`,
-`user:bot`. Each broadcaster authorizes a user token for its EventSub
+`user:bot`, `moderator:manage:chat_messages` (used to delete the startup
+connectivity check's test message; requires the bot to be a channel
+moderator, not just granted `channel:bot`, or the delete fails and only
+logs a warning). Each broadcaster authorizes a user token for its EventSub
 WebSocket (`stream.online`/`stream.offline`/raids need no extra scope) plus
 scopes used by plugins: `moderator:read:followers` (the `followage` lookup),
 `moderator:manage:shoutouts` (native shoutouts from the `shoutout` plugin),

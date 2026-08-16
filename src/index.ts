@@ -81,6 +81,7 @@ async function main(): Promise<void> {
         })),
         logger,
         metrics,
+        runStartupConnectivityChecks: true,
         handlers: {
             onChatMessage: (event) => {
                 bus.emit('chatMessage', event);

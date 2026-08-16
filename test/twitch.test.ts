@@ -8,16 +8,22 @@ import { testLogger } from './helpers.js';
 const USER_IDS: Record<string, string> = {
     ghostbot: 'bot-id',
     streamer: 'channel-id',
+    streamer2: 'channel-id-2',
 };
 
-const { sendChatMessageSpy, asUserSpy, getStreamByUserIdSpy, listenerInstances } = vi.hoisted(
-    () => ({
-        sendChatMessageSpy: vi.fn().mockResolvedValue({ isSent: true, id: 'sent-1' }),
-        asUserSpy: vi.fn(),
-        getStreamByUserIdSpy: vi.fn().mockResolvedValue(null),
-        listenerInstances: [] as unknown[],
-    }),
-);
+const {
+    sendChatMessageSpy,
+    deleteChatMessagesSpy,
+    asUserSpy,
+    getStreamByUserIdSpy,
+    listenerInstances,
+} = vi.hoisted(() => ({
+    sendChatMessageSpy: vi.fn().mockResolvedValue({ isSent: true, id: 'sent-1' }),
+    deleteChatMessagesSpy: vi.fn().mockResolvedValue(undefined),
+    asUserSpy: vi.fn(),
+    getStreamByUserIdSpy: vi.fn().mockResolvedValue(null),
+    listenerInstances: [] as unknown[],
+}));
 
 vi.mock('@twurple/api', () => {
     class MockApiClient {
@@ -27,6 +33,7 @@ vi.mock('@twurple/api', () => {
         };
         streams = { getStreamByUserId: getStreamByUserIdSpy };
         chat = { sendChatMessage: sendChatMessageSpy };
+        moderation = { deleteChatMessages: deleteChatMessagesSpy };
         // asUser scopes the call to a user; the runner receives the same client.
         asUser = (userId: string, runner: (ctx: unknown) => Promise<unknown>) => {
             asUserSpy(userId);
@@ -61,6 +68,7 @@ const dummyAuthProvider = {} as RefreshingAuthProvider;
 
 beforeEach(() => {
     sendChatMessageSpy.mockReset().mockResolvedValue({ isSent: true, id: 'sent-1' });
+    deleteChatMessagesSpy.mockReset().mockResolvedValue(undefined);
     asUserSpy.mockClear();
     getStreamByUserIdSpy.mockReset().mockResolvedValue(null);
     listenerInstances.length = 0;
@@ -668,6 +676,230 @@ describe('twitch transport', () => {
                 viewers: 1,
             }),
         ).not.toThrow();
+        await transport.stop();
+    });
+});
+
+describe('startup connectivity checks', () => {
+    it('logs a pass and no alert when EventSub connects before the timeout', async () => {
+        const infoSpy = vi.spyOn(testLogger, 'info');
+        const errorSpy = vi.spyOn(testLogger, 'error');
+        const transport = await createTwitchTransport({
+            authProvider: dummyAuthProvider,
+            botUserId: 'bot-id',
+            broadcasters: [{ login: 'streamer' }],
+            logger: testLogger,
+            runStartupConnectivityChecks: true,
+            handlers: { onChatMessage: vi.fn(), onStreamOnline: vi.fn(), onStreamOffline: vi.fn() },
+        });
+        const listener = listenerInstances[0] as any;
+        const connectHandler = listener.onUserSocketConnect.mock.calls[0][0];
+        connectHandler('bot-id');
+
+        await transport.start();
+
+        expect(infoSpy).toHaveBeenCalledWith('EventSub startup reception check passed');
+        expect(errorSpy).not.toHaveBeenCalledWith(
+            expect.objectContaining({ alert: true, kind: 'startup_reception_check_failed' }),
+            expect.anything(),
+        );
+        infoSpy.mockRestore();
+        errorSpy.mockRestore();
+        await transport.stop();
+    });
+
+    it('alerts when EventSub does not connect before the timeout', async () => {
+        const metrics = createMetrics();
+        const errorSpy = vi.spyOn(testLogger, 'error');
+        const transport = await createTwitchTransport({
+            authProvider: dummyAuthProvider,
+            botUserId: 'bot-id',
+            broadcasters: [{ login: 'streamer' }],
+            logger: testLogger,
+            metrics,
+            runStartupConnectivityChecks: true,
+            receptionCheckTimeoutMs: 5,
+            handlers: { onChatMessage: vi.fn(), onStreamOnline: vi.fn(), onStreamOffline: vi.fn() },
+        });
+
+        await transport.start();
+
+        expect(errorSpy).toHaveBeenCalledWith(
+            expect.objectContaining({
+                alert: true,
+                kind: 'startup_reception_check_failed',
+                timeoutMs: 5,
+            }),
+            'alert: startup_reception_check_failed',
+        );
+        expect(metrics.snapshot().startup_reception_check_failures).toBe(1);
+        errorSpy.mockRestore();
+        await transport.stop();
+    });
+
+    it('posts and deletes a startup check message on the send check', async () => {
+        const infoSpy = vi.spyOn(testLogger, 'info');
+        sendChatMessageSpy.mockResolvedValueOnce({ isSent: true, id: 'check-1' });
+        const transport = await createTwitchTransport({
+            authProvider: dummyAuthProvider,
+            botUserId: 'bot-id',
+            broadcasters: [{ login: 'streamer' }],
+            logger: testLogger,
+            runStartupConnectivityChecks: true,
+            receptionCheckTimeoutMs: 5,
+            handlers: { onChatMessage: vi.fn(), onStreamOnline: vi.fn(), onStreamOffline: vi.fn() },
+        });
+
+        await transport.start();
+
+        expect(sendChatMessageSpy).toHaveBeenCalledWith(
+            'channel-id',
+            'ghostclauf startup connectivity check (auto-deleting)',
+        );
+        expect(deleteChatMessagesSpy).toHaveBeenCalledWith('channel-id', 'check-1');
+        expect(infoSpy).toHaveBeenCalledWith(
+            { broadcasterId: 'channel-id' },
+            'startup send check passed',
+        );
+        infoSpy.mockRestore();
+        await transport.stop();
+    });
+
+    it('alerts and skips delete when the send check throws', async () => {
+        const metrics = createMetrics();
+        const errorSpy = vi.spyOn(testLogger, 'error');
+        const failure = Object.assign(new Error('unavailable'), { statusCode: 500 });
+        sendChatMessageSpy.mockRejectedValueOnce(failure);
+        const transport = await createTwitchTransport({
+            authProvider: dummyAuthProvider,
+            botUserId: 'bot-id',
+            broadcasters: [{ login: 'streamer' }],
+            logger: testLogger,
+            metrics,
+            runStartupConnectivityChecks: true,
+            receptionCheckTimeoutMs: 5,
+            handlers: { onChatMessage: vi.fn(), onStreamOnline: vi.fn(), onStreamOffline: vi.fn() },
+        });
+
+        await transport.start();
+
+        expect(deleteChatMessagesSpy).not.toHaveBeenCalled();
+        expect(errorSpy).toHaveBeenCalledWith(
+            expect.objectContaining({
+                alert: true,
+                kind: 'startup_send_check_failed',
+                broadcasterId: 'channel-id',
+                err: failure,
+            }),
+            'alert: startup_send_check_failed',
+        );
+        expect(metrics.snapshot().startup_send_check_failures).toBe(1);
+        errorSpy.mockRestore();
+        await transport.stop();
+    });
+
+    it('alerts with the drop reason when the send check message is dropped', async () => {
+        sendChatMessageSpy.mockResolvedValueOnce({
+            isSent: false,
+            id: '',
+            dropReasonCode: 'automod_held',
+            dropReasonMessage: 'held for review',
+        });
+        const errorSpy = vi.spyOn(testLogger, 'error');
+        const transport = await createTwitchTransport({
+            authProvider: dummyAuthProvider,
+            botUserId: 'bot-id',
+            broadcasters: [{ login: 'streamer' }],
+            logger: testLogger,
+            runStartupConnectivityChecks: true,
+            receptionCheckTimeoutMs: 5,
+            handlers: { onChatMessage: vi.fn(), onStreamOnline: vi.fn(), onStreamOffline: vi.fn() },
+        });
+
+        await transport.start();
+
+        expect(deleteChatMessagesSpy).not.toHaveBeenCalled();
+        expect(errorSpy).toHaveBeenCalledWith(
+            expect.objectContaining({
+                alert: true,
+                kind: 'startup_send_check_failed',
+                broadcasterId: 'channel-id',
+                dropReasonCode: 'automod_held',
+            }),
+            'alert: startup_send_check_failed',
+        );
+        errorSpy.mockRestore();
+        await transport.stop();
+    });
+
+    it('warns instead of alerting when the check message cannot be deleted', async () => {
+        sendChatMessageSpy.mockResolvedValueOnce({ isSent: true, id: 'check-2' });
+        deleteChatMessagesSpy.mockRejectedValueOnce(
+            Object.assign(new Error('forbidden'), { statusCode: 403 }),
+        );
+        const warnSpy = vi.spyOn(testLogger, 'warn');
+        const errorSpy = vi.spyOn(testLogger, 'error');
+        const transport = await createTwitchTransport({
+            authProvider: dummyAuthProvider,
+            botUserId: 'bot-id',
+            broadcasters: [{ login: 'streamer' }],
+            logger: testLogger,
+            runStartupConnectivityChecks: true,
+            receptionCheckTimeoutMs: 5,
+            handlers: { onChatMessage: vi.fn(), onStreamOnline: vi.fn(), onStreamOffline: vi.fn() },
+        });
+
+        await expect(transport.start()).resolves.toBeUndefined();
+
+        expect(warnSpy).toHaveBeenCalledWith(
+            expect.objectContaining({ broadcasterId: 'channel-id' }),
+            expect.stringContaining('verify the bot account is a moderator'),
+        );
+        expect(errorSpy).not.toHaveBeenCalledWith(
+            expect.objectContaining({ alert: true, kind: 'startup_send_check_failed' }),
+            expect.anything(),
+        );
+        warnSpy.mockRestore();
+        errorSpy.mockRestore();
+        await transport.stop();
+    });
+
+    it('runs the send check for every configured broadcaster', async () => {
+        const transport = await createTwitchTransport({
+            authProvider: dummyAuthProvider,
+            botUserId: 'bot-id',
+            broadcasters: [{ login: 'streamer' }, { login: 'streamer2' }],
+            logger: testLogger,
+            runStartupConnectivityChecks: true,
+            receptionCheckTimeoutMs: 5,
+            handlers: { onChatMessage: vi.fn(), onStreamOnline: vi.fn(), onStreamOffline: vi.fn() },
+        });
+
+        await transport.start();
+
+        expect(sendChatMessageSpy).toHaveBeenCalledWith(
+            'channel-id',
+            'ghostclauf startup connectivity check (auto-deleting)',
+        );
+        expect(sendChatMessageSpy).toHaveBeenCalledWith(
+            'channel-id-2',
+            'ghostclauf startup connectivity check (auto-deleting)',
+        );
+        await transport.stop();
+    });
+
+    it('does not run the connectivity checks when runStartupConnectivityChecks is unset', async () => {
+        const transport = await createTwitchTransport({
+            authProvider: dummyAuthProvider,
+            botUserId: 'bot-id',
+            broadcasters: [{ login: 'streamer' }],
+            logger: testLogger,
+            handlers: { onChatMessage: vi.fn(), onStreamOnline: vi.fn(), onStreamOffline: vi.fn() },
+        });
+
+        await transport.start();
+
+        expect(sendChatMessageSpy).not.toHaveBeenCalled();
         await transport.stop();
     });
 });

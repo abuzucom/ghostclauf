@@ -27,6 +27,21 @@ Monitor structured alerts for token refresh failures and EventSub subscription
 revocations. Reauthorize the affected account when an alert indicates revoked
 access or missing scopes.
 
+At every startup, ghostclauf posts a short test message to each configured
+channel and deletes it, proving both the EventSub receive path and the
+Helix chat-send path actually work end to end (a VPN or network policy can
+silently break one without the other). A `startup_reception_check_failed`
+alert means the EventSub WebSocket never connected in time; a
+`startup_send_check_failed` alert means the test message could not be
+posted or was dropped. If the message posts but cannot be deleted, that
+only logs a warning, not an alert; verify the bot account is a moderator in
+that channel (or holds `moderator:manage:chat_messages`), not that sending
+is broken. Deleting the test message requires the
+`moderator:manage:chat_messages` scope; headless deployments that run
+`node dist/index.js` directly (rather than `run.sh`/`run.bat`, which
+detect and fix this automatically) need `npm run auth -- --bot` once after
+upgrading to a version that added this scope.
+
 ## Persistence And Recovery
 
 Plugin JSON files use atomic replacement and retain one `.bak` snapshot. The
