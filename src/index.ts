@@ -10,8 +10,11 @@ import { PluginManager } from './core/pluginManager.js';
 import { createTwitchTransport } from './core/twitch.js';
 import type { HelixClient, MessageSender } from './core/types.js';
 
+// Created at module scope (depends on no config that could fail to load) so
+// the fatal-error handler below can log through it instead of console.
+const logger = createLogger();
+
 async function main(): Promise<void> {
-    const logger = createLogger();
     const { file, secrets } = loadConfig();
     const metrics = createMetrics();
 
@@ -81,6 +84,7 @@ async function main(): Promise<void> {
         })),
         logger,
         metrics,
+        runStartupConnectivityChecks: true,
         handlers: {
             onChatMessage: (event) => {
                 bus.emit('chatMessage', event);
@@ -162,7 +166,6 @@ async function main(): Promise<void> {
 }
 
 main().catch((err: unknown) => {
-    // Logger may not exist yet if config/auth failed; fall back to console.
-    console.error('fatal:', err instanceof Error ? (err.stack ?? err.message) : err);
+    logger.fatal({ err }, 'fatal error during startup');
     process.exit(1);
 });

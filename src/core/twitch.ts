@@ -46,6 +46,14 @@ export interface TwitchTransportOptions {
     offlineRetryMs?: number;
     /** Counter registry for reconnects/send failures/rate-limit drops. Defaults to a fresh one. */
     metrics?: Metrics;
+    /**
+     * Verify the EventSub connection and chat-send path at startup. Off by
+     * default so tests exercising start() don't need a live connect event;
+     * index.ts turns this on for the real bot.
+     */
+    runStartupConnectivityChecks?: boolean;
+    /** Internal/test override for how long the startup reception check waits for a connect event. */
+    receptionCheckTimeoutMs?: number;
 }
 
 export interface TwitchTransport {
@@ -126,8 +134,18 @@ export async function createTwitchTransport(
     const revokedUserIds = new Set<string>();
     const offlineConfirmationMs = opts.offlineConfirmationMs ?? 60_000;
     const offlineRetryMs = opts.offlineRetryMs ?? 30_000;
+    const receptionCheckTimeoutMs = opts.receptionCheckTimeoutMs ?? RECEPTION_CHECK_TIMEOUT_MS;
+
+    // Resolved by the first onUserSocketConnect call below, so the startup
+    // reception check can await "has the EventSub WebSocket connected at
+    // least once" without a second listener registration.
+    let firstConnectResolve: (() => void) | undefined;
+    const firstConnect = new Promise<void>((resolve) => {
+        firstConnectResolve = resolve;
+    });
 
     listener.onUserSocketConnect((userId) => {
+        firstConnectResolve?.();
         const wasDisconnected = disconnectedUsers.delete(userId);
         logger.info({ userId }, 'EventSub WebSocket connected');
         if (wasDisconnected) {
@@ -484,6 +502,67 @@ export async function createTwitchTransport(
         },
     };
 
+    const waitForFirstEventSubConnect = (timeoutMs: number): Promise<boolean> =>
+        Promise.race([firstConnect.then(() => true), delay(timeoutMs).then(() => false)]);
+
+    /**
+     * Prove the send path works by actually posting, then deleting, a short
+     * test message. Twitch has no dry-run for chat sends, so this is the
+     * only way to catch e.g. a VPN silently blocking the send endpoint while
+     * EventSub keeps receiving fine. A failed delete (missing scope, or the
+     * bot isn't a moderator) only warns; it does not mean sending is broken.
+     */
+    const verifyStartupSendCheck = async (broadcasterId: string): Promise<void> => {
+        let messageId: string;
+        try {
+            const result = await rateLimiter.enqueue(broadcasterId, () =>
+                api.asUser(botUserId, (ctx) =>
+                    ctx.chat.sendChatMessage(broadcasterId, STARTUP_CHECK_MESSAGE),
+                ),
+            );
+            if (!result.isSent) {
+                metrics.increment('startup_send_check_failures');
+                fireAlert(logger, 'startup_send_check_failed', {
+                    broadcasterId,
+                    dropReasonCode: result.dropReasonCode,
+                });
+                return;
+            }
+            messageId = result.id;
+            logger.info({ broadcasterId }, 'startup send check passed');
+        } catch (error) {
+            metrics.increment('startup_send_check_failures');
+            fireAlert(logger, 'startup_send_check_failed', { broadcasterId, err: error });
+            return;
+        }
+        try {
+            await api.asUser(botUserId, (ctx) =>
+                ctx.moderation.deleteChatMessages(broadcasterId, messageId),
+            );
+        } catch (error) {
+            logger.warn(
+                { broadcasterId, err: error },
+                'startup check message sent but could not be deleted; ' +
+                    'verify the bot account is a moderator in this channel',
+            );
+        }
+    };
+
+    const verifyStartupConnectivity = async (): Promise<void> => {
+        const receptionOk = await waitForFirstEventSubConnect(receptionCheckTimeoutMs);
+        if (receptionOk) {
+            logger.info('EventSub startup reception check passed');
+        } else {
+            metrics.increment('startup_reception_check_failures');
+            fireAlert(logger, 'startup_reception_check_failed', {
+                timeoutMs: receptionCheckTimeoutMs,
+            });
+        }
+        for (const broadcaster of broadcasters) {
+            await verifyStartupSendCheck(broadcaster.id);
+        }
+    };
+
     return {
         broadcasterId: defaultBroadcasterId,
         broadcasterIds,
@@ -494,6 +573,9 @@ export async function createTwitchTransport(
         start: async () => {
             listener.start();
             await reconcileLiveStreams('startup');
+            if (opts.runStartupConnectivityChecks) {
+                await verifyStartupConnectivity();
+            }
             logger.info({ broadcasters }, 'EventSub listener started');
         },
         stop: () => {
@@ -504,6 +586,13 @@ export async function createTwitchTransport(
             return Promise.resolve();
         },
     };
+}
+
+const RECEPTION_CHECK_TIMEOUT_MS = 15_000;
+const STARTUP_CHECK_MESSAGE = 'ghostclauf startup connectivity check (auto-deleting)';
+
+function delay(ms: number): Promise<void> {
+    return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 async function sendChatMessageWithRetry<T>(send: () => Promise<T>): Promise<T> {

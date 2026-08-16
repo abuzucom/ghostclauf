@@ -39,7 +39,7 @@ function asMocked(provider: unknown): MockedRefreshingAuthProvider {
 const sampleToken: AccessToken = {
     accessToken: 'access-123',
     refreshToken: 'refresh-123',
-    scope: ['user:read:chat', 'user:write:chat', 'user:bot'],
+    scope: ['user:read:chat', 'user:write:chat', 'user:bot', 'moderator:manage:chat_messages'],
     expiresIn: 3600,
     obtainmentTimestamp: 1_700_000_000_000,
 };

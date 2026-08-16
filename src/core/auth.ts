@@ -9,7 +9,12 @@ import type { Metrics } from './metrics.js';
 import type { Logger } from './types.js';
 
 /** Scopes the bot account must grant. See README for broadcaster-side setup. */
-export const BOT_SCOPES = ['user:read:chat', 'user:write:chat', 'user:bot'];
+export const BOT_SCOPES = [
+    'user:read:chat',
+    'user:write:chat',
+    'user:bot',
+    'moderator:manage:chat_messages',
+];
 
 /** Scopes each broadcaster account must grant. */
 export const BROADCASTER_SCOPES = [
