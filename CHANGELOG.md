@@ -23,6 +23,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `run.sh`/`run.bat` detect and fix a missing scope automatically, headless
   deployments need `npm run auth -- --bot` once after upgrading.
 
+### Fixed
+
+- `src/index.ts`'s fatal-startup handler now logs through the structured
+  logger instead of `console.error`, clearing a `no-console` lint warning;
+  the logger is created at module scope (it depends on no config that could
+  fail to load) so the handler can reach it. Scoped `no-console` off for
+  `src/tools/**` in `eslint.config.mjs`, since those CLI entrypoints use
+  console output as their actual interface (interactive prompts, or, for
+  `checkTokens.ts`, stdout that `run.sh`/`run.bat` parse line by line), not
+  application logging.
+
 ### Changed
 
 - Synced `AGENTS.md` (and its tool-specific copies) with upstream

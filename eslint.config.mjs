@@ -33,6 +33,15 @@ export default tseslint.config(
         },
     },
     {
+        // CLI entrypoints: console output is their interface (interactive
+        // prompts, or - for checkTokens.ts - stdout that run.sh/run.bat
+        // parse line by line), not application logging.
+        files: ['src/tools/**/*.ts'],
+        rules: {
+            'no-console': 'off',
+        },
+    },
+    {
         ignores: ['dist/', 'node_modules/', 'site/', 'test/fixtures/'],
     },
 );
