@@ -441,6 +441,9 @@ src/
   contract, configuration, persistence, lifecycle, and testing.
 - [`docs/operations.md`](docs/operations.md) explains authorization, health
   checks, recovery, deployment, and incident response.
+- [`docs/agents-upstream-sync.md`](docs/agents-upstream-sync.md) explains how
+  `AGENTS.md` and its compliance tooling track the upstream `abuzucom/agents`
+  template, and how to reintegrate a future upstream update.
 
 Read the architecture guide first when reviewing the codebase. Read the plugin
 guide before adding a command or event handler. Read the operations guide before
@@ -677,24 +680,27 @@ they are in sync. `.github/workflows/agents-sync.yml` and
 CI; `.pre-commit-config.yaml` runs the fast, path-scoped ones locally
 before a commit or push. `make agents-lint` runs the locally applicable
 checks in one pass. Banned-agent and commit-message checks require a PR
-commit range and run only in their PR jobs.
+commit range and run only in their PR jobs. `check_hedging.py` also scans
+the opt-in template files (`plan/HANDOFF.md.example`,
+`CONTRIBUTING.md.example`, the PR and issue templates) alongside `AGENTS.md`.
 
-| Script                         | Backs                                               | Exit code              |
-| ------------------------------ | --------------------------------------------------- | ---------------------- |
-| `check_banned_agents.py`       | Banned agents                                       | 1, blocking (PRs only) |
-| `check_branch_name.py`         | Branch naming                                       | 1, blocking            |
-| `check_commit_message.py`      | Commit-message style                                | 1, blocking (PRs only) |
-| `check_persist_credentials.py` | Rule 11                                             | 1, blocking            |
-| `check_weak_hashing.py`        | Rule 7                                              | 1, blocking            |
-| `check_dockerfile_root.py`     | Rule 12                                             | 1, blocking            |
-| `check_secrets_heuristic.py`   | Rule 8 (heuristic, not entropy-based)               | 1, blocking            |
-| `check_ascii.py`               | No run-on sentences/dashes; No non-ASCII characters | 1, blocking            |
-| `check_us_spelling.py`         | American spelling                                   | 0, warning only        |
-| `check_english_only.py`        | English only                                        | 0, warning only        |
+| Script                         | Backs                                                                    | Exit code                  |
+| ------------------------------ | ------------------------------------------------------------------------ | -------------------------- |
+| `check_banned_agents.py`       | Banned agents                                                            | 1, blocking (PRs only)     |
+| `check_branch_name.py`         | Branch naming                                                            | 1, blocking                |
+| `check_commit_message.py`      | Commit-message style                                                     | 0, warning only (PRs only) |
+| `check_persist_credentials.py` | Rule 11                                                                  | 1, blocking                |
+| `check_weak_hashing.py`        | Rule 7                                                                   | 1, blocking                |
+| `check_dockerfile_root.py`     | Rule 12                                                                  | 1, blocking                |
+| `check_secrets_heuristic.py`   | Rule 8 (heuristic, not entropy-based)                                    | 1, blocking                |
+| `check_ascii.py`               | No run-on sentences/dashes; No non-ASCII characters                      | 1, blocking                |
+| `check_us_spelling.py`         | American spelling                                                        | 0, warning only            |
+| `check_english_only.py`        | English only                                                             | 0, warning only            |
+| `check_hedging.py`             | No hedging/fluff/self-justification/self-narration; historical narration | 0, warning only            |
 
 `check_banned_agents.py` cannot catch an agent committing under a human's
 own git identity with no `Co-authored-by` trailer; pair it with
-platform-level bot blocks. All ten scripts came from
+platform-level bot blocks. All eleven scripts came from
 [`abuzucom/agents`](https://github.com/abuzucom/agents), the upstream
 template this repo's `AGENTS.md` tracks.
 
@@ -714,6 +720,39 @@ behind a variable, alias, or wrapper script is invisible to it.
 Unlike upstream's own repo, which ships the example inactive, this repo
 wires the hook into `.claude/settings.json`, so it runs for every Claude
 Code session working in this checkout.
+
+## Handoff file example
+
+`plan/HANDOFF.md.example` is a per-session handoff/progress template, not
+part of the `AGENTS.md` rules themselves. Nothing in this repo loads it
+automatically. It states current status and next steps, each paired with a
+command that verifies the claim, instead of narrated prose, following
+`AGENTS.md`'s Style section: no hedging, fluff, self-justification,
+self-narration, or historical narration. To use it, copy it to
+`plan/HANDOFF.md`, fill in Status/Next/Blocked, and delete the
+instructional comment.
+
+## Contributing guide example
+
+`CONTRIBUTING.md.example` is a contribution-guide template for human
+contributors, not part of the `AGENTS.md` rules themselves. `AGENTS.md`
+governs AI agent behavior in this repo; it is not the right document to
+hand a human contributor. `CONTRIBUTING.md.example` is self-contained: it
+states the shared conventions (branch naming, commit format, code quality,
+security review) directly rather than pointing back into `AGENTS.md`.
+Nothing in this repo loads it automatically. To use it, copy it to
+`CONTRIBUTING.md` and delete the instructional comment; the install, test,
+and lint commands are already filled in with this repo's own (`npm
+install`, `npm test`, `npm run lint`).
+
+## Pull request and issue templates
+
+`.github/PULL_REQUEST_TEMPLATE.md` and `.github/ISSUE_TEMPLATE.md` are live
+(not `.example` files): GitHub applies them automatically to every new pull
+request and issue in this repo. The PR template asks for a Summary and a
+Test plan checklist; the issue template covers both bug reports and
+rule/template proposals, with a Rationale section for proposals pointing at
+Rule 13 (back an enforceable proposal with a real check).
 
 ## License
 

@@ -17,6 +17,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Synced `AGENTS.md` (and its tool-specific copies) with upstream
+  `abuzucom/agents` through v1.10.0 (previously synced through v1.7.0):
+  added the `claude/`-branch-prefix ban and the Dependabot exemption to
+  Branch naming conventions; added the "No hedging, fluff,
+  self-justification, or self-narration" Style rule, backed by the new
+  `scripts/check_hedging.py` (warning only, wired into
+  `agents-sync.yml` and `make agents-lint`); extended "Comment the why"
+  to ban historical narration referencing removed code or prior
+  implementations; added a "## Handoff" section pointing at the newly
+  adopted `plan/HANDOFF.md.example`. Downgraded `check_commit_message.py`
+  from blocking to warning-only, matching upstream, while keeping this
+  repo's existing merge-commit skip (not present upstream). Added
+  `concurrency: cancel-in-progress` groups and, on
+  `agents-md-compliance.yml`, an explicit `ready_for_review` pull-request
+  trigger type, both matching upstream's CI hygiene. Adopted three
+  upstream opt-in templates: `plan/HANDOFF.md.example`,
+  `CONTRIBUTING.md.example` (install/test/lint placeholders filled with
+  this repo's own commands), and the live `.github/PULL_REQUEST_TEMPLATE.md`
+  / `.github/ISSUE_TEMPLATE.md`. Added a `check_hedging.py` row and updated
+  `check_commit_message.py`'s exit-code entry in README's Checker
+  reference table, and added "Handoff file example" / "Contributing guide
+  example" / "Pull request and issue templates" README sections. Added
+  `docs/agents-upstream-sync.md`, a mapping table, decision log, and
+  reintegration checklist for the next upstream sync. Declined two
+  upstream additions: `SECURITY.md.example` (this repo's own hand-written
+  `security.md` already covers and exceeds it) and AgentLint
+  (third-party GitHub Action; new dependency and `pull-requests: write`
+  grant, not authorized).
 - Updated all CodeQL Action SARIF uploads to v4.37.6. This removes the
   deprecated Node 20 runtime from the affected GitHub Actions workflows.
 - Added architecture, plugin-authoring, and operations guides. Cross-linked

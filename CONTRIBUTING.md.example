@@ -1,0 +1,100 @@
+# Contributing
+
+<!-- Per-repo. Fill in the install/test/lint commands below. Rename to
+     CONTRIBUTING.md (drop .example). Delete this comment before
+     committing a filled copy. -->
+
+## Development Setup
+
+1. Clone the repository.
+2. Install dependencies: `npm install`
+3. Run the test suite: `npm test`
+
+## Conventions
+
+- Branch names: `<type>/<kebab-description>` (feat, fix, chore, docs,
+  test).
+- Commit subjects: `type: description`, imperative mood, 50 characters
+  max, no trailing period.
+- Name functions with verb-noun pairs (`normalizeUserEmails`, not
+  `process`). Provide a return type annotation.
+- Name variables for role (`activeUserRecords`, not `d`).
+- Comment the why. Document the reasoning; the code shows the
+  execution. Do not reference removed code or what changed; git history
+  covers that.
+
+## Security and Review
+
+- Never build SQL, shell commands, or evaluated code from untrusted
+  input. Use parameterized queries and array-based subprocess calls.
+- Get review before destructive changes (dropping tables, deleting
+  data) and before adding a new dependency (name, version, purpose).
+- Never weaken, skip, or delete a test to force a pass. If a test looks
+  wrong, raise it in the pull request instead.
+- Keep public APIs backward compatible: accept both old and new
+  parameter names on a rename, add new parameters as optional, never
+  reorder or remove existing positional parameters.
+- Never use MD5 or SHA-1 for passwords, tokens, signatures, or session
+  IDs. Use bcrypt, scrypt, or Argon2 for passwords, SHA-256 or SHA-3
+  elsewhere.
+- Never commit secrets, API keys, or credentials. Use environment
+  variables or a secret manager.
+- Set `persist-credentials: false` on `actions/checkout` steps in
+  GitHub Actions workflows unless the job needs the credential
+  afterward.
+- Docker containers run as non-root by default.
+- Never rewrite pushed history on a shared branch. Add new commits
+  instead of force-pushing, rebasing, or amending published commits.
+
+## Code Quality
+
+- Check preconditions and validate ranges before use.
+- Test for zero before division.
+- Avoid nested quantifiers in regular expressions; use atomic groups or
+  simpler expressions.
+- Never modify a collection while iterating over it.
+- Bound recursion with depth limits or visited sets.
+- Never log passwords, tokens, or personal data.
+- Validate that paths built from untrusted input resolve within the
+  target directory.
+- Make scripts and migrations safe to re-run.
+- Guard shared mutable state with locks or thread-safe structures;
+  prefer immutable data and message passing.
+- Join, await, or supervise every thread and async task so unhandled
+  exceptions surface.
+- Keep a consistent lock order to prevent deadlocks, or use a single
+  lock.
+- Extract nested loops into a helper and return from it, instead of
+  breaking out of nested loops.
+- Move constant work out of loops, cache compiled regular expressions,
+  and use hash lookups over nested iteration.
+- Split classes that mix concerns, for example database, transport, and
+  UI.
+- Never leave a catch block empty. Log context, surface feedback, or
+  re-raise.
+- Extract magic numbers into named constants.
+- Extract repeated sequences into helpers instead of duplicating them.
+- Do not leave `TODO`, `FIXME`, or stubbed code in a change. Raise
+  incomplete work in the pull request instead.
+
+## Workflow
+
+- Run the project's lint command and fix all errors before opening a
+  pull request.
+- Never silence a linter or type checker to force a pass; fix the
+  cause.
+- Update README for substantial changes and CHANGELOG for all changes,
+  following Semantic Versioning.
+
+## Making a Change
+
+1. Create a branch following the naming convention above.
+2. Make your change. Add or update tests as appropriate.
+3. Run the lint command: `npm run lint`
+4. Commit following the subject convention above.
+5. Open a pull request.
+
+## Reporting Bugs
+
+Open an issue with steps to reproduce, expected behavior, and actual
+behavior.
