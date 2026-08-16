@@ -5,6 +5,7 @@
 // for the one-time OAuth flow (the bot is never running during that flow).
 
 import { createServer, type Server } from 'node:http';
+import { closeServer } from './httpServer.js';
 import type { Metrics } from './metrics.js';
 import type { Logger } from './types.js';
 
@@ -78,17 +79,10 @@ export function startHealthServer(opts: HealthServerOptions): Promise<HealthServ
             resolve({
                 port: actualPort,
                 host,
-                close: () =>
-                    new Promise<void>((resolveClose, rejectClose) => {
-                        server.close((err) => (err ? rejectClose(err) : resolveClose()));
-                        // close() alone waits for every open connection to end.
-                        // Node drops *idle* keep-alives itself, but a socket that
-                        // connected without sending a complete request stays open
-                        // forever and would block shutdown past process.exit().
-                        // Both endpoints answer immediately, so no in-flight
-                        // response is worth waiting for here.
-                        server.closeAllConnections();
-                    }),
+                // Both endpoints answer immediately, so no in-flight response is
+                // worth waiting for; closeServer() also force-closes a socket that
+                // connected without sending a complete request (see httpServer.ts).
+                close: () => closeServer(server),
             });
         });
     });

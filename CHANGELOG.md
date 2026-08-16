@@ -25,6 +25,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- `run.sh`/`run.bat` no longer hang after the bot OAuth tab is authorized
+  when more accounts (broadcasters) still need authorization. `npm run auth`'s
+  callback server used a bare `server.close()`, which waits forever for a
+  connection that connected without completing a request (e.g. a browser's
+  speculative preconnect to the local callback URL) - the browser tab showed
+  "authorized" but `npm run auth`'s Node process never exited, so run.sh's
+  account loop never reached the next `MISSING BROADCASTER` line. Added
+  `src/core/httpServer.ts`'s `closeServer()`, which also calls
+  `closeAllConnections()`, and switched `src/tools/authFlow.ts` to use it;
+  `src/core/healthServer.ts` already worked around the same issue inline
+  and now shares the same helper.
 - `src/index.ts`'s fatal-startup handler now logs through the structured
   logger instead of `console.error`, clearing a `no-console` lint warning;
   the logger is created at module scope (it depends on no config that could

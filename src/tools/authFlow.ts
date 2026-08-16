@@ -7,6 +7,7 @@ import { createServer } from 'node:http';
 import { exchangeCode } from '@twurple/auth';
 import { loadFileConfig, loadSecrets } from '../core/config.js';
 import { BOT_SCOPES, BROADCASTER_SCOPES, writeTokenStore } from '../core/auth.js';
+import { closeServer } from '../core/httpServer.js';
 
 async function main(): Promise<void> {
     const file = loadFileConfig();
@@ -38,8 +39,9 @@ async function main(): Promise<void> {
                 res.writeHead(400, { 'content-type': 'text/plain; charset=utf-8' }).end(
                     'Authorization failed. Invalid OAuth state.',
                 );
-                server.close();
-                rejectDone(new Error('authorization failed: invalid OAuth state'));
+                void closeAndLog().then(() =>
+                    rejectDone(new Error('authorization failed: invalid OAuth state')),
+                );
                 return;
             }
 
@@ -49,8 +51,9 @@ async function main(): Promise<void> {
                 res.writeHead(400, { 'content-type': 'text/plain; charset=utf-8' }).end(
                     'Authorization failed. Check the terminal.',
                 );
-                server.close();
-                rejectDone(new Error(`authorization denied: ${error}`));
+                void closeAndLog().then(() =>
+                    rejectDone(new Error(`authorization denied: ${error}`)),
+                );
                 return;
             }
             if (!code) {
@@ -64,16 +67,28 @@ async function main(): Promise<void> {
                     res.writeHead(200, { 'content-type': 'text/plain' }).end(
                         'Ghostclauf authorized. Token saved — you can close this tab.',
                     );
-                    server.close();
+                    await closeAndLog();
                     console.log(`\n✓ Token written to ${target.tokenStorePath}`);
                     resolveDone();
                 })
                 .catch((err: unknown) => {
                     res.writeHead(500).end('Token exchange failed. Check the terminal.');
-                    server.close();
-                    rejectDone(err instanceof Error ? err : new Error(String(err)));
+                    void closeAndLog().then(() =>
+                        rejectDone(err instanceof Error ? err : new Error(String(err))),
+                    );
                 });
         });
+
+        // A browser commonly opens a second, speculative connection alongside
+        // the one carrying the redirect (e.g. a preconnect) that never sends
+        // a request. server.close() alone waits on that connection forever,
+        // which would leave this process (and run.sh's account loop) hanging
+        // even though the redirect it cared about was already handled.
+        function closeAndLog(): Promise<void> {
+            return closeServer(server).catch((closeErr: unknown) => {
+                console.error('Failed to close local OAuth server:', closeErr);
+            });
+        }
 
         server.listen(port, '127.0.0.1', () => {
             console.log(`\nGhostclauf — one-time ${target.label} authorization`);
