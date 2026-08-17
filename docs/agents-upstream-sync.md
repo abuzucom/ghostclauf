@@ -5,13 +5,15 @@ pre-commit hooks, `Makefile` targets) were adopted from
 [`abuzucom/agents`](https://github.com/abuzucom/agents), a portable
 AI-agent-instructions template repo, and tailored to this repo's own
 architecture and rules. See the README "AGENTS.md compliance checks" and
-"Claude Code hook example" sections for what that tooling does day to day.
+"Claude Code hooks" sections for what that tooling does day to day.
 This document is for the next reintegration: what maps to what, where this
 repo intentionally diverges from upstream, and how to bring in a future
 upstream update.
 
 Prior syncs: v1.7.0 (commit `b27101b`, "reintegrate abuzucom/agents"),
-v1.10.0 (this sync).
+v1.10.0 (commit `257fe14`, "sync AGENTS.md conventions with abuzucom/agents
+v1.10.0"), v1.11.0 (this sync, "sync AGENTS.md conventions with
+abuzucom/agents v1.11.0").
 
 ## Sync mechanism
 
@@ -46,6 +48,8 @@ this repo's existing tailoring.
 | `scripts/lint_style.py`                                                      | (not adopted)                                | This repo's `check_ascii.py` covers the same ground and is what's actually wired in                                                                                                                                                             |
 | `scripts/check_public_site.py`                                               | `scripts/check_public_site.py`               | This repo only; not from upstream, has no upstream counterpart                                                                                                                                                                                  |
 | `hooks/block_destructive_bash.py`, `hooks/claude-code-settings.example.json` | same paths                                   | Verbatim, but wired active in `.claude/settings.json` (upstream ships the example inactive)                                                                                                                                                     |
+| `hooks/enforce_branch_name.py`                                               | `hooks/enforce_branch_name.py`               | Verbatim, wired active in `.claude/settings.json` (`SessionStart` + `PreToolUse`); supersedes this repo's own undocumented `hooks/check_branch_name_session_start.py`, see decision log                                                         |
+| `tests/test_enforce_branch_name.py`                                          | `tests/test_enforce_branch_name.py`          | Verbatim; new root-level `tests/` directory, distinct from this repo's existing `test/` (singular, Vitest TypeScript suite)                                                                                                                     |
 | `plan/HANDOFF.md.example`                                                    | `plan/HANDOFF.md.example`                    | Verbatim, adopted                                                                                                                                                                                                                               |
 | `CONTRIBUTING.md.example`                                                    | `CONTRIBUTING.md.example`                    | Adopted; install/test/lint placeholders filled with this repo's actual commands (`npm install`, `npm test`, `npm run lint`)                                                                                                                     |
 | `.github/PULL_REQUEST_TEMPLATE.md`, `.github/ISSUE_TEMPLATE.md`              | same paths                                   | Verbatim, adopted live (issue template's "Python version" line changed to "Node version", matching this repo's stack)                                                                                                                           |
@@ -86,6 +90,13 @@ user first; they were deliberate calls, not oversights.
   does not do. Predates this sync (see CHANGELOG's "Updated the
   commit-message checker to skip generated merge commits" entry); carried
   forward when porting upstream's blocking-to-warning-only change.
+- **Superseded local branch-name hook.** This repo had independently built
+  `hooks/check_branch_name_session_start.py` (`SessionStart`-only, no
+  blocking) after the v1.10.0 sync, wired into `.claude/settings.json`, but
+  it was never documented in this file's mapping table, had no README
+  section, and had no test coverage. The v1.11.0 sync replaces it with
+  upstream's `hooks/enforce_branch_name.py`, which adds the `PreToolUse`
+  blocking half and the test suite this repo was missing.
 - **Claude-Code-session branches.** Upstream's branch-naming rule bans
   `claude/`-prefixed branches outright, with no platform exemption, because
   upstream's own workflow never creates them. This repo's own commits and

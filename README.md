@@ -33,7 +33,8 @@ no vendored code.
 - [Testing](#testing)
 - [Troubleshooting](#troubleshooting)
 - [AGENTS.md compliance checks](#agentsmd-compliance-checks)
-- [Claude Code hook example](#claude-code-hook-example)
+- [Claude Code hooks](#claude-code-hooks)
+- [Local checks](#local-checks)
 - [License](#license)
 
 ## Features (v1)
@@ -690,7 +691,7 @@ the opt-in template files (`plan/HANDOFF.md.example`,
 | Script                         | Backs                                                                    | Exit code                  |
 | ------------------------------ | ------------------------------------------------------------------------ | -------------------------- |
 | `check_banned_agents.py`       | Banned agents                                                            | 1, blocking (PRs only)     |
-| `check_branch_name.py`         | Branch naming                                                            | 1, blocking                |
+| `check_branch_name.py`         | Branch naming (see also `hooks/enforce_branch_name.py` below)            | 1, blocking                |
 | `check_commit_message.py`      | Commit-message style                                                     | 0, warning only (PRs only) |
 | `check_persist_credentials.py` | Rule 11                                                                  | 1, blocking                |
 | `check_weak_hashing.py`        | Rule 7                                                                   | 1, blocking                |
@@ -707,22 +708,60 @@ platform-level bot blocks. All eleven scripts came from
 [`abuzucom/agents`](https://github.com/abuzucom/agents), the upstream
 template this repo's `AGENTS.md` tracks.
 
-## Claude Code hook example
+## Claude Code hooks
+
+`hooks/` and `.claude/settings.json` also came from `abuzucom/agents`:
+Claude-Code-specific mechanisms, not part of the `AGENTS.md` rules
+themselves (`AGENTS.md` stays tool-agnostic and is synced byte-identical to
+non-Claude tools).
+
+### Branch-name enforcement (live)
+
+`hooks/enforce_branch_name.py` backs the Branch naming conventions section
+of `AGENTS.md` through the harness instead of the model's memory. It
+serves two Claude Code hook events, wired in `.claude/settings.json`:
+
+- `SessionStart` runs `scripts/check_branch_name.py` against the checked-out
+  branch before the session does any git work and, on a violation, injects
+  a stop-and-rename instruction into the session context.
+- `PreToolUse` on the `Bash` matcher exits 2 (blocking) on a `git commit` or
+  `git push` while the branch name is non-conforming, so a session that
+  reads the warning and proceeds anyway still cannot land the branch.
+  `git branch -m` and read-only git commands are never blocked.
+
+This covers a harness- or dispatcher-assigned branch name, which the model
+cannot choose and, being stateless across sessions, cannot remember to fix.
+`tests/test_enforce_branch_name.py` (`make agents-test`) covers both hook
+events, the rename escape hatch, and whether `.claude/settings.json` and
+`hooks/claude-code-settings.example.json` still register the hook for each
+event.
+
+### Destructive-Bash guard (opt-in example)
 
 `hooks/block_destructive_bash.py` and `hooks/claude-code-settings.example.json`
-also came from `abuzucom/agents`: a Claude-Code-specific defense-in-depth
-example, not part of the `AGENTS.md` rules themselves (`AGENTS.md` stays
-tool-agnostic and is synced byte-identical to non-Claude tools). A
-`PreToolUse` hook on the `Bash` matcher blocks `rm -rf /`, `~`, or `$HOME`,
-a bare `git push --force`/`-f`, and `git reset --hard`, mirroring rule 2
-and the history-safety rule in Workflow as a mechanical backstop for a
-single tool, independent of whether the model remembers the rule. It is a
-heuristic, not a sandbox: it does not parse the shell, so a command hidden
-behind a variable, alias, or wrapper script is invisible to it.
+are a Claude-Code-specific defense-in-depth example. A `PreToolUse` hook on
+the `Bash` matcher blocks `rm -rf /`, `~`, or `$HOME`, a bare
+`git push --force`/`-f`, and `git reset --hard`, mirroring rule 2 and the
+history-safety rule in Workflow as a mechanical backstop for a single tool,
+independent of whether the model remembers the rule. It is a heuristic, not
+a sandbox: it does not parse the shell, so a command hidden behind a
+variable, alias, or wrapper script is invisible to it.
 
 Unlike upstream's own repo, which ships the example inactive, this repo
 wires the hook into `.claude/settings.json`, so it runs for every Claude
 Code session working in this checkout.
+
+## Local checks
+
+Makefile targets for running the checks above without waiting on CI:
+
+| Target             | Runs                                                                                         |
+| ------------------ | -------------------------------------------------------------------------------------------- |
+| `make sync`        | Propagates `AGENTS.md` to its mirror copies                                                  |
+| `make check`       | Verifies the mirror copies are in sync (no write)                                            |
+| `make docs-lint`   | ASCII/spelling/English-only checks on README, CHANGELOG, security.md                         |
+| `make agents-test` | `tests/test_enforce_branch_name.py`, the branch-hook test suite                              |
+| `make agents-lint` | Every locally applicable AGENTS.md compliance check, including `agents-test` and `docs-lint` |
 
 ## Handoff file example
 

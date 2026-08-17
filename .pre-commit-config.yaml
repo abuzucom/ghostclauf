@@ -18,6 +18,12 @@ repos:
             language: python
             pass_filenames: false
             stages: [pre-push]
+          - id: hook-tests
+            name: Branch-name hook tests
+            entry: python -m unittest discover -s tests
+            language: python
+            files: ^(hooks/.*\.py|tests/.*\.py|\.claude/settings\.json|scripts/check_branch_name\.py)$
+            pass_filenames: false
           - id: check-persist-credentials
             name: Check persist-credentials on checkout steps
             entry: python scripts/check_persist_credentials.py
