@@ -22,6 +22,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the bot account to hold the new `moderator:manage:chat_messages` scope;
   `run.sh`/`run.bat` detect and fix a missing scope automatically, headless
   deployments need `npm run auth -- --bot` once after upgrading.
+- Added `hooks/check_branch_name_session_start.py`, a Claude Code
+  SessionStart hook (opt-in via `.claude/settings.json`, see
+  `hooks/claude-code-settings.example.json`) that runs
+  `scripts/check_branch_name.py` against the current branch and, on a
+  mismatch, injects a warning into the session's context telling the
+  assistant to stop and get the branch renamed before committing or
+  pushing. Added because a session-assigned branch name (e.g. a
+  harness-provided `claude/<slug>` branch) can conflict with this repo's
+  own `<type>/<kebab-description>` convention, and that conflict had
+  repeatedly gone unnoticed until CI failed on an already-opened PR.
 
 ### Fixed
 
