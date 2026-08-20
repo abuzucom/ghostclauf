@@ -57,6 +57,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Simplified scope creation, single-item removal, curator checks, limiter
+  dequeueing, and follow-duration formatting without changing behavior.
 - Synced `AGENTS.md` (and its tool-specific copies) with upstream
   `abuzucom/agents` through v1.10.0 (previously synced through v1.7.0):
   added the `claude/`-branch-prefix ban and the Dependabot exemption to
