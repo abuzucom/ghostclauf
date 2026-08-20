@@ -14,6 +14,8 @@ export class EventBus {
     private readonly emitter = new EventEmitter();
     // Tracks every in-flight handler promise so drain() can await them all.
     private readonly inflight = new Set<Promise<void>>();
+    private readonly listenerCleanupByPlugin = new Map<string, Array<() => void>>();
+    private registeringPlugin: string | undefined;
 
     constructor(private readonly logger: Logger) {
         // Plugins may register many listeners; don't warn.
@@ -21,21 +23,46 @@ export class EventBus {
     }
 
     on<E extends keyof BotEvents>(event: E, handler: EventHandler<E>): void {
-        this.emitter.on(event, (payload: BotEvents[E]) =>
-            this.trackHandlerInvocation(event, handler, payload),
-        );
+        const listener = (payload: BotEvents[E]): void =>
+            this.trackHandlerInvocation(event, handler, payload);
+        this.emitter.on(event, listener);
+        const pluginName = this.registeringPlugin;
+        if (!pluginName) return;
+        const cleanup = this.listenerCleanupByPlugin.get(pluginName) ?? [];
+        cleanup.push(() => this.emitter.off(event, listener));
+        this.listenerCleanupByPlugin.set(pluginName, cleanup);
+    }
+
+    /** Associate listeners created during one plugin's asynchronous initialization. */
+    async withPluginRegistration<T>(
+        pluginName: string,
+        register: () => T | Promise<T>,
+    ): Promise<T> {
+        if (this.registeringPlugin) throw new Error('plugin listener registration already active');
+        this.registeringPlugin = pluginName;
+        try {
+            return await register();
+        } finally {
+            this.registeringPlugin = undefined;
+        }
+    }
+
+    /** Remove every listener owned by a plugin whose initialization failed. */
+    removePlugin(pluginName: string): void {
+        const cleanup = this.listenerCleanupByPlugin.get(pluginName) ?? [];
+        for (const removeListener of cleanup) removeListener();
+        this.listenerCleanupByPlugin.delete(pluginName);
     }
 
     emit<E extends keyof BotEvents>(event: E, payload: BotEvents[E]): void {
         this.emitter.emit(event, payload);
     }
 
-    /**
-     * Resolve once every in-flight handler that was running at call time has
-     * settled. Use before flushing stores so no pending write is orphaned.
-     */
+    /** Resolve after all handlers accepted before or during the drain settle. */
     async drain(): Promise<void> {
-        await Promise.allSettled([...this.inflight]);
+        while (this.inflight.size > 0) {
+            await Promise.allSettled([...this.inflight]);
+        }
     }
 
     /**

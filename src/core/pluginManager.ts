@@ -158,10 +158,12 @@ export class PluginManager {
         });
 
         try {
-            await plugin.init(ctx);
+            await bus.withPluginRegistration(plugin.name, () => plugin.init(ctx));
             this.loaded.set(plugin.name, { plugin, ctx });
             logger.info({ plugin: plugin.name, version: plugin.version }, 'plugin initialized');
         } catch (err) {
+            registry.removePlugin(plugin.name);
+            bus.removePlugin(plugin.name);
             logger.error({ err, plugin: plugin.name }, 'plugin init threw, skipping');
         }
     }
