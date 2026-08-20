@@ -55,12 +55,22 @@ COMMENT_LINE = re.compile(
     re.IGNORECASE,
 )
 
-TUTORIAL_STARTS = re.compile(r"^\s*(?:#|//)?\s*(First|Next|Finally),", re.IGNORECASE)
+TUTORIAL_STARTS = re.compile(r"^(First|Next|Finally),", re.IGNORECASE)
 
 
 def strip_code(line: str) -> str:
     """Remove inline code spans so illustrative Bad/Good examples are ignored."""
     return INLINE_CODE.sub("", line)
+
+
+def tutorial_start(line: str) -> re.Match[str] | None:
+    """Match a tutorial opener after optional indentation and comment marker."""
+    stripped = line.lstrip()
+    if stripped.startswith("//"):
+        stripped = stripped[2:].lstrip()
+    elif stripped.startswith("#"):
+        stripped = stripped[1:].lstrip()
+    return TUTORIAL_STARTS.match(stripped)
 
 
 def find_violations(text: str, path: str) -> list[str]:
@@ -89,7 +99,7 @@ def find_violations(text: str, path: str) -> list[str]:
                 f"'{comment_match.group(1)}'"
             )
 
-        tutorial_match = TUTORIAL_STARTS.match(raw)
+        tutorial_match = tutorial_start(raw)
         if tutorial_match:
             stage = tutorial_match.group(1).lower()
             if stage in ("next", "finally") and "first" in tutorial_stages_seen:
