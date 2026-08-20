@@ -125,4 +125,33 @@ describe('createPublicSnapshot', () => {
             leaderboard: [],
         });
     });
+
+    it('ignores balances outside the persisted loyalty range', () => {
+        const snapshot = createPublicSnapshot({
+            currencyName: 'esports dollars',
+            generatedAt: new Date('2026-08-09T00:00:00.000Z'),
+            funFacts: {},
+            quotes: {},
+            loyalty: {
+                scopes: {
+                    shared: {
+                        viewers: {
+                            unsafe: {
+                                displayName: 'Unsafe',
+                                balance: Number.MAX_SAFE_INTEGER,
+                            },
+                            valid: { displayName: 'Valid', balance: 1_000_000_000 },
+                        },
+                    },
+                },
+            },
+        });
+
+        expect(snapshot.loyalty).toEqual({
+            currencyName: 'esports dollars',
+            participantCount: 1,
+            totalBalance: 1_000_000_000,
+            leaderboard: [{ rank: 1, displayName: 'Valid', balance: 1_000_000_000 }],
+        });
+    });
 });

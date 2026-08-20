@@ -52,6 +52,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Failed plugin initialization now rolls back commands and event listeners
+  registered before the failure.
+- Shutdown now stops Twitch event ingress and drains command and event handlers
+  before plugin stores flush.
+- Loyalty journal rows, streak counters, and public loyalty balances are now
+  range-validated before dependent lookups, arithmetic, and aggregation.
+- Streak configuration now falls back on invalid runtime types and duplicate
+  command triggers instead of selecting unintended branches or partially loading.
+- OAuth authorization now rejects redirect URLs that its local HTTP callback
+  server cannot serve. Broadcaster configuration and resolved IDs remain paired.
 - `run.sh`/`run.bat` no longer hang after the bot OAuth tab is authorized
   when more accounts (broadcasters) still need authorization. `npm run auth`'s
   callback server used a bare `server.close()`, which waits forever for a

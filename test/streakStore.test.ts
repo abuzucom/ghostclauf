@@ -133,6 +133,35 @@ describe('StreakStore', () => {
         expect(spy.error).toHaveBeenCalled();
     });
 
+    it.each([
+        ['currentStreak', -1],
+        ['longestStreak', 1.5],
+        ['totalCheckins', Number.MAX_SAFE_INTEGER + 1],
+    ])('rejects a viewer with invalid %s', async (field, value) => {
+        await mkdir(dirname(dataPath), { recursive: true });
+        const malformed = {
+            version: 2,
+            channels: {
+                shared: {
+                    streamDays: [],
+                    activeStreamStartedAt: null,
+                    qualifiedDaysByBroadcaster: {},
+                    sessionsByBroadcaster: {},
+                    viewers: { [CID]: { ...newViewer(), [field]: value } },
+                    penalties: [],
+                },
+            },
+        };
+        await writeFile(dataPath, JSON.stringify(malformed), 'utf8');
+        const spy = makeSpyLogger();
+
+        const store = new StreakStore(dataPath, spy.logger);
+        await store.load();
+
+        expect(store.getViewer('shared', CID)).toBeUndefined();
+        expect(spy.error).toHaveBeenCalled();
+    });
+
     it('records qualified days by broadcaster and finds misses in an interval', async () => {
         const store = new StreakStore(dataPath, makeSpyLogger().logger);
         await store.load();
