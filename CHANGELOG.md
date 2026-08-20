@@ -22,16 +22,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the bot account to hold the new `moderator:manage:chat_messages` scope;
   `run.sh`/`run.bat` detect and fix a missing scope automatically, headless
   deployments need `npm run auth -- --bot` once after upgrading.
-- Added `hooks/check_branch_name_session_start.py`, a Claude Code
-  SessionStart hook (opt-in via `.claude/settings.json`, see
-  `hooks/claude-code-settings.example.json`) that runs
-  `scripts/check_branch_name.py` against the current branch and, on a
-  mismatch, injects a warning into the session's context telling the
-  assistant to stop and get the branch renamed before committing or
-  pushing. Added because a session-assigned branch name (e.g. a
+- Synced `AGENTS.md` conventions with `abuzucom/agents` v1.11.0. Added
+  `hooks/enforce_branch_name.py`, a Claude Code hook wired in
+  `.claude/settings.json` (and documented as opt-in in
+  `hooks/claude-code-settings.example.json`) serving two events:
+  `SessionStart` runs `scripts/check_branch_name.py` against the current
+  branch and, on a mismatch, injects a stop-and-rename warning into the
+  session's context; `PreToolUse` on the `Bash` matcher exits 2 (blocking)
+  on a `git commit` or `git push` while the branch name is
+  non-conforming, so a session that reads the warning and proceeds anyway
+  still cannot land the branch. `git branch -m` and read-only git commands
+  are never blocked. Added because a session-assigned branch name (e.g. a
   harness-provided `claude/<slug>` branch) can conflict with this repo's
   own `<type>/<kebab-description>` convention, and that conflict had
-  repeatedly gone unnoticed until CI failed on an already-opened PR.
+  repeatedly gone unnoticed until CI failed on an already-opened PR; the
+  earlier `SessionStart`-only hook warned but did not block. Added
+  `tests/test_enforce_branch_name.py` (22 stdlib `unittest` tests, run via
+  `make agents-test`), covering both hook events, the rename escape hatch,
+  read-only commands, non-Bash tools, malformed/empty stdin, an absent
+  checker, and whether both settings files still register the hook per
+  event. Added a `make agents-test` target, a "Run tests" CI step in
+  `.github/workflows/agents-sync.yml`, and a `hook-tests` pre-commit hook
+  scoped to `hooks/`, `tests/`, `.claude/settings.json`, and
+  `scripts/check_branch_name.py`. Added two `AGENTS.md` paragraphs to the
+  Branch naming conventions section: a harness- or dispatcher-assigned
+  branch name is not an exception, and adopting repos wire the hook into
+  both events plus a pre-push checker hook in the same change that adds
+  `AGENTS.md`.
 
 ### Fixed
 
