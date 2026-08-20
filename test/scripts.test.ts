@@ -68,3 +68,26 @@ describe('public-site scripts', () => {
         expect(batchScript).toContain('scripts\\check_public_site.py');
     });
 });
+
+describe('Actions storage policy', () => {
+    it('does not create npm caches for platform smoke jobs', async () => {
+        const workflow = await readFile(join(rootDir, '.github', 'workflows', 'ci.yml'), 'utf8');
+        const smokeStart = workflow.indexOf('    platform-smoke:');
+        const smokeEnd = workflow.indexOf('    docker:', smokeStart);
+        const smokeJob = workflow.slice(smokeStart, smokeEnd);
+
+        expect(smokeStart).toBeGreaterThanOrEqual(0);
+        expect(smokeEnd).toBeGreaterThan(smokeStart);
+        expect(smokeJob).not.toContain('cache: npm');
+    });
+
+    it('publishes Scorecard SARIF without a redundant Actions artifact', async () => {
+        const workflow = await readFile(
+            join(rootDir, '.github', 'workflows', 'scorecard.yml'),
+            'utf8',
+        );
+
+        expect(workflow).toContain('github/codeql-action/upload-sarif@');
+        expect(workflow).not.toContain('actions/upload-artifact@');
+    });
+});

@@ -74,6 +74,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Reduced GitHub Actions storage by limiting npm caching to Linux validation,
+  removing the redundant Scorecard SARIF artifact, and lowering repository
+  artifact and log retention from 90 days to 30 days.
 - Synced `AGENTS.md` (and its tool-specific copies) with upstream
   `abuzucom/agents` through v1.10.0 (previously synced through v1.7.0):
   added the `claude/`-branch-prefix ban and the Dependabot exemption to
