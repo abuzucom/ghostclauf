@@ -15,7 +15,8 @@ from pathlib import Path
 
 CHECKOUT_USES = re.compile(r"uses:\s*actions/checkout@")
 PERSIST_FALSE = re.compile(r"persist-credentials:\s*false\b")
-EXCEPTION_COMMENT = re.compile(r"#\s*persist-credentials:\s*true:.*\(Rule 11 exception\)\.")
+EXCEPTION_PREFIX = re.compile(r"#\s*persist-credentials:\s*true:")
+EXCEPTION_SUFFIX = "(Rule 11 exception)."
 
 
 def _indent(line: str) -> int:
@@ -60,6 +61,15 @@ def _leading_comments(lines: list[str], start: int) -> list[str]:
     return list(reversed(comments))
 
 
+def _has_exception(text: str) -> bool:
+    """Return True when one line contains an ordered Rule 11 exception."""
+    for line in text.splitlines():
+        prefix = EXCEPTION_PREFIX.search(line)
+        if prefix and line.find(EXCEPTION_SUFFIX, prefix.end()) >= 0:
+            return True
+    return False
+
+
 def find_violations(text: str, path: str) -> list[str]:
     """Return one message per checkout step missing persist-credentials: false."""
     violations = []
@@ -70,7 +80,7 @@ def find_violations(text: str, path: str) -> list[str]:
         start = _step_start(lines, number)
         block_lines = _leading_comments(lines, start) + _block(lines, start)
         block = "\n".join(block_lines)
-        if PERSIST_FALSE.search(block) or EXCEPTION_COMMENT.search(block):
+        if PERSIST_FALSE.search(block) or _has_exception(block):
             continue
         violations.append(
             f"{path}:{number + 1}: actions/checkout missing "

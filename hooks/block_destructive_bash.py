@@ -22,8 +22,10 @@ import sys
 
 def _has_flag(command: str, letter: str, long_name: str) -> bool:
     """Return True if a short flag token containing `letter` or `long_name` appears."""
-    if re.search(rf"(?<!\S)-[a-zA-Z]*{re.escape(letter)}[a-zA-Z]*(?!\S)", command):
-        return True
+    for token in command.split():
+        short_flags = token[1:] if token.startswith("-") else ""
+        if short_flags.isascii() and short_flags.isalpha() and letter in short_flags:
+            return True
     return long_name in command
 
 
