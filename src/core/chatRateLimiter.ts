@@ -75,8 +75,7 @@ export class ChatRateLimiter {
         if (this.wakeTimer !== undefined) clearTimeout(this.wakeTimer);
         this.wakeTimer = undefined;
         this.wakeAt = undefined;
-        const [item] = this.queue.splice(readyIndex, 1);
-        if (!item) return;
+        const item = this.queue.splice(readyIndex, 1)[0]!;
         this.lastSentAt.set(item.broadcasterId, now);
         this.sentAt.push(now);
         this.active = true;

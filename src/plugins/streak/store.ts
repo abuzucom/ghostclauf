@@ -281,11 +281,7 @@ export class StreakStore {
     }
 
     private channel(channelKey: string): ChannelRecord {
-        const existing = this.data.channels[channelKey];
-        if (existing) return existing;
-        const created = emptyChannel();
-        this.data.channels[channelKey] = created;
-        return created;
+        return (this.data.channels[channelKey] ??= emptyChannel());
     }
 
     streamDays(channelKey: string): string[] {

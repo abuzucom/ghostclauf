@@ -100,8 +100,10 @@ function scopeKeyFor(runtime: QuotesRuntime, event: ChatCommandEvent): string {
 }
 
 function canCurate(runtime: QuotesRuntime, event: ChatCommandEvent): boolean {
-    if (event.roles.has('broadcaster')) return true;
-    return isElevated(runtime.elevationMap, event.broadcasterName, event.chatterName);
+    return (
+        event.roles.has('broadcaster') ||
+        isElevated(runtime.elevationMap, event.broadcasterName, event.chatterName)
+    );
 }
 
 /** True when the chatter must wait; records the invocation otherwise. */

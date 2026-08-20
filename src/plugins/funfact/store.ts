@@ -155,11 +155,7 @@ export class FunFactStore {
     }
 
     private scope(scopeKey: string): FunFactScope {
-        const existing = this.data.scopes[scopeKey];
-        if (existing) return existing;
-        const created = emptyScope();
-        this.data.scopes[scopeKey] = created;
-        return created;
+        return (this.data.scopes[scopeKey] ??= emptyScope());
     }
 
     count(scopeKey: string): number {
@@ -217,9 +213,9 @@ export class FunFactStore {
         if (!scope) return null;
         const index = scope.facts.findIndex((fact) => fact.id === id);
         if (index === -1) return null;
-        const [removed] = scope.facts.splice(index, 1);
+        const removed = scope.facts.splice(index, 1)[0]!;
         await this.persist();
-        return removed ?? null;
+        return removed;
     }
 
     private persist(): Promise<void> {

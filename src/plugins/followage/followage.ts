@@ -24,14 +24,14 @@ export function formatFollowDuration(followedAt: Date, now: Date): string {
     const days = Math.floor(diff.days);
 
     if (years >= 1) {
-        const parts = [formatUnit(years, 'year')];
-        if (months >= 1) parts.push(formatUnit(months, 'month'));
-        return parts.join(', ');
+        return months >= 1
+            ? `${formatUnit(years, 'year')}, ${formatUnit(months, 'month')}`
+            : formatUnit(years, 'year');
     }
     if (months >= 1) {
-        const parts = [formatUnit(months, 'month')];
-        if (days >= 1) parts.push(formatUnit(days, 'day'));
-        return parts.join(', ');
+        return days >= 1
+            ? `${formatUnit(months, 'month')}, ${formatUnit(days, 'day')}`
+            : formatUnit(months, 'month');
     }
     if (days >= 1) return formatUnit(days, 'day');
     return 'less than a day';
