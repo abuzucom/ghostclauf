@@ -1,4 +1,5 @@
 const DEFAULT_CURRENCY_NAME = 'esports dollars';
+const MAX_LOYALTY_BALANCE = 1_000_000_000;
 
 export interface PublicFact {
     id: number;
@@ -45,7 +46,12 @@ function isInteger(value: unknown): value is number {
 }
 
 function isBalance(value: unknown): value is number {
-    return typeof value === 'number' && Number.isFinite(value) && value >= 0;
+    return (
+        typeof value === 'number' &&
+        Number.isSafeInteger(value) &&
+        value >= 0 &&
+        value <= MAX_LOYALTY_BALANCE
+    );
 }
 
 function getScopes(value: unknown): Record<string, unknown> {

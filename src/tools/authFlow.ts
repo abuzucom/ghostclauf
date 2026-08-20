@@ -8,13 +8,13 @@ import { exchangeCode } from '@twurple/auth';
 import { loadFileConfig, loadSecrets } from '../core/config.js';
 import { BOT_SCOPES, BROADCASTER_SCOPES, writeTokenStore } from '../core/auth.js';
 import { closeServer } from '../core/httpServer.js';
+import { resolveOAuthCallback } from '../core/oauthRedirect.js';
 
 async function main(): Promise<void> {
     const file = loadFileConfig();
     const secrets = loadSecrets();
     const target = resolveAuthTarget(file, secrets, process.argv.slice(2));
-    const redirect = new URL(secrets.redirectUri);
-    const port = Number(redirect.port || '80');
+    const { redirect, port } = resolveOAuthCallback(secrets.redirectUri);
 
     const authorizeUrl = new URL('https://id.twitch.tv/oauth2/authorize');
     const state = randomBytes(32).toString('hex');

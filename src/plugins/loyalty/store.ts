@@ -10,7 +10,13 @@ import { z } from 'zod';
 import { AtomicJsonFile } from '../../core/atomicFile.js';
 import type { Logger } from '../../core/types.js';
 import { applyAward } from './loyalty.js';
-import type { BalanceDecision, LoyaltyData, LoyaltyScope, ViewerRecord } from './types.js';
+import type {
+    BalanceDecision,
+    LoyaltyData,
+    LoyaltyScope,
+    RedemptionRecord,
+    ViewerRecord,
+} from './types.js';
 
 /** Scope key used when balances are pooled across every configured channel. */
 export const SHARED_SCOPE_KEY = 'shared';
@@ -93,12 +99,44 @@ const DataSchemaV1 = z.object({
     scopes: ScopeMapSchema,
 });
 
+const BalanceDecisionSchema: z.ZodType<BalanceDecision> = z.object({
+    id: z.string(),
+    scope: z.string(),
+    kind: z.enum(['set', 'give', 'take']),
+    chatterId: z.string(),
+    chatterName: z.string(),
+    displayName: z.string(),
+    beforeBalance: z.number().int().min(0).max(MAX_BALANCE),
+    afterBalance: z.number().int().min(0).max(MAX_BALANCE),
+    requestedAmount: z.number().int().min(0).max(MAX_BALANCE),
+    createdAt: z.string(),
+    createdByChatterId: z.string(),
+    createdByChatterName: z.string(),
+    createdInBroadcasterId: z.string(),
+    status: z.enum(['applied', 'undone']),
+    undoneAt: z.string().nullable(),
+    undoneByChatterId: z.string().nullable(),
+});
+
+const RedemptionRecordSchema: z.ZodType<RedemptionRecord> = z.object({
+    id: z.string(),
+    scope: z.string(),
+    chatterId: z.string(),
+    displayName: z.string(),
+    itemId: z.string(),
+    itemLabel: z.string(),
+    cost: z.number().int().min(0).max(MAX_BALANCE),
+    balanceBefore: z.number().int().min(0).max(MAX_BALANCE),
+    balanceAfter: z.number().int().min(0).max(MAX_BALANCE),
+    createdAt: z.string(),
+    createdInBroadcasterId: z.string(),
+});
+
 const DataSchemaV2 = z.object({
     version: z.literal(2),
     scopes: ScopeMapSchema,
-    // Journals are permissive here; their writers own the shape. Validating
-    // them strictly would quarantine a whole balance file over one bad audit
-    // row, which trades a recoverable problem for an unrecoverable one.
+    // Parse rows independently below so one malformed audit row cannot
+    // quarantine otherwise valid balances.
     decisions: z.array(z.unknown()).default([]),
     redemptions: z.array(z.unknown()).default([]),
 });
@@ -161,12 +199,20 @@ function parseData(raw: string): { data: LoyaltyData; wasV1: boolean } {
     if (parsed.version === 1) {
         return { data: { version: 2, scopes, decisions: [], redemptions: [] }, wasV1: true };
     }
+    const decisions = parsed.decisions.flatMap((decision) => {
+        const result = BalanceDecisionSchema.safeParse(decision);
+        return result.success ? [result.data] : [];
+    });
+    const redemptions = parsed.redemptions.flatMap((redemption) => {
+        const result = RedemptionRecordSchema.safeParse(redemption);
+        return result.success ? [result.data] : [];
+    });
     return {
         data: {
             version: 2,
             scopes,
-            decisions: parsed.decisions as LoyaltyData['decisions'],
-            redemptions: parsed.redemptions as LoyaltyData['redemptions'],
+            decisions,
+            redemptions,
         },
         wasV1: false,
     };

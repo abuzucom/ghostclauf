@@ -222,10 +222,14 @@ describe('createAuthProvider', () => {
             .mockResolvedValueOnce('bot-user-id')
             .mockResolvedValueOnce('broadcaster-user-id');
 
-        const { authProvider, broadcasterUserIds } = await createAuthProvider(secrets, spy.logger, [
-            { login: 'streamer', tokenStorePath: broadcasterTokenPath },
-        ]);
+        const { authProvider, broadcasterUserIds, broadcasterIdentities } =
+            await createAuthProvider(secrets, spy.logger, [
+                { login: 'streamer', tokenStorePath: broadcasterTokenPath },
+            ]);
         expect(asMocked(authProvider).addUserForToken).toHaveBeenCalledTimes(2);
         expect(broadcasterUserIds).toEqual(['broadcaster-user-id']);
+        expect(broadcasterIdentities).toEqual([
+            { login: 'streamer', userId: 'broadcaster-user-id' },
+        ]);
     });
 });

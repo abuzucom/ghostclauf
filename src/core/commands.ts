@@ -20,6 +20,7 @@ interface RegisteredCommand extends CommandDefinition {
  */
 export class CommandRegistry {
     private readonly commands = new Map<string, RegisteredCommand>();
+    private readonly inflight = new Set<Promise<boolean>>();
 
     constructor(
         private readonly prefix: string,
@@ -38,6 +39,14 @@ export class CommandRegistry {
         }
         this.commands.set(trigger, { ...def, trigger, pluginName, ctx });
         this.logger.debug({ trigger, plugin: pluginName, allow: def.allow }, 'command registered');
+    }
+
+    /** Remove every command owned by a plugin whose initialization failed. */
+    removePlugin(pluginName: string): void {
+        const triggers = [...this.commands]
+            .filter(([, command]) => command.pluginName === pluginName)
+            .map(([trigger]) => trigger);
+        for (const trigger of triggers) this.commands.delete(trigger);
     }
 
     /**
@@ -67,7 +76,22 @@ export class CommandRegistry {
      * matched (whether or not permission allowed it), false if the message was
      * not a command.
      */
-    async handle(message: ChatMessageEvent): Promise<boolean> {
+    handle(message: ChatMessageEvent): Promise<boolean> {
+        const invocation = this.invokeHandler(message).finally(() => {
+            this.inflight.delete(invocation);
+        });
+        this.inflight.add(invocation);
+        return invocation;
+    }
+
+    /** Resolve after all commands accepted before or during the drain settle. */
+    async drain(): Promise<void> {
+        while (this.inflight.size > 0) {
+            await Promise.allSettled([...this.inflight]);
+        }
+    }
+
+    private async invokeHandler(message: ChatMessageEvent): Promise<boolean> {
         const matched = this.match(message);
         if (!matched) return false;
 
