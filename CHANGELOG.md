@@ -52,6 +52,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Rewrote five ambiguous regular-expression paths in repository checkers and
+  hooks to keep malformed commit, documentation, command, and config input
+  processing linear.
 - `run.sh`/`run.bat` no longer hang after the bot OAuth tab is authorized
   when more accounts (broadcasters) still need authorization. `npm run auth`'s
   callback server used a bare `server.close()`, which waits forever for a

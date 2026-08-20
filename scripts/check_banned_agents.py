@@ -20,7 +20,7 @@ import sys
 DENYLIST_NAMES = ("grok", "xai")
 DENYLIST_EMAIL_DOMAINS = ("x.ai",)
 
-TRAILER = re.compile(r"^Co-authored-by:\s*(?P<name>[^<]*)<(?P<email>[^>]+)>", re.MULTILINE)
+TRAILER = re.compile(r"^Co-authored-by:(?P<name>[^<]*)<(?P<email>[^>]+)>", re.MULTILINE)
 COMMIT_SEP = "\x1e"
 FIELD_SEP = "\x1f"
 

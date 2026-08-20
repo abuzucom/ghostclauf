@@ -22,7 +22,8 @@ from pathlib import Path
 FROM_STAGE = re.compile(r"^\s*FROM\s+\S+", re.IGNORECASE)
 USER_NONROOT = re.compile(r"^\s*USER\s+(?!root\b|0\b)\S+", re.IGNORECASE)
 RUN_AS_NON_ROOT = re.compile(r"runAsNonRoot:\s*true\b")
-EXCEPTION_COMMENT = re.compile(r"#\s*runtime-root:.*\(Rule 12 exception\)\.")
+EXCEPTION_PREFIX = re.compile(r"#\s*runtime-root:")
+EXCEPTION_SUFFIX = "(Rule 12 exception)."
 
 
 def _indent(line: str) -> int:
@@ -57,6 +58,15 @@ def _leading_comments(lines: list[str], start: int) -> list[str]:
     return list(reversed(comments))
 
 
+def _has_exception(text: str) -> bool:
+    """Return True when one line contains an ordered Rule 12 exception."""
+    for line in text.splitlines():
+        prefix = EXCEPTION_PREFIX.search(line)
+        if prefix and line.find(EXCEPTION_SUFFIX, prefix.end()) >= 0:
+            return True
+    return False
+
+
 def _dockerfile_violations(text: str, path: str) -> list[str]:
     """Check the final build stage for a non-root USER instruction."""
     lines = text.splitlines()
@@ -65,7 +75,7 @@ def _dockerfile_violations(text: str, path: str) -> list[str]:
     stage_text = "\n".join(stage)
     if any(USER_NONROOT.match(line) for line in stage):
         return []
-    if EXCEPTION_COMMENT.search(stage_text):
+    if _has_exception(stage_text):
         return []
     return [f"{path}: final build stage has no non-root USER (Rule 12)"]
 
@@ -93,7 +103,7 @@ def _compose_violations(text: str, path: str) -> list[str]:
             block = "\n".join(block_lines)
             if re.search(r"^\s*user:\s*\S", block, re.MULTILINE):
                 continue
-            if EXCEPTION_COMMENT.search(block):
+            if _has_exception(block):
                 continue
             name = lines[index].strip().rstrip(":")
             violations.append(
@@ -107,7 +117,7 @@ def _k8s_violations(text: str, path: str) -> list[str]:
     """Check a manifest defining `containers:` for a file-wide runAsNonRoot."""
     if "containers:" not in text:
         return []
-    if RUN_AS_NON_ROOT.search(text) or EXCEPTION_COMMENT.search(text):
+    if RUN_AS_NON_ROOT.search(text) or _has_exception(text):
         return []
     return [f"{path}: containers with no runAsNonRoot: true (Rule 12)"]
 
