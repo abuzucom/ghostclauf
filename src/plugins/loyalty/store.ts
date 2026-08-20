@@ -339,11 +339,7 @@ export class LoyaltyStore {
     }
 
     private scope(scopeKey: string): LoyaltyScope {
-        const existing = this.data.scopes[scopeKey];
-        if (existing) return existing;
-        const created = emptyScope();
-        this.data.scopes[scopeKey] = created;
-        return created;
+        return (this.data.scopes[scopeKey] ??= emptyScope());
     }
 
     getBalance(scopeKey: string, chatterId: string): number {

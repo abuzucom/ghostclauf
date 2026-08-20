@@ -151,11 +151,7 @@ export class QuoteStore {
     }
 
     private scope(scopeKey: string): QuoteScope {
-        const existing = this.data.scopes[scopeKey];
-        if (existing) return existing;
-        const created = emptyScope();
-        this.data.scopes[scopeKey] = created;
-        return created;
+        return (this.data.scopes[scopeKey] ??= emptyScope());
     }
 
     count(scopeKey: string): number {
@@ -221,9 +217,9 @@ export class QuoteStore {
         if (!scope) return null;
         const index = scope.quotes.findIndex((quote) => quote.id === id);
         if (index === -1) return null;
-        const [removed] = scope.quotes.splice(index, 1);
+        const removed = scope.quotes.splice(index, 1)[0]!;
         await this.persist();
-        return removed ?? null;
+        return removed;
     }
 
     private persist(): Promise<void> {
