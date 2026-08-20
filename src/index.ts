@@ -19,19 +19,12 @@ async function main(): Promise<void> {
     const metrics = createMetrics();
 
     // Auth: load the bot and broadcaster tokens and resolve their user ids.
-    const { authProvider, botUserId, broadcasterUserIds } = await createAuthProvider(
+    const { authProvider, botUserId, broadcasterIdentities } = await createAuthProvider(
         secrets,
         logger,
         file.broadcasters,
         metrics,
     );
-    const broadcasterTargets = file.broadcasters.map((broadcaster, index) => ({
-        login: broadcaster.login,
-        userId: broadcasterUserIds[index],
-    }));
-    if (broadcasterTargets.some(({ userId }) => userId === undefined)) {
-        throw new Error('missing resolved user ID for a configured broadcaster');
-    }
 
     // Core services.
     const registry = new CommandRegistry(file.chat.commandPrefix, logger);
@@ -66,8 +59,8 @@ async function main(): Promise<void> {
         bus,
         sender: senderRef,
         helix: helixRef,
-        broadcasters: broadcasterTargets.map((target) => ({
-            id: target.userId!,
+        broadcasters: broadcasterIdentities.map((target) => ({
+            id: target.userId,
             login: target.login,
         })),
     });
@@ -78,9 +71,9 @@ async function main(): Promise<void> {
         authProvider,
         botUserId,
         botLogin: file.bot.login,
-        broadcasters: broadcasterTargets.map((target) => ({
+        broadcasters: broadcasterIdentities.map((target) => ({
             login: target.login,
-            userId: target.userId!,
+            userId: target.userId,
         })),
         logger,
         metrics,
@@ -143,8 +136,10 @@ async function main(): Promise<void> {
         // dispose() throwing) cannot skip the rest of cleanup or leave the
         // process hanging without calling exit.
         const steps: Array<[string, () => Promise<void>]> = [
-            ['dispose plugins', () => plugins.disposeAll()],
             ['stop transport', () => transport.stop()],
+            ['drain commands', () => registry.drain()],
+            ['drain events', () => bus.drain()],
+            ['dispose plugins', () => plugins.disposeAll()],
             [
                 'close health server',
                 async () => {
