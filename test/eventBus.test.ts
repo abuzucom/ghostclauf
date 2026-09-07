@@ -75,4 +75,32 @@ describe('EventBus', () => {
         const bus = new EventBus(makeSpyLogger().logger);
         expect(() => bus.emit('chatMessage', makeMessage('hello'))).not.toThrow();
     });
+
+    it('drains work emitted by a handler while draining', async () => {
+        const bus = new EventBus(makeSpyLogger().logger);
+        let finishNested: (() => void) | undefined;
+        let invocation = 0;
+        bus.on('chatMessage', async () => {
+            invocation += 1;
+            if (invocation === 1) {
+                await Promise.resolve();
+                bus.emit('chatMessage', makeMessage('nested'));
+                return;
+            }
+            await new Promise<void>((resolve) => {
+                finishNested = resolve;
+            });
+        });
+        bus.emit('chatMessage', makeMessage('initial'));
+        let drained = false;
+
+        const drain = bus.drain().then(() => {
+            drained = true;
+        });
+        await vi.waitFor(() => expect(invocation).toBe(2));
+
+        expect(drained).toBe(false);
+        finishNested?.();
+        await drain;
+    });
 });

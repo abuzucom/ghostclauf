@@ -392,6 +392,24 @@ describe('streak plugin', () => {
         expect(say.mock.calls[0][0]).toContain('not open');
     });
 
+    it('falls back when a boolean config field has the wrong runtime type', async () => {
+        const { ctx, registry, say } = harness({ requireStreamDay: 0 as unknown as boolean });
+        await streak.init(ctx);
+
+        await registry.handle(makeMessage('!checkin'));
+
+        expect(say.mock.calls[0][0]).toContain('not open');
+    });
+
+    it('falls back to unique default triggers when configured triggers collide', async () => {
+        const { ctx, registry } = harness({ triggers: { checkin: 'same', streak: 'same' } });
+
+        await expect(streak.init(ctx)).resolves.toBeUndefined();
+
+        expect(registry.match(makeMessage('!checkin'))).not.toBeNull();
+        expect(registry.match(makeMessage('!streak'))).not.toBeNull();
+    });
+
     it('shares viewer streaks but gates check-in to the live broadcaster', async () => {
         const now = new Date('2026-07-20T20:00:00Z');
         const plugin = createStreakPlugin(() => now);

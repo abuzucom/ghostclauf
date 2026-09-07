@@ -64,4 +64,29 @@ describe('CommandRegistry', () => {
         const reg = new CommandRegistry('!', testLogger);
         expect(await reg.handle(makeMessage('!unknown'))).toBe(false);
     });
+
+    it('drains command handlers that are still running', async () => {
+        const reg = new CommandRegistry('!', testLogger);
+        let finishHandler: (() => void) | undefined;
+        const handler = vi.fn(
+            () =>
+                new Promise<void>((resolve) => {
+                    finishHandler = resolve;
+                }),
+        );
+        reg.register('p', { trigger: 'wait', allow: ['everyone'], handler }, ctx);
+        void reg.handle(makeMessage('!wait'));
+        await vi.waitFor(() => expect(handler).toHaveBeenCalledOnce());
+        let drained = false;
+
+        const drain = reg.drain().then(() => {
+            drained = true;
+        });
+        await Promise.resolve();
+
+        expect(drained).toBe(false);
+        finishHandler?.();
+        await drain;
+        expect(drained).toBe(true);
+    });
 });

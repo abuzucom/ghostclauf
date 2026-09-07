@@ -5,7 +5,7 @@ import { PluginManager } from '../src/core/pluginManager.js';
 import { CommandRegistry } from '../src/core/commands.js';
 import { EventBus } from '../src/core/eventBus.js';
 import type { FileConfig } from '../src/core/config.js';
-import { makeMessage, makeSpyLogger, spySender } from './helpers.js';
+import { flush, makeMessage, makeSpyLogger, spySender } from './helpers.js';
 
 const fixturesRoot = join(dirname(fileURLToPath(import.meta.url)), 'fixtures', 'pluginManager');
 
@@ -34,7 +34,7 @@ function setup(overrides: Partial<FileConfig['plugins']>) {
         bus,
         sender: spySender(),
     });
-    return { pm, registry, spy };
+    return { pm, registry, bus, spy };
 }
 
 describe('PluginManager', () => {
@@ -52,6 +52,20 @@ describe('PluginManager', () => {
             expect.objectContaining({ plugin: 'fixture-throws-init' }),
             'plugin init threw, skipping',
         );
+    });
+
+    it('rolls back commands and listeners when plugin initialization fails', async () => {
+        const dir = join(fixturesRoot, 'plugins');
+        const { pm, registry, bus } = setup({
+            directories: [dir],
+            enabled: ['fixture-throws-init'],
+        });
+        await pm.loadAll();
+        bus.emit('chatMessage', makeMessage('hello'));
+        await flush(bus);
+
+        expect(registry.match(makeMessage('!partial-command'))).toBeNull();
+        expect(registry.match(makeMessage('!partial-listener-command'))).toBeNull();
     });
 
     it('skips a module that does not export a valid Plugin', async () => {

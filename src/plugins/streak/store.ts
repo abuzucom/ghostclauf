@@ -31,6 +31,10 @@ const SHARED_SCOPE_KEY = 'shared';
  */
 const MAX_RESOLVED_PENALTIES_PER_VIEWER = 50;
 
+function isNonnegativeSafeInteger(value: unknown): value is number {
+    return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0;
+}
+
 function emptyData(): StreakData {
     return { version: 2, channels: {} };
 }
@@ -49,12 +53,13 @@ function emptyChannel(): ChannelRecord {
 function isViewerRecord(value: unknown): value is ViewerRecord {
     if (typeof value !== 'object' || value === null) return false;
     const record = value as Partial<ViewerRecord>;
+    if (!isNonnegativeSafeInteger(record.currentStreak)) return false;
+    if (!isNonnegativeSafeInteger(record.longestStreak)) return false;
+    if (!isNonnegativeSafeInteger(record.totalCheckins)) return false;
     return (
         typeof record.chatterName === 'string' &&
         typeof record.displayName === 'string' &&
-        Number.isFinite(record.currentStreak) &&
-        Number.isFinite(record.longestStreak) &&
-        Number.isFinite(record.totalCheckins) &&
+        record.longestStreak >= record.currentStreak &&
         (record.lastCheckinDay === null || typeof record.lastCheckinDay === 'string') &&
         (record.missEvaluationAfterDay === undefined ||
             record.missEvaluationAfterDay === null ||
@@ -104,7 +109,7 @@ function isPenalty(value: unknown): value is StreakPenaltyRecord {
         typeof penalty.checkinDay === 'string' &&
         typeof penalty.broadcasterId === 'string' &&
         typeof penalty.recordedAt === 'string' &&
-        Number.isFinite(penalty.lostAmount) &&
+        isNonnegativeSafeInteger(penalty.lostAmount) &&
         // Every reader tests these against null. An absent field would read as
         // "already repaired" and hide the penalty from !fixstreak, so require
         // them to be present rather than defaulting them.

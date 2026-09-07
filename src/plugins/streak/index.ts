@@ -1,9 +1,12 @@
 import { DateTime } from 'luxon';
+import { z } from 'zod';
+import { resolveConfigField } from '../../core/configField.js';
 import type {
     BotContext,
     CommandHandler,
     Logger,
     Plugin,
+    PluginConfig,
     StreamOfflineEvent,
     StreamOnlineEvent,
 } from '../../core/types.js';
@@ -27,7 +30,6 @@ import type {
     BroadcasterSession,
     CheckinOutcome,
     StreakBreakPolicy,
-    StreakConfig,
     StreakMessages,
     StreakTriggers,
 } from './types.js';
@@ -72,13 +74,46 @@ const MAX_CHECKIN_COOLDOWN_SECONDS = 3600;
 const MAX_MINUTES = 1440;
 const MS_PER_SECOND = 1000;
 const MS_PER_MINUTE = 60_000;
+const NonemptyStringSchema = z.string().min(1);
+const TriggerOverridesSchema = z
+    .object({
+        checkin: NonemptyStringSchema,
+        streak: NonemptyStringSchema,
+        reset: NonemptyStringSchema,
+        set: NonemptyStringSchema,
+        open: NonemptyStringSchema,
+        fix: NonemptyStringSchema,
+        undoSet: NonemptyStringSchema,
+    })
+    .partial();
+const MessageOverridesSchema = z
+    .object({
+        started: z.string(),
+        extended: z.string(),
+        already: z.string(),
+        notOpen: z.string(),
+        lookupSelf: z.string(),
+        lookupOther: z.string(),
+        lookupNone: z.string(),
+        reset: z.string(),
+        setDone: z.string(),
+        opened: z.string(),
+        fixDone: z.string(),
+        fixNone: z.string(),
+        undoDone: z.string(),
+        undoNone: z.string(),
+        undoBlocked: z.string(),
+        adminUsage: z.string(),
+        adminNotFound: z.string(),
+    })
+    .partial();
 
 function toIsoString(date: Date): string {
     return DateTime.fromJSDate(date).toUTC().toISO()!;
 }
 
 function resolveBoundedInt(
-    configured: number | undefined,
+    configured: unknown,
     min: number,
     max: number,
     fallback: number,
@@ -86,22 +121,99 @@ function resolveBoundedInt(
     logger: Logger,
 ): number {
     if (configured === undefined) return fallback;
-    if (Number.isInteger(configured) && configured >= min && configured <= max) return configured;
+    if (
+        typeof configured === 'number' &&
+        Number.isInteger(configured) &&
+        configured >= min &&
+        configured <= max
+    ) {
+        return configured;
+    }
     logger.warn({ configured }, `invalid streak ${name}; falling back to default`);
     return fallback;
 }
 
-function resolveConfig(raw: StreakConfig, logger: Logger): ResolvedConfig {
-    const configuredTz = raw.timezone ?? DEFAULT_TIMEZONE;
+function resolveTriggers(configured: unknown, logger: Logger): StreakTriggers {
+    const overrides = resolveConfigField(
+        'streak',
+        'triggers',
+        TriggerOverridesSchema,
+        configured,
+        {},
+        logger,
+    );
+    const triggers = { ...DEFAULT_TRIGGERS, ...overrides };
+    const normalized = Object.values(triggers).map((trigger) => trigger.toLowerCase());
+    if (new Set(normalized).size === normalized.length) return triggers;
+    logger.warn({ configured }, 'invalid streak triggers; falling back to defaults');
+    return DEFAULT_TRIGGERS;
+}
+
+function resolveMessages(configured: unknown, logger: Logger): StreakMessages {
+    const overrides = resolveConfigField(
+        'streak',
+        'messages',
+        MessageOverridesSchema,
+        configured,
+        {},
+        logger,
+    );
+    return { ...DEFAULT_MESSAGES, ...overrides };
+}
+
+function resolveTimezone(configured: unknown, logger: Logger): string {
+    const configuredTz = resolveConfigField(
+        'streak',
+        'timezone',
+        NonemptyStringSchema,
+        configured,
+        DEFAULT_TIMEZONE,
+        logger,
+    );
     const timezone = isValidTimezone(configuredTz) ? configuredTz : DEFAULT_TIMEZONE;
     if (timezone !== configuredTz) {
         logger.warn({ configuredTz }, 'invalid streak timezone; falling back to UTC');
     }
-    const dataPath = raw.dataPath ?? DEFAULT_DATA_PATH;
+    return timezone;
+}
+
+function resolveDataPaths(
+    raw: PluginConfig,
+    logger: Logger,
+): Pick<ResolvedConfig, 'dataPath' | 'decisionPath'> {
+    const dataPath = resolveConfigField(
+        'streak',
+        'dataPath',
+        NonemptyStringSchema,
+        raw.dataPath,
+        DEFAULT_DATA_PATH,
+        logger,
+    );
     return {
         dataPath,
-        decisionPath: raw.decisionPath ?? `${dataPath}.decisions`,
-        timezone,
+        decisionPath: resolveConfigField(
+            'streak',
+            'decisionPath',
+            NonemptyStringSchema,
+            raw.decisionPath,
+            `${dataPath}.decisions`,
+            logger,
+        ),
+    };
+}
+
+function resolveNumericConfig(
+    raw: PluginConfig,
+    logger: Logger,
+): Pick<
+    ResolvedConfig,
+    | 'dayBoundaryHour'
+    | 'reconnectGraceMinutes'
+    | 'minimumQualifyingSessionMinutes'
+    | 'streamSessionHours'
+    | 'checkinCooldownSeconds'
+> {
+    return {
         dayBoundaryHour: resolveBoundedInt(
             raw.dayBoundaryHour,
             0,
@@ -126,12 +238,6 @@ function resolveConfig(raw: StreakConfig, logger: Logger): ResolvedConfig {
             'minimumQualifyingSessionMinutes',
             logger,
         ),
-        streakBreakPolicy:
-            raw.streakBreakPolicy === 'all-broadcasters'
-                ? 'all-broadcasters'
-                : 'previous-stream-day',
-        requireStreamDay: raw.requireStreamDay ?? true,
-        shareAcrossChannels: raw.shareAcrossChannels ?? true,
         streamSessionHours: resolveBoundedInt(
             raw.streamSessionHours,
             MIN_SESSION_HOURS,
@@ -148,8 +254,40 @@ function resolveConfig(raw: StreakConfig, logger: Logger): ResolvedConfig {
             'checkinCooldownSeconds',
             logger,
         ),
-        triggers: { ...DEFAULT_TRIGGERS, ...raw.triggers },
-        messages: { ...DEFAULT_MESSAGES, ...raw.messages },
+    };
+}
+
+function resolveConfig(raw: PluginConfig, logger: Logger): ResolvedConfig {
+    return {
+        ...resolveDataPaths(raw, logger),
+        ...resolveNumericConfig(raw, logger),
+        timezone: resolveTimezone(raw.timezone, logger),
+        streakBreakPolicy: resolveConfigField(
+            'streak',
+            'streakBreakPolicy',
+            z.enum(['previous-stream-day', 'all-broadcasters']),
+            raw.streakBreakPolicy,
+            'previous-stream-day',
+            logger,
+        ),
+        requireStreamDay: resolveConfigField(
+            'streak',
+            'requireStreamDay',
+            z.boolean(),
+            raw.requireStreamDay,
+            true,
+            logger,
+        ),
+        shareAcrossChannels: resolveConfigField(
+            'streak',
+            'shareAcrossChannels',
+            z.boolean(),
+            raw.shareAcrossChannels,
+            true,
+            logger,
+        ),
+        triggers: resolveTriggers(raw.triggers, logger),
+        messages: resolveMessages(raw.messages, logger),
     };
 }
 

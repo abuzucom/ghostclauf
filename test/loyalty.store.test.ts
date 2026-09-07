@@ -566,6 +566,28 @@ describe('LoyaltyStore', () => {
             expect(store.getBalance(SHARED_SCOPE_KEY, '10')).toBe(7);
         });
 
+        it('drops malformed journal rows without rejecting valid balances', async () => {
+            const v2 = JSON.stringify({
+                version: 2,
+                scopes: { shared: { viewers: { '10': { displayName: 'Tank', balance: 7 } } } },
+                decisions: [null, { status: 'applied' }],
+                redemptions: [null, { cost: 'invalid' }],
+            });
+            await writeFile(dataPath, v2, 'utf8');
+            const store = new LoyaltyStore(dataPath, testLogger);
+
+            await store.load();
+
+            expect(store.getBalance(SHARED_SCOPE_KEY, '10')).toBe(7);
+            expect(
+                await store.undoLatest('shared', '10', 'give', { chatterId: '1' }, DateTime.utc()),
+            ).toEqual({ ok: false });
+            const preserved = (await readdir(dir)).filter((name) =>
+                name.startsWith('loyalty.json.corrupt-'),
+            );
+            expect(preserved).toHaveLength(0);
+        });
+
         it('writes a one-time v1 snapshot before the first v2 persist', async () => {
             const original = v1File({ '10': { displayName: 'Tank', balance: 5 } });
             await writeFile(dataPath, original, 'utf8');

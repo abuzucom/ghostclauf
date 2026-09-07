@@ -42,6 +42,7 @@ export async function createAuthProvider(
     authProvider: RefreshingAuthProvider;
     botUserId: string;
     broadcasterUserIds: string[];
+    broadcasterIdentities: Array<{ login: string; userId: string }>;
 }> {
     const botToken = await readTokenStore(secrets.tokenStorePath);
     validateToken(botToken, 'bot', BOT_SCOPES, 'npm run auth -- --bot');
@@ -109,19 +110,20 @@ export async function createAuthProvider(
     // `chat` intent marks the bot user as the sender/reader for chat operations.
     const botUserId = await addToken(secrets.tokenStorePath, 'bot', ['chat'], botToken);
     const broadcasterUserIds: string[] = [];
+    const broadcasterIdentities: Array<{ login: string; userId: string }> = [];
     for (const broadcaster of broadcasters) {
-        broadcasterUserIds.push(
-            await addToken(
-                broadcaster.tokenStorePath,
-                'broadcaster',
-                undefined,
-                undefined,
-                `npm run auth -- --broadcaster ${broadcaster.login}`,
-            ),
+        const userId = await addToken(
+            broadcaster.tokenStorePath,
+            'broadcaster',
+            undefined,
+            undefined,
+            `npm run auth -- --broadcaster ${broadcaster.login}`,
         );
+        broadcasterUserIds.push(userId);
+        broadcasterIdentities.push({ login: broadcaster.login, userId });
     }
 
-    return { authProvider, botUserId, broadcasterUserIds };
+    return { authProvider, botUserId, broadcasterUserIds, broadcasterIdentities };
 }
 
 export async function readTokenStore(
