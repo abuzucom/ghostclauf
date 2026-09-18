@@ -3,6 +3,55 @@
 ghostclauf is a plugin-based Twitch chat bot. The core owns Twitch-specific
 work. Plugins receive a narrow, transport-agnostic `BotContext`.
 
+## Source map
+
+```
+src/index.ts              entrypoint: config -> auth -> plugins -> transport
+src/core/types.ts          plugin contract (Plugin, BotContext, Role, events)
+src/core/config.ts         load + validate config.yaml and .env secrets (zod)
+src/core/logger.ts         pino structured logging
+src/core/permissions.ts    badges -> roles; allow-list check
+src/core/eventBus.ts       typed event bus (errors isolated per handler)
+src/core/commands.ts       command registry: prefix match + permission gate
+src/core/context.ts        builds the BotContext handed to each plugin
+src/core/configField.ts    validates plugin config fields with safe fallbacks
+src/core/pluginManager.ts  discover / import / validate / init plugins
+src/core/auth.ts           RefreshingAuthProvider + token persistence
+src/core/twitch.ts         EventSub WS + Helix sender (the only @twurple code)
+src/core/metrics.ts        in-process operational counters
+src/core/alerts.ts         structured operational alert logging
+src/core/healthServer.ts   /healthz and /readyz HTTP endpoints
+src/plugins/ping/          !ping -> pong!
+src/plugins/wentlive/      stream.online -> announcement
+src/plugins/streak/        !checkin / !streak / admin commands, live-gated
+src/plugins/followage/     !followage - Helix follower lookup
+src/plugins/lurk/          !lurk / !unlurk
+src/plugins/shoutout/      !so / !shoutout - Helix user lookup + native shoutout
+src/plugins/announce/      raid / subscribe / cheer announcements
+src/plugins/funfact/       !addfunfact / !funfact - curated fact pool on disk
+src/plugins/quotes/        !addquote / !quote - curated quote pool on disk
+src/plugins/loyalty/       !wallet / !economy - passive chat-activity currency
+src/plugins/nowplaying/    !nowplaying - polls a local DJ overlay server
+src/tools/authFlow.ts      one-time OAuth to mint the bot's initial token
+src/tools/checkTokens.ts   reports missing/under-scoped token stores
+src/tools/configureAccounts.ts  writes real Twitch logins into config.yaml
+```
+
+Node 20+, TypeScript, ESM (`"type": "module"`). `ping` and `wentlive` are the
+reference examples for writing a new plugin; `streak` is the larger worked
+example. See README.md for full command tables and per-plugin configuration.
+
+## Gotchas
+
+- ESM only: no `require`, use `.js` extensions in relative imports (NodeNext).
+- Config is split: secrets in `.env` (`.env.example` documents required
+  vars), everything else in `config.yaml` (zod-validated in
+  `src/core/config.ts`).
+- `@twurple/*` packages are pinned to `8.1.4` across `api`, `auth`, and
+  `eventsub-ws`; keep them in lockstep.
+- A broken plugin is logged and skipped by `pluginManager`, never crashes
+  the bot; preserve that isolation when touching plugin loading.
+
 ## Startup
 
 `src/index.ts` starts the bot in this order:

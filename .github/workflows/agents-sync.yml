@@ -17,6 +17,7 @@ on:
             - .github/PULL_REQUEST_TEMPLATE.md
             - .github/ISSUE_TEMPLATE.md
             - scripts/sync.py
+            - docs/agent-policy/**
             - scripts/check_ascii.py
             - scripts/check_us_spelling.py
             - scripts/check_english_only.py
@@ -40,6 +41,7 @@ on:
             - .github/PULL_REQUEST_TEMPLATE.md
             - .github/ISSUE_TEMPLATE.md
             - scripts/sync.py
+            - docs/agent-policy/**
             - scripts/check_ascii.py
             - scripts/check_us_spelling.py
             - scripts/check_english_only.py
@@ -61,6 +63,7 @@ jobs:
                   persist-credentials: false
             - run: python3 -m unittest discover -s tests -v
             - run: python3 scripts/sync.py --check
+            - run: python3 scripts/check_policy_size.py
             - run: python3 scripts/check_ascii.py AGENTS.md plan/HANDOFF.md.example CONTRIBUTING.md.example .github/PULL_REQUEST_TEMPLATE.md .github/ISSUE_TEMPLATE.md
             - run: python3 scripts/check_us_spelling.py AGENTS.md plan/HANDOFF.md.example CONTRIBUTING.md.example .github/PULL_REQUEST_TEMPLATE.md .github/ISSUE_TEMPLATE.md
             - run: python3 scripts/check_english_only.py AGENTS.md plan/HANDOFF.md.example CONTRIBUTING.md.example .github/PULL_REQUEST_TEMPLATE.md .github/ISSUE_TEMPLATE.md

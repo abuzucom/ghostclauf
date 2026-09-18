@@ -2,3 +2,18 @@ dist/
 node_modules/
 test/fixtures/
 site/
+
+# Vendored policy from abuzucom/agents. AGENTS.md must stay byte-identical to
+# upstream outside its repository-only block, and scripts/sync.py generates the
+# mirrors from it. Reformatting either breaks sync.py --check.
+AGENTS.md
+CLAUDE.md
+GEMINI.md
+CONVENTIONS.md
+.cursorrules
+.clinerules
+.windsurfrules
+.copilot-instructions
+.github/copilot-instructions.md
+docs/agent-policy/
+docs/gate-threat-model.md

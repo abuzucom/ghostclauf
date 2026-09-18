@@ -35,8 +35,8 @@ FOREIGN_STOPWORDS = {
     # German
     "der", "die", "das", "und", "ist", "nicht", "mit", "auch", "eine",
     "einen", "sich", "auf",
-    # Portuguese
-    "nao", "uma", "dos", "com", "para", "sao", "isso",
+    # Portuguese (also uses "para", already listed under Spanish)
+    "nao", "uma", "dos", "com", "sao", "isso",
     # Italian
     "il", "di", "che", "sono", "questo", "anche", "sul",
 }

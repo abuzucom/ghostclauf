@@ -9,6 +9,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Re-adopted the `abuzucom/agents` policy template at v2.2.1 (commit
+  `f00081f`), replacing the v1.11.0 adoption. `AGENTS.md` now carries upstream's
+  rule text byte-identically outside its `repository-only` block, which points
+  at the new `docs/agent-orientation.md`. Added the `docs/agent-policy/` set
+  that `scripts/sync.py` assembles into the eight generated copies.
+- Added upstream's portable checkers, among them `check_policy_size.py`,
+  `check_action_pins.py`, `check_conflict_markers.py`, `check_changelog.py`,
+  `check_git_identity.py`, `check_gate_adoption.py`, `lint_style.py`, and the
+  `prose_policy.py` bundle. Wired the new checks into the `Makefile`,
+  `.pre-commit-config.yaml`, and the sync workflow.
+- Added `requirements-checkers.txt` pinning `PyYAML==6.0.3` for the
+  YAML-reading checkers.
+- Moved the source map and stack gotchas into `docs/architecture.md`, and the
+  commands, protected paths, plugin contract, and public-site boundary into
+  `docs/agent-orientation.md`. Upstream's policy leaves 324 bytes under the
+  32768-byte `check_policy_size.py` cap, too little to hold them inline.
+
 - Added a reviewed static GitHub Pages artifact for public fun facts, quotes,
   and esports dollars leaderboard data. Added an allowlisted exporter, static
   site validation, and a Pages deployment workflow for `ghost.clauf.org`.
