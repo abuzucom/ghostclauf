@@ -3,9 +3,9 @@
 
 A portable, path-generic checker: copy this file into any repo and point
 it at that repo's own source globs and CI. Matches well-anchored,
-structured secret-token prefixes (AWS, GitHub, Slack, Google, PEM keys)
-and blocks any file literally named .env or .env.local (.env.example is
-allowed). This is a heuristic, not entropy-based scanning: it misses
+structured secret-token prefixes (AWS, GitHub, Slack, Google, private keys)
+and blocks .env files except the exact basename .env.example. This is a
+heuristic, not entropy-based scanning: it misses
 secrets with no recognizable prefix. Propose gitleaks or detect-secrets
 (Rule 9) for that. Blocking: exits 1 on any match.
 """
@@ -15,24 +15,30 @@ from pathlib import Path
 
 TOKEN_PATTERNS = [
     re.compile(r"\b(?:AKIA|ASIA)[0-9A-Z]{16}\b"),
-    re.compile(r"\bgh[ops]_[0-9A-Za-z]{36,}\b"),
+    re.compile(r"\bgh[opsur]_[0-9A-Za-z]{36,}\b"),
     re.compile(r"\bgithub_pat_[0-9A-Za-z_]{22,}\b"),
     re.compile(r"\bxox[baprs]-[0-9A-Za-z-]{10,}\b"),
     re.compile(r"\bAIza[0-9A-Za-z_-]{35}\b"),
-    re.compile(r"-----BEGIN (?:RSA |EC |OPENSSH |DSA |)PRIVATE KEY-----"),
+    re.compile(r"-----BEGIN (?:[A-Z0-9]+ )*PRIVATE KEY(?: BLOCK)?-----"),
 ]
-BLOCKED_ENV_NAMES = (".env", ".env.local")
+MAX_VIOLATIONS = 1_000
 
 
 def find_violations(text: str, path: str) -> list[str]:
     """Return one message per likely secret token or blocked filename."""
     violations = []
-    if Path(path).name in BLOCKED_ENV_NAMES:
+    basename = Path(path).name
+    blocked_variant = basename.startswith(".env.") and basename != ".env.example"
+    if basename == ".env" or blocked_variant:
         violations.append(f"{path}: file must not be committed (Rule 8)")
     for number, line in enumerate(text.splitlines(), start=1):
         for pattern in TOKEN_PATTERNS:
             if pattern.search(line):
-                violations.append(f"{path}:{number}: likely secret token committed (Rule 8)")
+                violations.append(
+                    f"{path}:{number}: likely secret token committed (Rule 8)"
+                )
+                if len(violations) >= MAX_VIOLATIONS:
+                    return violations
                 break
     return violations
 

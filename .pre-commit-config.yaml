@@ -24,6 +24,27 @@ repos:
             language: python
             files: ^(hooks/.*\.py|tests/.*\.py|\.claude/settings\.json|scripts/check_branch_name\.py)$
             pass_filenames: false
+          - id: check-policy-size
+            name: Check canonical policy size and required rules
+            entry: python scripts/check_policy_size.py
+            language: python
+            files: ^AGENTS\.md$
+            pass_filenames: false
+          - id: lint-style
+            name: Lint dash and ASCII style
+            entry: python scripts/lint_style.py
+            language: python
+            pass_filenames: false
+          - id: check-conflict-markers
+            name: Check for merge conflict markers
+            entry: python scripts/check_conflict_markers.py
+            language: python
+            pass_filenames: false
+          - id: check-action-pins
+            name: Check actions are pinned to full commit SHAs
+            entry: python scripts/check_action_pins.py
+            language: python
+            files: ^\.github/workflows/.*\.ya?ml$
           - id: check-persist-credentials
             name: Check persist-credentials on checkout steps
             entry: python scripts/check_persist_credentials.py

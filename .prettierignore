@@ -2,3 +2,34 @@ dist/
 node_modules/
 test/fixtures/
 site/
+
+# Vendored policy from abuzucom/agents. AGENTS.md must stay byte-identical to
+# upstream outside its repository-only block, and scripts/sync.py generates the
+# mirrors from it. Reformatting either breaks sync.py --check.
+AGENTS.md
+CLAUDE.md
+GEMINI.md
+CONVENTIONS.md
+.cursorrules
+.clinerules
+.windsurfrules
+.copilot-instructions
+.github/copilot-instructions.md
+docs/agent-policy/
+docs/gate-threat-model.md
+
+# Vendored gate set from abuzucom/agents. shared-files.json records a SHA-256
+# for each of these, and scripts/sync.py --check-shared verifies them, so
+# reformatting breaks the digest check. The client settings must also stay
+# byte-identical to hooks/claude-code-settings.example.json, which
+# tests/test_enforce_branch_name.py asserts.
+hooks/
+tests/
+tools/
+.agents/
+.claude/
+.codex/
+.gemini/
+shared-files.json
+hook-coverage-baseline.json
+.github/workflows/immutable-conflict-check.yml
