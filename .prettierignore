@@ -17,3 +17,19 @@ CONVENTIONS.md
 .github/copilot-instructions.md
 docs/agent-policy/
 docs/gate-threat-model.md
+
+# Vendored gate set from abuzucom/agents. shared-files.json records a SHA-256
+# for each of these, and scripts/sync.py --check-shared verifies them, so
+# reformatting breaks the digest check. The client settings must also stay
+# byte-identical to hooks/claude-code-settings.example.json, which
+# tests/test_enforce_branch_name.py asserts.
+hooks/
+tests/
+tools/
+.agents/
+.claude/
+.codex/
+.gemini/
+shared-files.json
+hook-coverage-baseline.json
+.github/workflows/immutable-conflict-check.yml

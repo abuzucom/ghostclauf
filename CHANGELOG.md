@@ -22,6 +22,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `pull_request_target` with `contents: read`, checks out base and head with
   `persist-credentials: false`, and runs the checker from the trusted base
   against the pull request head as data. It never executes pull request code.
+- Excluded the vendored gate set from Prettier. `shared-files.json` records a
+  digest for each of those files, so reformatting breaks
+  `scripts/sync.py --check-shared`.
 
 - Re-adopted the `abuzucom/agents` policy template at v2.2.1 (commit
   `f00081f`), replacing the v1.11.0 adoption. `AGENTS.md` now carries upstream's
