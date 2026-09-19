@@ -9,6 +9,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Completed the `abuzucom/agents` gate adoption. Added every hook
+  (`_gate_core.py`, both command parsers, `_platform_policy.py`, the three
+  shell gates, the infrastructure, branch, identity, and consent gates,
+  `reinject_agents_policy.py`, `github-command-denylist.txt`), upstream's
+  test suites, `tools/hook-trace/`, `shared-files.json`,
+  `hook-coverage-baseline.json`, and the `.agents/`, `.claude/`, `.codex/`,
+  and `.gemini/` client registrations. Rule 18 requires one adoption change to
+  carry the whole gate set, so this lands with the checkers rather than after
+  them.
+- Added `.github/workflows/immutable-conflict-check.yml`. The workflow runs on
+  `pull_request_target` with `contents: read`, checks out base and head with
+  `persist-credentials: false`, and runs the checker from the trusted base
+  against the pull request head as data. It never executes pull request code.
+
 - Re-adopted the `abuzucom/agents` policy template at v2.2.1 (commit
   `f00081f`), replacing the v1.11.0 adoption. `AGENTS.md` now carries upstream's
   rule text byte-identically outside its `repository-only` block, which points
