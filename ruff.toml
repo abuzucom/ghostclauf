@@ -1,0 +1,18 @@
+# Ruff lint config for the Python tooling in scripts/, hooks/, and tests/.
+line-length = 120
+
+[lint]
+select = ["ALL"]
+ignore = [
+    # Scripts are CLIs; print is their output channel.
+    "T201",
+    # Docstrings are required only where purpose is not self-evident (AGENTS.md).
+    "D",
+    # Tests run under unittest, not pytest.
+    "PT009",
+    # List-argument subprocess calls are the pattern AGENTS.md Rule 1 mandates.
+    "S603",
+    "S607",
+    # Conflicts with formatters; stylistic only.
+    "COM812",
+]

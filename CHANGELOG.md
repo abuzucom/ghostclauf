@@ -84,6 +84,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Added `ruff.toml` (Ruff `ALL` rules, 120-column lines; ignores `D`, `T201`,
+  `PT009`, `S603`, `S607`, `COM812`) and fixed its findings in `scripts/`
+  without changing any script's output or exit code. Split
+  `check_public_site.py`'s `check_snapshot` into per-section helpers, made
+  `sync.py`'s `sync_copies` take `check_only` as keyword-only, wrote the
+  em/en dash regex in `check_ascii.py` as ASCII escapes, and marked every
+  script with a shebang executable.
 - Reduced GitHub Actions storage by limiting npm caching to Linux validation,
   removing the redundant Scorecard SARIF artifact, and lowering repository
   artifact and log retention from 90 days to 30 days.

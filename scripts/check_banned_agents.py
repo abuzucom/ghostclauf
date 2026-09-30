@@ -16,6 +16,7 @@ import os
 import re
 import subprocess
 import sys
+from pathlib import Path
 
 DENYLIST_NAMES = ("grok", "xai")
 DENYLIST_EMAIL_DOMAINS = ("x.ai",)
@@ -70,8 +71,8 @@ def load_commits(base: str, head: str) -> list[dict]:
         check=True,
     )
     commits = []
-    for record in result.stdout.split(COMMIT_SEP):
-        record = record.strip("\n")
+    for raw_record in result.stdout.split(COMMIT_SEP):
+        record = raw_record.strip("\n")
         if not record:
             continue
         sha, author_name, author_email, committer_name, committer_email, body = record.split(
@@ -93,9 +94,9 @@ def load_commits(base: str, head: str) -> list[dict]:
 def pr_author_from_event() -> str:
     """Read the PR author's GitHub login from the workflow event payload."""
     event_path = os.environ.get("GITHUB_EVENT_PATH", "")
-    if not event_path or not os.path.isfile(event_path):
+    if not event_path or not Path(event_path).is_file():
         return ""
-    with open(event_path, encoding="utf-8") as handle:
+    with Path(event_path).open(encoding="utf-8") as handle:
         event = json.load(handle)
     return event.get("pull_request", {}).get("user", {}).get("login", "")
 
