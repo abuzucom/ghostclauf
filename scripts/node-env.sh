@@ -78,7 +78,7 @@ install_private_node() {
 
     expected="$(grep " $tarball\$" "$work/SHASUMS256.txt" | cut -d ' ' -f 1)"
     actual="$(file_sha256 "$work/$tarball")"
-    if [ -z "$expected" ] || [ "$expected" != "$actual" ]; then
+    if [ "$expected" != "$actual" ]; then
         echo "Checksum mismatch for $tarball. Refusing to install it."
         return 1
     fi
@@ -111,7 +111,6 @@ confirm_replace_private_node() {
         return 1
     fi
     printf 'An outdated Node.js exists at %s.\nDelete it and install the latest Node.js 24 LTS? [y/N] ' "$GHOSTCLAUF_NODE_HOME"
-    answer=""
     read -r answer || answer=""
     case "$answer" in
         y | Y | yes | YES) return 0 ;;
