@@ -85,16 +85,41 @@ install_private_node() {
 
     # Stage beside the target so the final mv is a same-filesystem rename. A
     # failed unpack or copy then leaves any existing private Node untouched.
-    stage="$GHOSTCLAUF_NODE_HOME.new"
-    rm -rf "$stage"
-    mkdir -p "$stage" || return 1
+    # mktemp gives a fresh directory, so no leftover staging path is deleted.
+    mkdir -p "$(dirname "$GHOSTCLAUF_NODE_HOME")" || return 1
+    stage="$(mktemp -d "$GHOSTCLAUF_NODE_HOME.XXXXXX")" || return 1
     tar -xzf "$work/$tarball" -C "$stage" || return 1
+    # Replacing an existing private Node was confirmed by ensure_node.
     rm -rf "$GHOSTCLAUF_NODE_HOME"
     mv "$stage/${tarball%.tar.gz}" "$GHOSTCLAUF_NODE_HOME" || return 1
-    rm -rf "$stage"
+    rmdir "$stage"
 
     PATH="$GHOSTCLAUF_NODE_HOME/bin:$PATH"
     export PATH
+}
+
+# Ask before replacing an existing private Node.js. Succeeds when there is
+# nothing to replace or the user agrees. An unattended run cannot agree, so it
+# refuses rather than deleting the directory.
+confirm_replace_private_node() {
+    if [ ! -d "$GHOSTCLAUF_NODE_HOME" ]; then
+        return 0
+    fi
+    if [ ! -t 0 ]; then
+        echo "An outdated Node.js exists at $GHOSTCLAUF_NODE_HOME and replacing it needs confirmation."
+        echo "Run ./setup.sh from a terminal, or delete that directory yourself and run it again."
+        return 1
+    fi
+    printf 'An outdated Node.js exists at %s.\nDelete it and install the latest Node.js 24 LTS? [y/N] ' "$GHOSTCLAUF_NODE_HOME"
+    answer=""
+    read -r answer || answer=""
+    case "$answer" in
+        y | Y | yes | YES) return 0 ;;
+        *)
+            echo "Left $GHOSTCLAUF_NODE_HOME unchanged."
+            return 1
+            ;;
+    esac
 }
 
 # Install a private Node.js when the current one is missing or too old.
@@ -106,6 +131,7 @@ ensure_node() {
         echo "HOME is not set, so Node.js cannot be installed automatically."
         return 1
     fi
+    confirm_replace_private_node || return 1
     echo "Node.js 22.22 or newer is required. Installing the latest Node.js 24 LTS to $GHOSTCLAUF_NODE_HOME..."
     install_private_node || return 1
     node_is_supported

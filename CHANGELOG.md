@@ -102,7 +102,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   than 22.22. `setup.sh` fetches the latest Node 24 LTS into
   `~/.ghostclauf/node` with a SHA-256 check (new `scripts/node-env.sh`), and
   `setup.bat` uses `winget`. `run.sh` and `run.bat` pick up the installed
-  copy.
+  copy. `setup.sh` asks before replacing an existing outdated copy and
+  refuses when run without a terminal.
 - Bumped `html-validate` 10.17.0 -> 11.16.0, which requires Node 22.22 or
   newer (11.x calls `fs.globSync`, which Node 20 lacks).
 - Rolled up the open Dependabot PRs into one change. npm: `eslint` 10.8.0 ->

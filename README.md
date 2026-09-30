@@ -508,6 +508,8 @@ or too old, then run `npm install` to install or update the project dependencies
 `setup.sh` downloads the latest Node.js 24 LTS from nodejs.org, verifies its SHA-256
 checksum, and unpacks it into `~/.ghostclauf/node`; `run.sh` uses that copy
 automatically and the system Node.js is left alone (`curl` and `tar` are required).
+If an outdated copy already exists there, `setup.sh` asks before deleting it; an
+unattended run refuses instead of deleting.
 `setup.bat` installs the Node.js LTS with `winget` (system-wide, so Windows may show
 an elevation prompt).
 
