@@ -13,7 +13,8 @@ from pathlib import Path
 
 INLINE_CODE = re.compile(r"`[^`]*`")
 DASH_SUBSTITUTE = re.compile(r" -{1,3} ")
-EM_EN_DASH = re.compile(r"[–—]")
+EM_EN_DASH = re.compile("[\u2013\u2014]")
+ASCII_MAX_CODE_POINT = 127
 
 
 def strip_code(line: str) -> str:
@@ -38,7 +39,7 @@ def find_violations(text: str, path: str) -> list[str]:
             violations.append(
                 f"{path}:{number}: spaced hyphen used as an em-dash substitute"
             )
-        if any(ord(char) > 127 for char in prose):
+        if any(ord(char) > ASCII_MAX_CODE_POINT for char in prose):
             violations.append(f"{path}:{number}: non-ASCII character in prose")
     return violations
 

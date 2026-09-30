@@ -30,7 +30,7 @@ def files_match(source: Path, target: Path) -> bool:
         return False
 
 
-def sync_copies(check_only: bool) -> int:
+def sync_copies(*, check_only: bool) -> int:
     """Copy SOURCE over each target, or with --check report stale targets.
 
     Returns a process exit code: 0 on success, 1 if a check fails.

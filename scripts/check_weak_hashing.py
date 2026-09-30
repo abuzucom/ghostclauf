@@ -34,12 +34,11 @@ def find_violations(text: str, path: str) -> list[str]:
     """Return one message per unjustified MD5/SHA-1 call in `text`."""
     violations = []
     for number, line in enumerate(text.splitlines(), start=1):
-        for match in HASH_CALL.finditer(line):
-            if not _has_same_line_comment(line, match.end()):
-                violations.append(
-                    f"{path}:{number}: MD5/SHA-1 call without a "
-                    "justification comment (Rule 7)"
-                )
+        violations.extend(
+            f"{path}:{number}: MD5/SHA-1 call without a justification comment (Rule 7)"
+            for match in HASH_CALL.finditer(line)
+            if not _has_same_line_comment(line, match.end())
+        )
     return violations
 
 

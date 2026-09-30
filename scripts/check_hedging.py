@@ -76,11 +76,10 @@ def find_violations(text: str, path: str) -> list[str]:
             continue
         prose = strip_code(raw)
 
-        for match in PHRASE_PATTERN.finditer(prose):
-            violations.append(
-                f"warning: {path}:{number}: hedging/fluff phrase "
-                f"'{match.group(1)}'"
-            )
+        violations.extend(
+            f"warning: {path}:{number}: hedging/fluff phrase '{match.group(1)}'"
+            for match in PHRASE_PATTERN.finditer(prose)
+        )
 
         comment_match = COMMENT_LINE.match(raw)
         if comment_match:
