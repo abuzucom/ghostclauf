@@ -1,4 +1,5 @@
-import { readdir, readFile, stat } from 'node:fs/promises';
+import { cp, mkdtemp, readdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
@@ -67,6 +68,51 @@ describe('public-site scripts', () => {
         }
         expect(shellScript).toContain('scripts/check_public_site.py');
         expect(batchScript).toContain('scripts\\check_public_site.py');
+    });
+});
+
+const PYTHON = process.platform === 'win32' ? 'python' : 'python3';
+
+/** Run check_public_site.py against a copy of site/ whose leaderboard has `rows` entries. */
+async function checkSiteWithLeaderboard(rows: number): Promise<void> {
+    const workDir = await mkdtemp(join(tmpdir(), 'ghostclauf-site-check-'));
+    try {
+        await cp(join(rootDir, 'site'), join(workDir, 'site'), { recursive: true });
+        const leaderboard = Array.from({ length: rows }, (_, index) => ({
+            rank: index + 1,
+            displayName: `Viewer${index}`,
+            balance: 100,
+        }));
+        const snapshot = {
+            version: 1,
+            generatedAt: '2026-08-09T00:00:00.000Z',
+            facts: [],
+            quotes: [],
+            loyalty: {
+                currencyName: 'esports dollars',
+                participantCount: rows,
+                totalBalance: rows * 100,
+                leaderboard,
+            },
+        };
+        await writeFile(join(workDir, 'site', 'data', 'public.json'), JSON.stringify(snapshot));
+        await execFileAsync(PYTHON, [join(rootDir, 'scripts', 'check_public_site.py')], {
+            cwd: workDir,
+        });
+    } finally {
+        await rm(workDir, { recursive: true, force: true });
+    }
+}
+
+describe('check_public_site.py leaderboard cap', () => {
+    it('accepts a 25-row leaderboard', async () => {
+        await expect(checkSiteWithLeaderboard(25)).resolves.toBeUndefined();
+    });
+
+    it('rejects a leaderboard that publishes more than 25 chatters', async () => {
+        await expect(checkSiteWithLeaderboard(26)).rejects.toMatchObject({
+            stderr: expect.stringContaining('must not exceed 25 entries'),
+        });
     });
 });
 

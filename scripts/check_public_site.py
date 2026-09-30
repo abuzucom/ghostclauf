@@ -39,6 +39,9 @@ ALLOWED_SNAPSHOT_FIELDS = {
     "loyalty": {"currencyName", "participantCount", "totalBalance", "leaderboard"},
     "leaderboard": {"rank", "displayName", "balance"},
 }
+# Mirrors MAX_PUBLIC_LEADERBOARD_SIZE in src/publicSite/export.ts: the site
+# publishes a top-N leaderboard, never the full list of chatters.
+MAX_LEADERBOARD_ENTRIES = 25
 FORBIDDEN_SITE_TOKENS = ("innerHTML", "new RegExp", "tokenStore", "addedBy")
 THEME_VALUES = {
     "#0b0b0b",
@@ -117,7 +120,10 @@ def check_loyalty(loyalty_section: object) -> None:
         fail("loyalty currencyName must be a string")
     require_number(loyalty.get("participantCount"), "loyalty participantCount")
     require_number(loyalty.get("totalBalance"), "loyalty totalBalance")
-    for item in require_list(loyalty.get("leaderboard"), "loyalty leaderboard"):
+    leaderboard = require_list(loyalty.get("leaderboard"), "loyalty leaderboard")
+    if len(leaderboard) > MAX_LEADERBOARD_ENTRIES:
+        fail(f"loyalty leaderboard must not exceed {MAX_LEADERBOARD_ENTRIES} entries")
+    for item in leaderboard:
         entry = require_fields(item, ALLOWED_SNAPSHOT_FIELDS["leaderboard"], "leaderboard entry")
         if not isinstance(entry.get("rank"), int) or not isinstance(entry.get("displayName"), str):
             fail("leaderboard identity fields must be public primitive values")

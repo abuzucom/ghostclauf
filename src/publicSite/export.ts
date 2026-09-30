@@ -1,5 +1,10 @@
+import { HIDDEN_NAME_PLACEHOLDER } from '../plugins/loyalty/loyalty.js';
+
 const DEFAULT_CURRENCY_NAME = 'esports dollars';
 const MAX_LOYALTY_BALANCE = 1_000_000_000;
+/** Matches loyalty's own !economy default, so chat and site show the same rows. */
+export const DEFAULT_PUBLIC_LEADERBOARD_SIZE = 5;
+export const MAX_PUBLIC_LEADERBOARD_SIZE = 25;
 
 export interface PublicFact {
     id: number;
@@ -35,6 +40,8 @@ export interface PublicSnapshotInput {
     funFacts: unknown;
     quotes: unknown;
     loyalty: unknown;
+    /** Rows published on the leaderboard. Defaults to DEFAULT_PUBLIC_LEADERBOARD_SIZE. */
+    leaderboardSize?: number;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -93,29 +100,51 @@ function collectQuotes(value: unknown): PublicQuote[] {
     return quotes;
 }
 
-function collectLeaderboard(value: unknown): PublicLeaderboardEntry[] {
+/**
+ * Chatter ids hidden with !hidestats. Any id present is hidden whatever its
+ * value, and a list that is not an object stops the export: publishing names
+ * people asked to hide is worse than publishing nothing.
+ */
+function getHiddenIds(value: unknown): ReadonlySet<string> {
+    if (!isRecord(value) || value.hiddenViewers === undefined) return new Set();
+    if (!isRecord(value.hiddenViewers)) {
+        throw new Error('loyalty hiddenViewers is malformed; refusing to publish names.');
+    }
+    return new Set(Object.keys(value.hiddenViewers));
+}
+
+/** Every valid loyalty row, with hidden names already replaced, sorted for ranking. */
+function collectLoyaltyRows(value: unknown): Array<Omit<PublicLeaderboardEntry, 'rank'>> {
+    const hiddenIds = getHiddenIds(value);
     const entries: Array<Omit<PublicLeaderboardEntry, 'rank'>> = [];
     for (const scope of Object.values(getScopes(value))) {
         if (!isRecord(scope) || !isRecord(scope.viewers)) continue;
-        for (const viewer of Object.values(scope.viewers)) {
+        for (const [chatterId, viewer] of Object.entries(scope.viewers)) {
             if (!isRecord(viewer) || typeof viewer.displayName !== 'string') continue;
             if (!isBalance(viewer.balance)) continue;
             const displayName = viewer.displayName.trim();
             if (!displayName) continue;
-            entries.push({ displayName, balance: viewer.balance });
+            entries.push({
+                displayName: hiddenIds.has(chatterId) ? HIDDEN_NAME_PLACEHOLDER : displayName,
+                balance: viewer.balance,
+            });
         }
     }
+    // Ties sort on the shown name, so a hidden name's position reveals nothing.
     entries.sort(
         (left, right) =>
             right.balance - left.balance || left.displayName.localeCompare(right.displayName),
     );
-    return entries.map((entry, index) => ({ ...entry, rank: index + 1 }));
+    return entries;
 }
 
 /** Create a public-safe snapshot without retaining private store fields. */
 export function createPublicSnapshot(input: PublicSnapshotInput): PublicSiteSnapshot {
-    const leaderboard = collectLeaderboard(input.loyalty);
-    const totalBalance = leaderboard.reduce((total, entry) => total + entry.balance, 0);
+    const rows = collectLoyaltyRows(input.loyalty);
+    const totalBalance = rows.reduce((total, entry) => total + entry.balance, 0);
+    const leaderboard = rows
+        .slice(0, input.leaderboardSize ?? DEFAULT_PUBLIC_LEADERBOARD_SIZE)
+        .map((entry, index) => ({ ...entry, rank: index + 1 }));
     return {
         version: 1,
         generatedAt: input.generatedAt.toISOString(),
@@ -123,7 +152,7 @@ export function createPublicSnapshot(input: PublicSnapshotInput): PublicSiteSnap
         quotes: collectQuotes(input.quotes),
         loyalty: {
             currencyName: getCurrencyName(input.currencyName),
-            participantCount: leaderboard.length,
+            participantCount: rows.length,
             totalBalance,
             leaderboard,
         },

@@ -155,3 +155,88 @@ describe('createPublicSnapshot', () => {
         });
     });
 });
+
+describe('public leaderboard cap and hidden names', () => {
+    function loyaltyWith(
+        viewers: Record<string, { displayName: string; balance: number }>,
+        hiddenViewers?: unknown,
+    ): unknown {
+        return {
+            version: 2,
+            scopes: { shared: { viewers } },
+            decisions: [],
+            redemptions: [],
+            ...(hiddenViewers === undefined ? {} : { hiddenViewers }),
+        };
+    }
+
+    function snapshotOf(loyalty: unknown, leaderboardSize?: number) {
+        return createPublicSnapshot({
+            currencyName: 'esports dollars',
+            generatedAt: new Date('2026-08-09T00:00:00.000Z'),
+            funFacts: {},
+            quotes: {},
+            loyalty,
+            ...(leaderboardSize === undefined ? {} : { leaderboardSize }),
+        });
+    }
+
+    const SEVEN_VIEWERS = Object.fromEntries(
+        Array.from({ length: 7 }, (_, index) => [
+            `id${index}`,
+            { displayName: `Viewer${index}`, balance: 100 - index },
+        ]),
+    );
+
+    it('publishes the top five by default but aggregates every viewer', () => {
+        const { loyalty } = snapshotOf(loyaltyWith(SEVEN_VIEWERS));
+        expect(loyalty.leaderboard.map((entry) => entry.rank)).toEqual([1, 2, 3, 4, 5]);
+        expect(loyalty.participantCount).toBe(7);
+        expect(loyalty.totalBalance).toBe(100 + 99 + 98 + 97 + 96 + 95 + 94);
+    });
+
+    it('honors a configured leaderboard size', () => {
+        const { loyalty } = snapshotOf(loyaltyWith(SEVEN_VIEWERS), 2);
+        expect(loyalty.leaderboard.map((entry) => entry.displayName)).toEqual([
+            'Viewer0',
+            'Viewer1',
+        ]);
+    });
+
+    it('replaces a hidden name with the placeholder, keeping rank and balance', () => {
+        const { loyalty } = snapshotOf(
+            loyaltyWith(
+                {
+                    secret: { displayName: 'Secret', balance: 50 },
+                    open: { displayName: 'Open', balance: 20 },
+                },
+                { secret: 'self' },
+            ),
+        );
+        expect(loyalty.leaderboard).toEqual([
+            { rank: 1, displayName: 'Hidden viewer', balance: 50 },
+            { rank: 2, displayName: 'Open', balance: 20 },
+        ]);
+        expect(JSON.stringify(loyalty)).not.toContain('Secret');
+    });
+
+    it('orders ties on the shown name so a hidden name cannot be inferred', () => {
+        const { loyalty } = snapshotOf(
+            loyaltyWith(
+                {
+                    a: { displayName: 'Aaron', balance: 10 },
+                    m: { displayName: 'Mia', balance: 10 },
+                },
+                { a: 'broadcaster' },
+            ),
+        );
+        expect(loyalty.leaderboard.map((entry) => entry.displayName)).toEqual([
+            'Hidden viewer',
+            'Mia',
+        ]);
+    });
+
+    it('refuses to export when the hidden-name list is malformed', () => {
+        expect(() => snapshotOf(loyaltyWith(SEVEN_VIEWERS, ['id0']))).toThrow(/hiddenViewers/);
+    });
+});

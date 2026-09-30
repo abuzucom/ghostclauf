@@ -16,6 +16,14 @@ export command reads the configured fun-fact, quote, and loyalty store paths and
 leaderboard display names and balances. It omits store keys, Twitch IDs,
 curator data, timestamps, grants, redemptions, decisions, and backups.
 
+The leaderboard lists only the top `loyalty.leaderboardSize` rows (default 5,
+maximum 25), the same rows `!economy` shows in chat. The participant count and
+total balance still cover every viewer. A viewer hidden with `!hidestats` keeps
+their rank and balance, and their name is published as `Hidden viewer`. The
+export stops with an error if the hidden-name list in the loyalty store is
+malformed, and `scripts/check_public_site.py` rejects a leaderboard longer than
+25 rows.
+
 Review `site/data/public.json` before committing it. Do not copy `data/`,
 `config.yaml`, `.env`, token stores, or backup files into `site/`.
 
@@ -33,5 +41,8 @@ verify the certificate after DNS propagation.
 ## Removal
 
 Remove an entry from its private source store, run the export again, review the
-snapshot, and publish the result. A deployment cannot remove copies already
-saved by third parties or cached outside GitHub Pages.
+snapshot, and publish the result. To remove a name from the leaderboard without
+deleting the balance, have the viewer type `!hidestats`, or use
+`!hidestats @user` as the broadcaster, then export and publish again. A
+deployment cannot remove copies already saved by third parties or cached
+outside GitHub Pages.
