@@ -34,7 +34,7 @@
         "zod": "4.4.3"
     },
     "overrides": {
-        "brace-expansion": "5.0.9",
+        "brace-expansion": "5.0.12",
         "nanoid": "3.3.18",
         "ws": "8.21.1"
     },
@@ -52,7 +52,7 @@
         "tsx": "4.23.12",
         "typescript": "6.0.3",
         "typescript-eslint": "8.67.0",
-        "vitest": "4.1.10"
+        "vitest": "4.1.11"
     },
     "license": "MIT"
 }
