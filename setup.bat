@@ -20,8 +20,19 @@ if not errorlevel 1 goto :node_ready
 echo Node.js 22.22 or newer is required. Installing the latest Node.js LTS with winget...
 where winget >nul 2>&1
 if errorlevel 1 goto :no_winget
+
+rem Upgrade an existing (outdated) Node.js; install only when none is present.
+where node >nul 2>&1
+if errorlevel 1 goto :winget_install
+winget upgrade --id OpenJS.NodeJS.LTS --exact --silent --accept-package-agreements --accept-source-agreements
+rem winget cannot upgrade a Node.js it did not install; install the LTS alongside it.
+if errorlevel 1 goto :winget_install
+goto :winget_done
+
+:winget_install
 winget install --id OpenJS.NodeJS.LTS --exact --silent --accept-package-agreements --accept-source-agreements
-if errorlevel 1 winget upgrade --id OpenJS.NodeJS.LTS --exact --silent --accept-package-agreements --accept-source-agreements
+
+:winget_done
 if exist "%ProgramFiles%\nodejs\node.exe" set "PATH=%ProgramFiles%\nodejs;%PATH%"
 
 call :check_node
