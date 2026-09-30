@@ -243,7 +243,7 @@ If unrelated work turns up a workflow missing `persist-credentials: false`, flag
 
 ### 12. No root containers without explicit consent
 
-Containers run as non-root at runtime by default. Build-time root is fine (e.g. `RUN apk add` before switching user); this rule targets the user the process runs as when the container starts. This repo's own `Dockerfile` already follows it (`USER node`); treat that as the reference pattern.
+Containers run as non-root at runtime by default. Build-time root is fine (e.g. `RUN apk add` before switching user); this rule targets the user the process runs as when the container starts. This repo's own `Dockerfile` already follows it (`USER 1000:1000`, the numeric id of the image's `node` user); treat that as the reference pattern.
 
 Before outputting any Dockerfile, compose file, or Kubernetes manifest, check this rule. If runtime root looks necessary, stop before writing the config. State the specific reason, propose the non-root alternative if one exists even if it is uglier (prefer a port of 1024 or higher behind a reverse proxy or port mapping over binding a privileged port as root; use `COPY --chown` or a build-time `chown` over runtime root for file permissions), and wait for the user's next message approving it. Do not write a root config speculatively or infer approval from an unrelated "just make it work."
 
