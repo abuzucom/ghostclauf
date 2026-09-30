@@ -9,6 +9,11 @@ echo "         ghostclauf"
 echo "========================================"
 echo ""
 
+if [ ! -f "scripts/node-env.sh" ]; then
+    echo "This script must be run from the ghostclauf project folder."
+    exit 1
+fi
+
 # shellcheck source=scripts/node-env.sh
 . ./scripts/node-env.sh
 

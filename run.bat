@@ -10,16 +10,16 @@ echo          ghostclauf
 echo ========================================
 echo.
 
+rem Use the Node.js already on PATH when it is supported. Only fall back to
+rem Program Files, which a session opened before setup.bat ran may lack, so
+rem an older system install never shadows a newer one elsewhere on PATH.
+call :check_node
+if not errorlevel 1 goto :node_ready
 if exist "%ProgramFiles%\nodejs\node.exe" set "PATH=%ProgramFiles%\nodejs;%PATH%"
-
-where node >nul 2>&1
-if errorlevel 1 goto :missing_setup
-
-where npm >nul 2>&1
-if errorlevel 1 goto :missing_setup
-
-node -e "const [a, b] = process.versions.node.split('.').map(Number); process.exit(a > 22 || (a === 22 && b >= 22) ? 0 : 1)" >nul 2>&1
+call :check_node
 if errorlevel 1 goto :old_node
+
+:node_ready
 
 if not exist ".env" goto :missing_setup
 if not exist "config.yaml" goto :missing_setup
@@ -121,6 +121,15 @@ echo.
 echo Fix .env / config.yaml, then double-click run.bat again.
 pause
 exit /b 1
+
+rem Exit 0 when node and npm exist and node is 22.22.0 or newer.
+:check_node
+where node >nul 2>&1
+if errorlevel 1 exit /b 1
+where npm >nul 2>&1
+if errorlevel 1 exit /b 1
+node -e "const [a, b] = process.versions.node.split('.').map(Number); process.exit(a > 22 || (a === 22 && b >= 22) ? 0 : 1)" >nul 2>&1
+exit /b %errorlevel%
 
 :old_node
 echo Node.js 22.22 or newer is required. Run setup.bat to install it.

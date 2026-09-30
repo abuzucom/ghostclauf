@@ -10,7 +10,7 @@ echo "       ghostclauf one-click setup"
 echo "========================================"
 echo ""
 
-if [ ! -f "scripts/node-env.sh" ]; then
+if [ ! -f "package.json" ] || [ ! -f "package-lock.json" ] || [ ! -f ".env.example" ] || [ ! -f "config.example.yaml" ] || [ ! -f "scripts/node-env.sh" ]; then
     echo "This script must be run from the ghostclauf project folder."
     exit 1
 fi
@@ -23,11 +23,6 @@ if ! ensure_node; then
     exit 1
 fi
 echo "Using Node.js $(node --version)."
-
-if [ ! -f "package.json" ] || [ ! -f "package-lock.json" ] || [ ! -f ".env.example" ] || [ ! -f "config.example.yaml" ]; then
-    echo "This script must be run from the ghostclauf project folder."
-    exit 1
-fi
 
 if [ ! -f ".env" ]; then
     echo "Creating .env from .env.example..."

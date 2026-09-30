@@ -59,7 +59,10 @@ install_private_node() {
         return 1
     }
 
-    work="$(mktemp -d)"
+    work="$(mktemp -d)" || {
+        echo "Could not create a temporary directory."
+        return 1
+    }
     trap 'rm -rf "$work"' EXIT
 
     echo "Looking up the latest Node.js $NODE_LTS_LINE release..."
@@ -80,11 +83,15 @@ install_private_node() {
         return 1
     fi
 
-    mkdir -p "$work/unpacked"
-    tar -xzf "$work/$tarball" -C "$work/unpacked" || return 1
+    # Stage beside the target so the final mv is a same-filesystem rename. A
+    # failed unpack or copy then leaves any existing private Node untouched.
+    stage="$GHOSTCLAUF_NODE_HOME.new"
+    rm -rf "$stage"
+    mkdir -p "$stage" || return 1
+    tar -xzf "$work/$tarball" -C "$stage" || return 1
     rm -rf "$GHOSTCLAUF_NODE_HOME"
-    mkdir -p "$(dirname "$GHOSTCLAUF_NODE_HOME")"
-    mv "$work/unpacked/${tarball%.tar.gz}" "$GHOSTCLAUF_NODE_HOME" || return 1
+    mv "$stage/${tarball%.tar.gz}" "$GHOSTCLAUF_NODE_HOME" || return 1
+    rm -rf "$stage"
 
     PATH="$GHOSTCLAUF_NODE_HOME/bin:$PATH"
     export PATH
@@ -94,6 +101,10 @@ install_private_node() {
 ensure_node() {
     if node_is_supported; then
         return 0
+    fi
+    if [ -z "$HOME" ]; then
+        echo "HOME is not set, so Node.js cannot be installed automatically."
+        return 1
     fi
     echo "Node.js 22.22 or newer is required. Installing the latest Node.js 24 LTS to $GHOSTCLAUF_NODE_HOME..."
     install_private_node || return 1

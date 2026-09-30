@@ -10,10 +10,13 @@ echo        ghostclauf one-click setup
 echo ========================================
 echo.
 
-rem winget installs to Program Files, but a session started before the
-rem install has a stale PATH.
-if exist "%ProgramFiles%\nodejs\node.exe" set "PATH=%ProgramFiles%\nodejs;%PATH%"
+call :check_node
+if not errorlevel 1 goto :node_ready
 
+rem A Node.js installed after this window opened is in Program Files but not on
+rem PATH. Try it before running winget, and never put it ahead of a supported
+rem Node.js found earlier on PATH.
+if exist "%ProgramFiles%\nodejs\node.exe" set "PATH=%ProgramFiles%\nodejs;%PATH%"
 call :check_node
 if not errorlevel 1 goto :node_ready
 
