@@ -274,6 +274,8 @@ being active in chat while the channel is live.
 | -------------- | ----------- | -------------------------------------------------------------------------- |
 | `!wallet`      | everyone    | Report your balance.                                                       |
 | `!economy`     | everyone    | Show the top `leaderboardSize` balances (default 5).                       |
+| `!hidestats`   | everyone    | Hide your name on the leaderboards. Broadcaster: `!hidestats @user`.       |
+| `!showstats`   | everyone    | Show your name again. Broadcaster: `!showstats @user`.                     |
 | `!setESD`      | broadcaster | `!setESD @user <amount>`: set a viewer's balance exactly.                  |
 | `!giveESD`     | broadcaster | `!giveESD @user <amount>`: add to a viewer's balance.                      |
 | `!takeESD`     | broadcaster | `!takeESD @user <amount>`: subtract from a viewer's balance, clamped at 0. |
@@ -298,6 +300,15 @@ in one channel changes the balance everywhere. This is the same tradeoff already
 documented for the `streak` plugin's shared pool. There is no
 spend/redemption yet. See the `loyalty:` block in
 [`config.example.yaml`](config.example.yaml).
+
+A hidden name is replaced by `Hidden viewer` on the `!economy` leaderboard and
+on the public site. The viewer keeps their rank and balance, and `!wallet`
+still shows them their own name. Ties are ordered by the name shown, so a hidden
+name cannot be inferred from its position. Any chatter can hide or show their
+own name. The broadcaster can hide or show anyone with `@user`; a name the
+broadcaster hides is locked, and only the broadcaster can show it again. Hiding
+applies across every channel and pool. A `@user` argument from anyone but the
+broadcaster is ignored, so the command acts on the chatter themselves.
 
 `!setESD`, `!giveESD`, and `!takeESD` write straight into a balance and are
 gated on the broadcaster badge alone, with no secondary allowlist. **This is

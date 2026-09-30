@@ -2,9 +2,12 @@ import { describe, expect, it } from 'vitest';
 import {
     applyAward,
     buildLeaderboard,
+    HIDDEN_NAME_PLACEHOLDER,
     parseEsdAmount,
     renderBalance,
+    renderHideResult,
     renderLeaderboard,
+    renderShowResult,
 } from '../src/plugins/loyalty/loyalty.js';
 import type { ViewerRecord } from '../src/plugins/loyalty/types.js';
 
@@ -77,6 +80,60 @@ describe('buildLeaderboard', () => {
             2,
         );
         expect(ranked).toHaveLength(2);
+    });
+
+    it('replaces a hidden viewer name with the placeholder, keeping the balance', () => {
+        const ranked = buildLeaderboard(
+            viewers({
+                a: { displayName: 'Alice', balance: 5 },
+                b: { displayName: 'Bob', balance: 20 },
+            }),
+            5,
+            new Set(['b']),
+        );
+        expect(ranked).toEqual([
+            { displayName: HIDDEN_NAME_PLACEHOLDER, balance: 20 },
+            { displayName: 'Alice', balance: 5 },
+        ]);
+    });
+
+    it('breaks ties on the shown name so a hidden name cannot be inferred', () => {
+        // Sorting on the real names would put hidden "Aaron" before "Mia".
+        const ranked = buildLeaderboard(
+            viewers({
+                a: { displayName: 'Aaron', balance: 10 },
+                m: { displayName: 'Mia', balance: 10 },
+            }),
+            5,
+            new Set(['a']),
+        );
+        expect(ranked.map((entry) => entry.displayName)).toEqual([HIDDEN_NAME_PLACEHOLDER, 'Mia']);
+        const zoe = buildLeaderboard(
+            viewers({
+                z: { displayName: 'Zoe', balance: 10 },
+                m: { displayName: 'Mia', balance: 10 },
+            }),
+            5,
+            new Set(['z']),
+        );
+        expect(zoe.map((entry) => entry.displayName)).toEqual([HIDDEN_NAME_PLACEHOLDER, 'Mia']);
+    });
+});
+
+describe('hide and show replies', () => {
+    it('confirms a self hide and a broadcaster hide', () => {
+        expect(renderHideResult('Viewer', 'hidden', false)).toBe(
+            'Viewer, your name is now hidden on the leaderboards.',
+        );
+        expect(renderHideResult('Viewer', 'hidden', true)).toBe(
+            "Viewer's name is now hidden on the leaderboards.",
+        );
+    });
+
+    it('explains a locked hide to the viewer', () => {
+        expect(renderShowResult('Viewer', 'locked', false)).toBe(
+            'Viewer, the broadcaster hid your name. Only the broadcaster can show it again.',
+        );
     });
 });
 

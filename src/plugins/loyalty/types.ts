@@ -65,6 +65,9 @@ export interface RedemptionRecord {
     createdInBroadcasterId: string;
 }
 
+/** Who hid a viewer's name from the leaderboards; a broadcaster hide is locked. */
+export type HiddenBy = 'self' | 'broadcaster';
+
 export interface LoyaltyData {
     version: 2;
     scopes: Record<string, LoyaltyScope>;
@@ -72,6 +75,12 @@ export interface LoyaltyData {
     decisions: BalanceDecision[];
     /** !redeem audit trail. */
     redemptions: RedemptionRecord[];
+    /**
+     * Chatter ids whose names the leaderboards replace with a placeholder
+     * (!hidestats). Global rather than per scope: the public site merges
+     * every scope.
+     */
+    hiddenViewers: Record<string, HiddenBy>;
 }
 
 export interface LoyaltyConfig {
