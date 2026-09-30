@@ -763,6 +763,16 @@ Makefile targets for running the checks above without waiting on CI:
 | `make agents-test` | `tests/test_enforce_branch_name.py`, the branch-hook test suite                              |
 | `make agents-lint` | Every locally applicable AGENTS.md compliance check, including `agents-test` and `docs-lint` |
 
+The `Lint` workflow (`.github/workflows/lint.yml`) runs four more linters. The
+same commands work locally once each tool is installed:
+
+| Tool       | Command                                                            |
+| ---------- | ------------------------------------------------------------------ |
+| Ruff       | `pip install ruff==0.15.8 && ruff check scripts hooks tests`       |
+| ShellCheck | `shellcheck setup.sh run.sh publish-site.sh`                       |
+| actionlint | `actionlint` (1.7.12; lints `.github/workflows/`)                  |
+| hadolint   | `hadolint Dockerfile` (2.15.1, the version `hadolint-action` runs) |
+
 ## Handoff file example
 
 `plan/HANDOFF.md.example` is a per-session handoff/progress template, not

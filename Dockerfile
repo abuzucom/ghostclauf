@@ -16,6 +16,7 @@ RUN npm ci --omit=dev && npm cache clean --force
 COPY --from=build /app/dist ./dist
 # /data holds the token store (and optional drop-in plugins); owned by `node`.
 RUN mkdir -p /data && chown -R node:node /data /app
-USER node
+# Numeric uid:gid of the image's `node` user; hadolint DL3066 flags names the host may not resolve.
+USER 1000:1000
 VOLUME ["/data"]
 CMD ["node", "dist/index.js"]

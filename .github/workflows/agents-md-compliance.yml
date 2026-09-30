@@ -75,14 +75,15 @@ jobs:
               run: python3 scripts/check_persist_credentials.py .github/workflows/*.yml
             - name: Check for unjustified MD5/SHA-1
               run: |
-                  python3 scripts/check_weak_hashing.py \
-                    $(find src test scripts hooks -name '*.ts' -o -name '*.py')
+                  mapfile -t source_files < <(find src test scripts hooks -name '*.ts' -o -name '*.py')
+                  python3 scripts/check_weak_hashing.py "${source_files[@]}"
             - name: Check for non-root containers
               run: python3 scripts/check_dockerfile_root.py Dockerfile docker-compose.yml
             - name: Check for likely secrets
               run: |
+                  mapfile -t source_files < <(find src test scripts hooks -name '*.ts' -o -name '*.py')
                   python3 scripts/check_secrets_heuristic.py \
-                    $(find src test scripts hooks -name '*.ts' -o -name '*.py') \
+                    "${source_files[@]}" \
                     .github/workflows/*.yml .pre-commit-config.yaml Makefile \
                     Dockerfile docker-compose.yml
             - name: Check documentation style

@@ -90,6 +90,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Added the `Lint` workflow (`.github/workflows/lint.yml`), which runs Ruff
+  0.15.8 on `scripts/`, `hooks/` and `tests/`, ShellCheck on the `.sh`
+  scripts, actionlint 1.7.12 on the workflows, and hadolint 2.15.1 on the
+  `Dockerfile`. Its actions are pinned by commit SHA.
+- The `Dockerfile` and `docker-compose.yml` now run as `1000:1000`, the
+  numeric id of the image's `node` user (hadolint DL3066). The runtime user
+  is the same as before. Updated the Rule 12 reference in `AGENTS.md` and
+  its synced copies.
+- `agents-md-compliance.yml` now collects `find` output into a `mapfile`
+  array instead of unquoted `$(find ...)` (ShellCheck SC2046).
 - Added `ruff.toml` (Ruff `ALL` rules, 120-column lines; ignores `D`, `T201`,
   `PT009`, `S603`, `S607`, `COM812`) and fixed its findings in `scripts/`
   without changing any script's output or exit code. Split
