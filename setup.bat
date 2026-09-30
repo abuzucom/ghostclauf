@@ -40,7 +40,7 @@ echo winget could not upgrade the existing Node.js. Installing the latest Node.j
 
 :winget_install
 winget install --id OpenJS.NodeJS.LTS --exact --silent --accept-package-agreements --accept-source-agreements
-if errorlevel 1 echo winget could not install Node.js ^(exit code %errorlevel%^).
+if errorlevel 1 echo winget could not install Node.js ^(exit code !errorlevel!^).
 
 :winget_done
 if exist "%ProgramFiles%\nodejs\node.exe" set "PATH=%ProgramFiles%\nodejs;%PATH%"
