@@ -241,6 +241,73 @@ describe('twitch transport', () => {
         await transport.stop();
     });
 
+    describe('chat message filtering', () => {
+        const baseEvent = {
+            messageId: 'msg-1',
+            broadcasterId: 'channel-id',
+            broadcasterName: 'streamer',
+            chatterId: 'user-1',
+            chatterName: 'viewer',
+            chatterDisplayName: 'Viewer',
+            messageText: '!so attacker',
+            badges: { moderator: '1' },
+            sourceBroadcasterId: null,
+        };
+
+        async function deliver(event: Record<string, unknown>): Promise<ReturnType<typeof vi.fn>> {
+            const onChatMessage = vi.fn();
+            const transport = await createTwitchTransport({
+                authProvider: dummyAuthProvider,
+                botUserId: 'bot-id',
+                broadcasters: [{ login: 'streamer' }, { login: 'streamer2' }],
+                logger: testLogger,
+                handlers: { onChatMessage, onStreamOnline: vi.fn(), onStreamOffline: vi.fn() },
+            });
+            await transport.start();
+            const listener = listenerInstances[0] as any;
+            const handler = listener.onChannelChatMessage.mock.calls[0][2];
+            handler(event);
+            await transport.stop();
+            return onChatMessage;
+        }
+
+        it('drops the bot account echoing its own message', async () => {
+            const onChatMessage = await deliver({ ...baseEvent, chatterId: 'bot-id' });
+            expect(onChatMessage).not.toHaveBeenCalled();
+        });
+
+        it('drops a shared chat message sent from another channel', async () => {
+            const onChatMessage = await deliver({
+                ...baseEvent,
+                sourceBroadcasterId: 'channel-id-2',
+            });
+            expect(onChatMessage).not.toHaveBeenCalled();
+        });
+
+        it('drops a shared chat message from a channel that is not configured', async () => {
+            const onChatMessage = await deliver({
+                ...baseEvent,
+                sourceBroadcasterId: 'partner-channel',
+            });
+            expect(onChatMessage).not.toHaveBeenCalled();
+        });
+
+        it('forwards a message whose source is the receiving channel', async () => {
+            const onChatMessage = await deliver({
+                ...baseEvent,
+                sourceBroadcasterId: 'channel-id',
+            });
+            expect(onChatMessage).toHaveBeenCalledOnce();
+        });
+
+        it('forwards a message with no shared chat source', async () => {
+            const onChatMessage = await deliver(baseEvent);
+            expect(onChatMessage).toHaveBeenCalledWith(
+                expect.objectContaining({ chatterId: 'user-1', text: '!so attacker' }),
+            );
+        });
+    });
+
     it('forwards stream online/offline events', async () => {
         vi.useFakeTimers();
         const onStreamOnline = vi.fn();

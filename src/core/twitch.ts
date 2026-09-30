@@ -331,6 +331,17 @@ export async function createTwitchTransport(
     for (const broadcaster of broadcasters) {
         // Chat messages → normalize (resolve roles) → handler.
         listener.onChannelChatMessage(broadcaster.id, botUserId, (event) => {
+            if (shouldIgnoreChatMessage(event, botUserId)) {
+                logger.debug(
+                    {
+                        broadcasterId: event.broadcasterId,
+                        chatterId: event.chatterId,
+                        sourceBroadcasterId: event.sourceBroadcasterId,
+                    },
+                    'ignored chat message',
+                );
+                return;
+            }
             const normalized: ChatMessageEvent = {
                 messageId: event.messageId,
                 text: event.messageText,
@@ -590,6 +601,27 @@ export async function createTwitchTransport(
 
 const RECEPTION_CHECK_TIMEOUT_MS = 15_000;
 const STARTUP_CHECK_MESSAGE = 'ghostclauf startup connectivity check (auto-deleting)';
+
+/**
+ * True for chat messages that must never reach plugins or the command registry.
+ *
+ * The bot's own messages come back over EventSub carrying its moderator
+ * badge, so echoed text (a cheer message placed first by an announce
+ * template) would otherwise run moderator commands as the bot.
+ *
+ * A Shared Chat message sent in another channel is dropped too. A configured
+ * partner channel already receives it natively, so handling it here would run
+ * commands and award loyalty twice; an unconfigured partner's viewers are not
+ * this bot's audience.
+ */
+export function shouldIgnoreChatMessage(
+    event: { chatterId: string; broadcasterId: string; sourceBroadcasterId?: string | null },
+    botUserId: string,
+): boolean {
+    if (event.chatterId === botUserId) return true;
+    const sourceBroadcasterId = event.sourceBroadcasterId;
+    return Boolean(sourceBroadcasterId) && sourceBroadcasterId !== event.broadcasterId;
+}
 
 function delay(ms: number): Promise<void> {
     return new Promise((resolve) => setTimeout(resolve, ms));
