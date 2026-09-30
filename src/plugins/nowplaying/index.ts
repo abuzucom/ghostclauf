@@ -15,6 +15,8 @@ const MAX_REQUEST_TIMEOUT_MS = 10_000;
 // limited to one !nowplaying per three minutes. Fixed policy, not
 // configurable, matching the same role-tiered approach used by !ping.
 const VIEWER_COOLDOWN_MS = 3 * 60 * 1000;
+/** Twitch rejects chat messages longer than this many code points. */
+const MAX_CHAT_MESSAGE_LENGTH = 500;
 
 export interface NowPlayingConfig {
     /** Base URL of the 1a2n-track-id server. Default: http://127.0.0.1:8080 */
@@ -68,7 +70,9 @@ async function fetchState(
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), timeoutMs);
     try {
-        const res = await fetchImpl(url, { signal: controller.signal });
+        // The overlay is a fixed local server; a redirect would send the
+        // request somewhere the operator never configured.
+        const res = await fetchImpl(url, { signal: controller.signal, redirect: 'error' });
         if (!res.ok) {
             logger.warn(
                 { status: res.status, url: url.toString() },
@@ -90,6 +94,17 @@ async function fetchState(
     } finally {
         clearTimeout(timer);
     }
+}
+
+/**
+ * Cap a reply at Twitch's chat limit, counting code points so a multi-byte
+ * character is never split. Track titles come from the overlay server, and
+ * `ctx.say` throws on an over-long message instead of sending it.
+ */
+function truncateForChat(text: string): string {
+    const codePoints = [...text];
+    if (codePoints.length <= MAX_CHAT_MESSAGE_LENGTH) return text;
+    return codePoints.slice(0, MAX_CHAT_MESSAGE_LENGTH).join('');
 }
 
 /**
@@ -134,7 +149,7 @@ export function createNowPlayingPlugin(
                     // No reply when nothing is on air, or the overlay isn't reachable.
                     if (!tracks || tracks.length === 0) return;
                     await ctx.say(
-                        `Now playing: ${formatNowPlaying(tracks)}`,
+                        truncateForChat(`Now playing: ${formatNowPlaying(tracks)}`),
                         event.messageId,
                         event.broadcasterId,
                     );

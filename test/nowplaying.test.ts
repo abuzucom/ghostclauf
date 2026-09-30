@@ -211,6 +211,36 @@ describe('nowplaying plugin', () => {
         expect(say).toHaveBeenCalledTimes(2);
     });
 
+    it('refuses to follow redirects from the overlay server', async () => {
+        const fetchImpl = fakeFetch(async () => okResponse(stateBody()));
+        const { ctx, registry, plugin } = setup({}, fetchImpl);
+        await plugin.init(ctx);
+
+        await registry.handle(makeMessage('!nowplaying'));
+        expect(fetchImpl).toHaveBeenCalledWith(
+            expect.any(URL),
+            expect.objectContaining({ redirect: 'error' }),
+        );
+    });
+
+    it('truncates an over-long track list to the 500 character chat limit', async () => {
+        const fetchImpl = fakeFetch(async () =>
+            okResponse(
+                stateBody({
+                    A: deck({ onAir: true, track: { title: 'x'.repeat(600), artist: 'DJ Rae' } }),
+                }),
+            ),
+        );
+        const { ctx, registry, say, plugin } = setup({}, fetchImpl);
+        await plugin.init(ctx);
+
+        await registry.handle(makeMessage('!nowplaying'));
+        expect(say).toHaveBeenCalledOnce();
+        const [sent] = say.mock.calls[0]!;
+        expect([...(sent as string)]).toHaveLength(500);
+        expect(sent as string).toMatch(/^Now playing: DJ Rae - x+$/);
+    });
+
     it('never throws on an invalid baseUrl, and logs a warning instead', async () => {
         const fetchImpl = fakeFetch(async () => okResponse(stateBody()));
         const spy = makeSpyLogger();
