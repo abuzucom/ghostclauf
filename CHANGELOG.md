@@ -52,8 +52,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- Cleared all 7 `npm audit` advisories that failed CI's `npm audit
---audit-level=high` step: `brace-expansion` override 5.0.9 to 5.0.12,
+- Cleared all 7 `npm audit` advisories that failed CI's
+  `npm audit --audit-level=high` step: `brace-expansion` override 5.0.9 to 5.0.12,
   `vitest` 4.1.10 to 4.1.11, and lockfile updates to js-yaml 4.3.2, colord
   2.10.0, and fast-uri 3.1.8. The lockfile was regenerated with npm 11
   because npm 10.9.7 crashes resolving vitest 4.1.11; `npm ci` on npm 10
