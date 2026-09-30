@@ -104,6 +104,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `winget`. `run.sh` and `run.bat` pick up the installed copy.
 - Bumped `html-validate` 10.17.0 -> 11.16.0, which requires Node 22.22 or
   newer.
+- Rolled up the open Dependabot PRs into one change. npm: `html-validate`
+  `eslint` 10.8.0 -> 10.11.0, `yaml` 2.9.0 -> 2.9.1. `html-validate` stays
+  at 10.17.0: 11.x calls `fs.globSync`, which Node 20 lacks, and `engines`
+  declares `node >=20`. Actions (pinned by SHA): `github/codeql-action/upload-sarif` 4.37.6 ->
+  4.38.0, `google/osv-scanner-action` 2.5.0 -> 2.6.0 (both reusable
+  workflows), `actions/deploy-pages` 5.0.0 -> 5.0.1,
+  `actions/configure-pages` 5.0.0 -> 6.0.0. Verified: typecheck, lint,
+  `lint:site`, and `npm test` (611/611).
 - Added the `Lint` workflow (`.github/workflows/lint.yml`), which runs Ruff
   0.15.8 on `scripts/`, `hooks/` and `tests/`, ShellCheck on the `.sh`
   scripts, actionlint 1.7.12 on the workflows, and hadolint 2.15.1 on the
