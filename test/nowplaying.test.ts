@@ -30,12 +30,17 @@ function stateBody(decks: Partial<Record<'A' | 'B' | 'C' | 'D', unknown>> = {}) 
     };
 }
 
+// Real Response objects (built into Node) so the plugin sees real headers
+// and a real body stream, exactly as it would from fetch.
 function okResponse(body: unknown): Response {
-    return { ok: true, status: 200, json: async () => body } as unknown as Response;
+    return new Response(JSON.stringify(body), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+    });
 }
 
 function errorResponse(status: number): Response {
-    return { ok: false, status, json: async () => ({}) } as unknown as Response;
+    return new Response('{}', { status });
 }
 
 function fakeFetch(impl: typeof fetch) {
@@ -239,6 +244,66 @@ describe('nowplaying plugin', () => {
         const [sent] = say.mock.calls[0]!;
         expect([...(sent as string)]).toHaveLength(500);
         expect(sent as string).toMatch(/^Now playing: DJ Rae - x+$/);
+    });
+
+    describe('response size cap (8 KiB)', () => {
+        const ON_AIR = stateBody({
+            A: deck({ onAir: true, track: { title: 'Night Drive', artist: 'DJ Rae' } }),
+        });
+
+        /** A valid /state body padded with an ignored field to `padding` extra characters. */
+        function paddedBody(padding: number): string {
+            return JSON.stringify({ ...ON_AIR, padding: 'x'.repeat(padding) });
+        }
+
+        /** A response whose body arrives as a stream with no content-length header. */
+        function streamedResponse(text: string): Response {
+            const bytes = new TextEncoder().encode(text);
+            const chunkSize = 1024;
+            const stream = new ReadableStream<Uint8Array>({
+                start(controller) {
+                    for (let offset = 0; offset < bytes.length; offset += chunkSize) {
+                        controller.enqueue(bytes.slice(offset, offset + chunkSize));
+                    }
+                    controller.close();
+                },
+            });
+            return new Response(stream, { status: 200 });
+        }
+
+        it('still replies when the body is just under the cap', async () => {
+            const fetchImpl = fakeFetch(async () => streamedResponse(paddedBody(7_000)));
+            const { ctx, registry, say, plugin } = setup({}, fetchImpl);
+            await plugin.init(ctx);
+
+            await registry.handle(makeMessage('!nowplaying'));
+            expect(say).toHaveBeenCalledWith('Now playing: DJ Rae - Night Drive', 'msg-1', '1');
+        });
+
+        it('rejects a response that declares a content-length over the cap', async () => {
+            const body = paddedBody(9_000);
+            const fetchImpl = fakeFetch(
+                async () =>
+                    new Response(body, {
+                        status: 200,
+                        headers: { 'content-length': String(body.length) },
+                    }),
+            );
+            const { ctx, registry, say, plugin } = setup({}, fetchImpl);
+            await plugin.init(ctx);
+
+            await registry.handle(makeMessage('!nowplaying'));
+            expect(say).not.toHaveBeenCalled();
+        });
+
+        it('stops reading a streamed body with no content-length once it passes the cap', async () => {
+            const fetchImpl = fakeFetch(async () => streamedResponse(paddedBody(9_000)));
+            const { ctx, registry, say, plugin } = setup({}, fetchImpl);
+            await plugin.init(ctx);
+
+            await registry.handle(makeMessage('!nowplaying'));
+            expect(say).not.toHaveBeenCalled();
+        });
     });
 
     it('never throws on an invalid baseUrl, and logs a warning instead', async () => {

@@ -71,6 +71,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   as `127.0.0.1:3000:3000`, so the callback stays host-local.
 - `!nowplaying` truncates its reply to Twitch's 500 code point limit instead of
   failing on a long track title, and refuses redirects from the overlay server.
+  It reads at most 8 KiB of the `/state` response: a larger declared
+  `content-length` is refused before reading, and a body without one is
+  cancelled once it passes the limit.
 - `configureAccounts` (the `run.sh`/`run.bat` login prompt) validates each login
   with the shared login rules, asks again on an invalid one, stores it
   lowercased, and saves `config.yaml` atomically with its existing permissions.
