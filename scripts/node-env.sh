@@ -11,15 +11,14 @@ GHOSTCLAUF_NODE_HOME="$HOME/.ghostclauf/node"
 
 # Prefer the private copy when present.
 if [ -d "$GHOSTCLAUF_NODE_HOME/bin" ]; then
-    PATH="$GHOSTCLAUF_NODE_HOME/bin:$PATH"
-    export PATH
+    export PATH="$GHOSTCLAUF_NODE_HOME/bin:$PATH"
 fi
 
 # Succeed when node and npm exist and node is 22.22.0 or newer.
 node_is_supported() {
-    command -v node >/dev/null 2>&1 || return 1
-    command -v npm >/dev/null 2>&1 || return 1
-    node -e "const [a, b] = process.versions.node.split('.').map(Number); process.exit(a > 22 || (a === 22 && b >= 22) ? 0 : 1)" >/dev/null 2>&1
+    command -v node >/dev/null 2>&1 &&
+        command -v npm >/dev/null 2>&1 &&
+        node -e "const [a, b] = process.versions.node.split('.').map(Number); process.exit(a > 22 || (a === 22 && b >= 22) ? 0 : 1)" >/dev/null 2>&1
 }
 
 # Print the nodejs.org platform tag for this machine, or nothing if unsupported.
@@ -40,10 +39,10 @@ node_platform_tag() {
 # Print the SHA-256 of a file using whichever tool the platform ships.
 file_sha256() {
     if command -v sha256sum >/dev/null 2>&1; then
-        sha256sum "$1" | cut -d ' ' -f 1
+        sha256sum "$1"
     else
-        shasum -a 256 "$1" | cut -d ' ' -f 1
-    fi
+        shasum -a 256 "$1"
+    fi | cut -d ' ' -f 1
 }
 
 # Download the newest Node 24 LTS tarball, verify it against the published
@@ -94,17 +93,14 @@ install_private_node() {
     mv "$stage/${tarball%.tar.gz}" "$GHOSTCLAUF_NODE_HOME" || return 1
     rmdir "$stage"
 
-    PATH="$GHOSTCLAUF_NODE_HOME/bin:$PATH"
-    export PATH
+    export PATH="$GHOSTCLAUF_NODE_HOME/bin:$PATH"
 }
 
 # Ask before replacing an existing private Node.js. Succeeds when there is
 # nothing to replace or the user agrees. An unattended run cannot agree, so it
 # refuses rather than deleting the directory.
 confirm_replace_private_node() {
-    if [ ! -d "$GHOSTCLAUF_NODE_HOME" ]; then
-        return 0
-    fi
+    [ -d "$GHOSTCLAUF_NODE_HOME" ] || return 0
     if [ ! -t 0 ]; then
         echo "An outdated Node.js exists at $GHOSTCLAUF_NODE_HOME and replacing it needs confirmation."
         echo "Run ./setup.sh from a terminal, or delete that directory yourself and run it again."
@@ -123,9 +119,7 @@ confirm_replace_private_node() {
 
 # Install a private Node.js when the current one is missing or too old.
 ensure_node() {
-    if node_is_supported; then
-        return 0
-    fi
+    node_is_supported && return 0
     if [ -z "$HOME" ]; then
         echo "HOME is not set, so Node.js cannot be installed automatically."
         return 1

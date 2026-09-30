@@ -124,11 +124,7 @@ exit /b 1
 
 rem Exit 0 when node and npm exist and node is 22.22.0 or newer.
 :check_node
-where node >nul 2>&1
-if errorlevel 1 exit /b 1
-where npm >nul 2>&1
-if errorlevel 1 exit /b 1
-node -e "const [a, b] = process.versions.node.split('.').map(Number); process.exit(a > 22 || (a === 22 && b >= 22) ? 0 : 1)" >nul 2>&1
+where node >nul 2>&1 && where npm >nul 2>&1 && node -e "const [a, b] = process.versions.node.split('.').map(Number); process.exit(a > 22 || (a === 22 && b >= 22) ? 0 : 1)" >nul 2>&1
 exit /b %errorlevel%
 
 :old_node
