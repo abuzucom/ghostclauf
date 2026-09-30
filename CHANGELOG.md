@@ -9,6 +9,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Added `!hidestats` and `!showstats` to the `loyalty` plugin. A chatter hides
+  or shows their own name on the leaderboards; the broadcaster hides or shows
+  anyone with `@user`, and a name the broadcaster hides is locked so only the
+  broadcaster can show it again. A hidden name appears as `Hidden viewer` on
+  `!economy` and the public site, keeping rank and balance. The hidden set is
+  stored in `loyalty.json`; existing files load unchanged.
+- Added an optional read-only `commandPrefix` to `BotContext`, filled from
+  `chat.commandPrefix`. This is a backward-compatible plugin API addition, so
+  the version moves from 0.9.1 to 0.10.0.
+- Added `AUTH_LISTEN_HOST`, the IP address the one-time OAuth callback binds
+  (default `127.0.0.1`). `docker-compose.yml` sets it to `0.0.0.0` inside the
+  container.
+
 - Added a reviewed static GitHub Pages artifact for public fun facts, quotes,
   and esports dollars leaderboard data. Added an allowlisted exporter, static
   site validation, and a Pages deployment workflow for `ghost.clauf.org`.
@@ -51,6 +64,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `AGENTS.md`.
 
 ### Fixed
+
+- The Docker OAuth flow (`docker compose run --service-ports ... authFlow.js`)
+  now receives the redirect. The callback listened on the container's loopback,
+  which Docker's published port does not reach. Compose now publishes the port
+  as `127.0.0.1:3000:3000`, so the callback stays host-local.
+- `!nowplaying` truncates its reply to Twitch's 500 code point limit instead of
+  failing on a long track title, and refuses redirects from the overlay server.
+- `configureAccounts` (the `run.sh`/`run.bat` login prompt) validates each login
+  with the shared login rules, asks again on an invalid one, stores it
+  lowercased, and saves `config.yaml` atomically with its existing permissions.
 
 - `setup.sh` now warns when it cannot set `data/` to mode 700 (the directory
   holds OAuth tokens), fails with a clear message when `.env` is unreadable,
@@ -605,6 +628,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   cause a later check-in to overwrite real history. The on-disk shape check
   also validates nested channel/viewer records, not just the top-level
   envelope.
+
+### Security
+
+- The bot no longer runs commands from its own chat messages. EventSub echoes
+  the bot's messages back with its moderator badge, so a cheer message placed
+  first by a custom announce template (for example `{message}`) could make the
+  bot run `!so` or `!streakopen` as a moderator. The transport drops the bot's
+  own messages, and `announce` also defuses a leading command prefix.
+- Shared Chat messages sent in another channel are dropped. Configured partner
+  channels receive them natively, so they no longer run commands or award
+  loyalty twice, and an unconfigured partner's viewers cannot run commands.
+- The OAuth token store is written through a temp file and renamed into place,
+  so a crash during a token refresh can no longer truncate it and lose the
+  refresh token. No backup copy of the tokens is kept.
+- The public-site leaderboard publishes only the top `leaderboardSize` rows
+  (default 5, maximum 25) instead of every chatter who ever earned currency.
+  `scripts/check_public_site.py` rejects a longer leaderboard.
+- The Pages workflow installs packages with `--ignore-scripts` in a job without
+  deploy permissions; the job holding `pages: write` and `id-token: write`
+  runs no npm. `agents-sync.yml` now declares `contents: read`. A test enforces
+  both rules for every workflow.
 
 ## [0.4.0] (2026-07-21)
 
