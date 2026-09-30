@@ -94,8 +94,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - Rolled up the open Dependabot PRs into one change. npm: `html-validate`
-  10.17.0 -> 11.16.0, `eslint` 10.8.0 -> 10.11.0, `yaml` 2.9.0 -> 2.9.1.
-  Actions (pinned by SHA): `github/codeql-action/upload-sarif` 4.37.6 ->
+  `eslint` 10.8.0 -> 10.11.0, `yaml` 2.9.0 -> 2.9.1. `html-validate` stays
+  at 10.17.0: 11.x calls `fs.globSync`, which Node 20 lacks, and `engines`
+  declares `node >=20`. Actions (pinned by SHA): `github/codeql-action/upload-sarif` 4.37.6 ->
   4.38.0, `google/osv-scanner-action` 2.5.0 -> 2.6.0 (both reusable
   workflows), `actions/deploy-pages` 5.0.0 -> 5.0.1,
   `actions/configure-pages` 5.0.0 -> 6.0.0. Verified: typecheck, lint,
