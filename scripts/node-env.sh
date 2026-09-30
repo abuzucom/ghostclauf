@@ -52,6 +52,10 @@ install_private_node() {
         echo "curl and tar are required to install Node.js automatically."
         return 1
     fi
+    if ! command -v sha256sum >/dev/null 2>&1 && ! command -v shasum >/dev/null 2>&1; then
+        echo "sha256sum or shasum is required to verify the Node.js download."
+        return 1
+    fi
 
     tag="$(node_platform_tag)" || {
         echo "No automatic Node.js install for this platform. Install Node.js 22.22 or newer from https://nodejs.org/."
@@ -62,7 +66,8 @@ install_private_node() {
         echo "Could not create a temporary directory."
         return 1
     }
-    trap 'rm -rf "$work"' EXIT
+    stage=""
+    trap 'rm -rf "$work" "$stage"' EXIT
 
     echo "Looking up the latest Node.js $NODE_LTS_LINE release..."
     curl -fsSL "$NODE_DIST_URL/SHASUMS256.txt" -o "$work/SHASUMS256.txt" || return 1
@@ -77,8 +82,10 @@ install_private_node() {
 
     expected="$(grep " $tarball\$" "$work/SHASUMS256.txt" | cut -d ' ' -f 1)"
     actual="$(file_sha256 "$work/$tarball")"
-    if [ "$expected" != "$actual" ]; then
-        echo "Checksum mismatch for $tarball. Refusing to install it."
+    # An empty $actual means the hash tool failed. Refuse it rather than let
+    # two empty strings compare equal.
+    if [ -z "$actual" ] || [ "$expected" != "$actual" ]; then
+        echo "Checksum verification failed for $tarball. Refusing to install it."
         return 1
     fi
 

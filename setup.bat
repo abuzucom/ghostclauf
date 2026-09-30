@@ -10,6 +10,12 @@ echo        ghostclauf one-click setup
 echo ========================================
 echo.
 
+rem Validate the project folder before installing anything system-wide.
+if not exist "package.json" goto :missing_project
+if not exist "package-lock.json" goto :missing_project
+if not exist ".env.example" goto :missing_project
+if not exist "config.example.yaml" goto :missing_project
+
 call :check_node
 if not errorlevel 1 goto :node_ready
 
@@ -44,11 +50,6 @@ if errorlevel 1 goto :old_node
 
 :node_ready
 for /f "delims=" %%v in ('node --version') do echo Using Node.js %%v.
-
-if not exist "package.json" goto :missing_project
-if not exist "package-lock.json" goto :missing_project
-if not exist ".env.example" goto :missing_project
-if not exist "config.example.yaml" goto :missing_project
 
 if not exist ".env" (
     echo Creating .env from .env.example...
