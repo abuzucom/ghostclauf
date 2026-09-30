@@ -52,6 +52,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- `setup.sh` now warns when it cannot set `data/` to mode 700 (the directory
+  holds OAuth tokens), fails with a clear message when `.env` is unreadable,
+  and no longer hides `grep` errors on `.env`. `run.sh` no longer hides
+  `grep` errors on the token-check output. Before, each failure was silent
+  and setup could report "complete" with an unreadable `.env`.
 - Cleared all 7 `npm audit` advisories that failed CI's
   `npm audit --audit-level=high` step: `brace-expansion` override 5.0.9 to 5.0.12,
   `vitest` 4.1.10 to 4.1.11, and lockfile updates to js-yaml 4.3.2, colord
