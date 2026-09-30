@@ -1,3 +1,4 @@
+# shellcheck shell=sh
 # Sourced by setup.sh and run.sh. Not executable on its own.
 #
 # Provides a Node.js that satisfies package.json "engines" without touching

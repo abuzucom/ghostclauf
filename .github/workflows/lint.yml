@@ -44,7 +44,7 @@ jobs:
               with:
                   persist-credentials: false
             # ShellCheck ships preinstalled on ubuntu-latest runners.
-            - run: shellcheck setup.sh run.sh publish-site.sh
+            - run: shellcheck -x setup.sh run.sh publish-site.sh scripts/node-env.sh
 
     actionlint:
         name: actionlint
