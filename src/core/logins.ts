@@ -21,3 +21,14 @@ export function parseLogin(token: string | undefined): string | null {
     const login = token.replace(/^@/, '').toLowerCase();
     return LOGIN_PATTERN.test(login) ? login : null;
 }
+
+/**
+ * Validate a login typed at an interactive prompt. Returns the lowercase login,
+ * or null when the answer is not a real Twitch login (including the example
+ * placeholders, which would otherwise pass the login pattern).
+ */
+export function normalizeLoginAnswer(answer: string): string | null {
+    const login = parseLogin(answer.trim());
+    if (!login || isPlaceholderLogin(login)) return null;
+    return login;
+}
