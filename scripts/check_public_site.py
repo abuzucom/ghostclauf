@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 """Validate the static public-site artifact boundary."""
 
 from __future__ import annotations
@@ -88,18 +89,30 @@ def check_snapshot() -> None:
         fail("snapshot version must be 1")
     if not isinstance(root.get("generatedAt"), str):
         fail("snapshot generatedAt must be a string")
-    for item in require_list(root.get("facts"), "facts"):
+    check_facts(root.get("facts"))
+    check_quotes(root.get("quotes"))
+    check_loyalty(root.get("loyalty"))
+
+
+def check_facts(facts: object) -> None:
+    for item in require_list(facts, "facts"):
         fact = require_fields(item, ALLOWED_SNAPSHOT_FIELDS["fact"], "fact")
         if not isinstance(fact.get("id"), int) or not isinstance(fact.get("text"), str):
             fail("fact fields must be public primitive values")
-    for item in require_list(root.get("quotes"), "quotes"):
+
+
+def check_quotes(quotes: object) -> None:
+    for item in require_list(quotes, "quotes"):
         quote = require_fields(item, ALLOWED_SNAPSHOT_FIELDS["quote"], "quote")
         speaker = quote.get("speaker")
         if not isinstance(quote.get("id"), int) or not isinstance(quote.get("text"), str):
             fail("quote fields must be public primitive values")
         if speaker is not None and not isinstance(speaker, str):
             fail("quote speaker must be a string or null")
-    loyalty = require_fields(root.get("loyalty"), ALLOWED_SNAPSHOT_FIELDS["loyalty"], "loyalty")
+
+
+def check_loyalty(loyalty_section: object) -> None:
+    loyalty = require_fields(loyalty_section, ALLOWED_SNAPSHOT_FIELDS["loyalty"], "loyalty")
     if not isinstance(loyalty.get("currencyName"), str):
         fail("loyalty currencyName must be a string")
     require_number(loyalty.get("participantCount"), "loyalty participantCount")

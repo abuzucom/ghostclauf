@@ -18,7 +18,7 @@ INLINE_CODE = re.compile(r"`[^`]*`")
 # -ce -> -se
 # -ogue -> -og
 # miscellaneous, plus contested pairs the user chose to enforce
-# (theatre/theater, catalogue/catalog, dialogue/dialog, analogue/analog)
+# such as theatre/theater, catalogue/catalog, dialogue/dialog, analogue/analog
 #
 # Deliberately excluded as ambiguous or dual-valid in American English:
 # glamour, burnt, learnt, disc, grey/gray, judgement/judgment,
