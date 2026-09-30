@@ -18,6 +18,7 @@ export interface ContextDeps {
     sender: MessageSender;
     helix: HelixClient;
     broadcasters?: readonly BroadcasterIdentity[];
+    commandPrefix?: string;
 }
 
 /**
@@ -26,13 +27,24 @@ export interface ContextDeps {
  * this plugin's own config and logger.
  */
 export function createContext(deps: ContextDeps): BotContext {
-    const { pluginName, config, logger, bus, registry, sender, helix, broadcasters } = deps;
+    const {
+        pluginName,
+        config,
+        logger,
+        bus,
+        registry,
+        sender,
+        helix,
+        broadcasters,
+        commandPrefix,
+    } = deps;
 
     const ctx: BotContext = {
         config,
         broadcasters,
         logger,
         helix,
+        commandPrefix,
         say: (text, replyToId, broadcasterId) => {
             if (broadcasterId !== undefined) return sender(text, replyToId, broadcasterId);
             if (replyToId !== undefined) return sender(text, replyToId);

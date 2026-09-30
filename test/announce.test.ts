@@ -158,6 +158,18 @@ describe('formatForChat', () => {
         expect(formatForChat('cheered: /ban someone')).toBe('cheered: /ban someone');
     });
 
+    it('defuses a leading bot command prefix when one is given', () => {
+        expect(formatForChat('!so attacker', '!')).toBe(`${ZERO_WIDTH_SPACE}!so attacker`);
+    });
+
+    it('defuses a custom multi-character command prefix', () => {
+        expect(formatForChat('??so attacker', '??')).toBe(`${ZERO_WIDTH_SPACE}??so attacker`);
+    });
+
+    it('leaves a leading "!" alone when no prefix is given', () => {
+        expect(formatForChat('!hello')).toBe('!hello');
+    });
+
     it('still fits the 500 code-point limit after neutralizing', () => {
         const formatted = formatForChat(`/${'x'.repeat(600)}`);
         expect([...formatted]).toHaveLength(500);
@@ -218,6 +230,17 @@ describe('announce plugin', () => {
         const [sent] = say.mock.calls[0]!;
         expect(sent as string).toBe(`${ZERO_WIDTH_SPACE}/ban someone`);
         expect((sent as string).startsWith('/')).toBe(false);
+    });
+
+    it('defuses a cheer message that would make the bot post one of its own commands', async () => {
+        // The bot is a moderator. Posting "!so attacker" would hand a paying
+        // chatter moderator commands through the bot's own echo.
+        const { bus, say } = await setup({ cheer: { template: '{message}' } });
+        bus.emit('cheer', cheerEvent({ message: '!so attacker Cheer100' }));
+        await flush(bus);
+        const [sent] = say.mock.calls[0]!;
+        expect(sent as string).toBe(`${ZERO_WIDTH_SPACE}!so attacker Cheer100`);
+        expect((sent as string).startsWith('!')).toBe(false);
     });
 
     it('keeps a cheer announcement on one line when the message has newlines', async () => {

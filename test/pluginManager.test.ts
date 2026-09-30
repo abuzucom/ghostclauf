@@ -1,6 +1,6 @@
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { PluginManager } from '../src/core/pluginManager.js';
 import { CommandRegistry } from '../src/core/commands.js';
 import { EventBus } from '../src/core/eventBus.js';
@@ -66,6 +66,26 @@ describe('PluginManager', () => {
 
         expect(registry.match(makeMessage('!partial-command'))).toBeNull();
         expect(registry.match(makeMessage('!partial-listener-command'))).toBeNull();
+    });
+
+    it('hands each plugin the configured chat command prefix', async () => {
+        const registry = new CommandRegistry('?', makeSpyLogger().logger);
+        const registerSpy = vi.spyOn(registry, 'register');
+        const file = baseFileConfig({
+            directories: [join(fixturesRoot, 'plugins')],
+            enabled: ['fixture-good-a'],
+        });
+        const pm = new PluginManager({
+            file: { ...file, chat: { commandPrefix: '?' } },
+            logger: makeSpyLogger().logger,
+            registry,
+            bus: new EventBus(makeSpyLogger().logger),
+            sender: spySender(),
+        });
+        await pm.loadAll();
+
+        const [, , ctx] = registerSpy.mock.calls[0]!;
+        expect(ctx.commandPrefix).toBe('?');
     });
 
     it('skips a module that does not export a valid Plugin', async () => {

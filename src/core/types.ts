@@ -213,6 +213,12 @@ export interface BotContext {
     readonly logger: Logger;
     /** Narrow Helix API client for plugins that need Twitch data lookups. */
     readonly helix: HelixClient;
+    /**
+     * The configured chat command prefix (e.g. "!"), when supplied by the
+     * host. Plugins that echo untrusted text should defuse a leading prefix:
+     * the bot is a moderator, so its own message must never read as a command.
+     */
+    readonly commandPrefix?: string;
     /** Post a message to a channel (optionally replying to a message id). */
     say(text: string, replyToId?: string, broadcasterId?: string): Promise<void>;
     /** Register a chat command. */

@@ -41,6 +41,11 @@ describe('createContext', () => {
         expect(onSpy).toHaveBeenCalledWith('streamOnline', handler);
     });
 
+    it('exposes the command prefix passed at construction', () => {
+        const { ctx } = makeHarness('p');
+        expect(ctx.commandPrefix).toBe('!');
+    });
+
     it('exposes the config and logger passed at construction unchanged', () => {
         const config = { foo: 'bar' };
         const { ctx } = makeHarness('p', config);
