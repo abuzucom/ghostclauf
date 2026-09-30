@@ -27,8 +27,9 @@ import os
 import re
 import subprocess
 import sys
+from pathlib import Path
 
-CHECKER_PATH = os.path.join("scripts", "check_branch_name.py")
+CHECKER_PATH = Path("scripts") / "check_branch_name.py"
 ALLOWED_PREFIXES = "feat/, fix/, chore/, docs/, test/"
 BLOCKED_COMMANDS = (
     (r"\bgit\s+commit\b", "git commit"),
@@ -50,7 +51,7 @@ def _read_payload() -> dict:
 
 def _project_dir(payload: dict) -> str:
     """Return the repository root, preferring Claude Code's own variable."""
-    return os.environ.get("CLAUDE_PROJECT_DIR") or payload.get("cwd") or os.getcwd()
+    return os.environ.get("CLAUDE_PROJECT_DIR") or payload.get("cwd") or str(Path.cwd())
 
 
 def find_violation(project_dir: str) -> str:
@@ -59,8 +60,8 @@ def find_violation(project_dir: str) -> str:
     An absent checker yields an empty string: a repo that has not copied
     scripts/check_branch_name.py has no convention for this hook to enforce.
     """
-    checker = os.path.join(project_dir, CHECKER_PATH)
-    if not os.path.isfile(checker):
+    checker = Path(project_dir) / CHECKER_PATH
+    if not checker.is_file():
         return ""
     result = subprocess.run(
         [sys.executable, checker],
