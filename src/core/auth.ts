@@ -1,9 +1,9 @@
-import { chmod, mkdir, readFile, writeFile } from 'node:fs/promises';
-import { dirname } from 'node:path';
+import { readFile } from 'node:fs/promises';
 import { RefreshingAuthProvider } from '@twurple/auth';
 import type { AccessToken } from '@twurple/auth';
 import { z } from 'zod';
 import { fireAlert } from './alerts.js';
+import { writeFileAtomic } from './atomicFile.js';
 import type { BroadcasterConfig, Secrets } from './config.js';
 import type { Metrics } from './metrics.js';
 import type { Logger } from './types.js';
@@ -173,18 +173,11 @@ const AccessTokenSchema = z.object({
     obtainmentTimestamp: z.number(),
 });
 
+/**
+ * Persist a token atomically. Refreshes rewrite this file, and an in-place
+ * write interrupted mid-way would lose the refresh token and force a manual
+ * re-authorization.
+ */
 export async function writeTokenStore(path: string, token: AccessToken): Promise<void> {
-    await mkdir(dirname(path), { recursive: true });
-    try {
-        await chmod(path, TOKEN_STORE_MODE);
-    } catch (error) {
-        if (!(error instanceof Error && 'code' in error && error.code === 'ENOENT')) {
-            throw error;
-        }
-    }
-    await writeFile(path, JSON.stringify(token, null, 2), {
-        encoding: 'utf8',
-        mode: TOKEN_STORE_MODE,
-    });
-    await chmod(path, TOKEN_STORE_MODE);
+    await writeFileAtomic(path, JSON.stringify(token, null, 2), TOKEN_STORE_MODE);
 }

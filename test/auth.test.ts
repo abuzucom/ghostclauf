@@ -1,4 +1,4 @@
-import { chmod, mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises';
+import { chmod, mkdtemp, readdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { AccessToken } from '@twurple/auth';
@@ -101,6 +101,30 @@ describe('readTokenStore / writeTokenStore', () => {
             expect((await stat(path)).mode & 0o777).toBe(0o600);
         },
     );
+
+    it.runIf(process.platform !== 'win32')(
+        'replaces the token store by rename so a crash never leaves it truncated',
+        async () => {
+            const path = join(dir, 'tokens.json');
+            await writeTokenStore(path, sampleToken);
+            const before = await stat(path);
+
+            const refreshedToken: AccessToken = { ...sampleToken, accessToken: 'refreshed-456' };
+            await writeTokenStore(path, refreshedToken);
+
+            // An in-place overwrite keeps the inode and is truncated first; a
+            // rename swaps in a fully written file.
+            expect((await stat(path)).ino).not.toBe(before.ino);
+            await expect(readTokenStore(path)).resolves.toEqual(refreshedToken);
+        },
+    );
+
+    it('leaves no temp or backup files beside the token store', async () => {
+        const path = join(dir, 'tokens.json');
+        await writeTokenStore(path, sampleToken);
+        await writeTokenStore(path, { ...sampleToken, accessToken: 'refreshed-456' });
+        expect(await readdir(dir)).toEqual(['tokens.json']);
+    });
 
     it('throws guidance to run npm run auth when the file is missing', async () => {
         const path = join(dir, 'missing.json');

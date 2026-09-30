@@ -2,7 +2,7 @@
 // rename it over the target so a crash mid-write never leaves a truncated
 // database. One previous snapshot is kept alongside as `.bak`.
 
-import { chmod, copyFile, mkdir, rename, writeFile } from 'node:fs/promises';
+import { chmod, copyFile, mkdir, rename, rm, writeFile } from 'node:fs/promises';
 import { dirname } from 'node:path';
 
 /**
@@ -48,6 +48,48 @@ async function renameWithRetry(from: string, to: string): Promise<void> {
 }
 
 /**
+ * Write `data` to a temp file with `mode`, then rename it over `path`. The
+ * mode is applied with chmod too, because writeFile honors it only when it
+ * creates the file.
+ */
+async function replaceWithTempFile(
+    path: string,
+    tempPath: string,
+    data: string,
+    mode: number,
+): Promise<void> {
+    await writeFile(tempPath, data, { encoding: 'utf8', mode });
+    await chmod(tempPath, mode);
+    await renameWithRetry(tempPath, path);
+}
+
+/** Distinguishes temp files from concurrent writeFileAtomic calls in one process. */
+let atomicWriteSeq = 0;
+
+/**
+ * Replace `path` with `data` atomically: readers see the old file or the new
+ * one, never a truncated mix, even if the process dies mid-write. Unlike
+ * `AtomicJsonFile`, no `.bak` snapshot is kept, so secrets such as OAuth
+ * tokens are never copied to a second file. A failed write removes its temp
+ * file and leaves the existing target untouched.
+ */
+export async function writeFileAtomic(
+    path: string,
+    data: string,
+    mode: number = FILE_MODE,
+): Promise<void> {
+    await mkdir(dirname(path), { recursive: true, mode: DIRECTORY_MODE });
+    atomicWriteSeq += 1;
+    const tempPath = `${path}.${process.pid}.${atomicWriteSeq}.tmp`;
+    try {
+        await replaceWithTempFile(path, tempPath, data, mode);
+    } catch (error) {
+        await rm(tempPath, { force: true });
+        throw error;
+    }
+}
+
+/**
  * Persist one JSON document through atomic replacement. A single owning store
  * must serialize write calls; this class protects file replacement, not the
  * store's read-modify-write lifecycle.
@@ -73,12 +115,9 @@ export class AtomicJsonFile {
             await chmod(backupTemp, FILE_MODE);
             await renameWithRetry(backupTemp, `${this.path}.bak`);
         }
-        const tempPath = `${this.path}.${this.writeSeq}.tmp`;
-        // mode on writeFile applies only when creating; chmod covers a reused
-        // temp path left behind by an earlier crash.
-        await writeFile(tempPath, json, { encoding: 'utf8', mode: FILE_MODE });
-        await chmod(tempPath, FILE_MODE);
-        await renameWithRetry(tempPath, this.path);
+        // chmod inside replaceWithTempFile also covers a reused temp path
+        // left behind by an earlier crash.
+        await replaceWithTempFile(this.path, `${this.path}.${this.writeSeq}.tmp`, json, FILE_MODE);
         this.hasPersisted = true;
     }
 }

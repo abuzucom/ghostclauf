@@ -2,7 +2,7 @@ import { mkdtemp, readdir, readFile, rm, stat, writeFile } from 'node:fs/promise
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { AtomicJsonFile } from '../src/core/atomicFile.js';
+import { AtomicJsonFile, writeFileAtomic } from '../src/core/atomicFile.js';
 
 /**
  * Lets a test make `rename` report the target as locked. Windows does that
@@ -177,5 +177,46 @@ describe('AtomicJsonFile', () => {
 
         expect(await readFile(target, 'utf8')).toBe('{"new":2}');
         expect(await readFile(`${target}.bak`, 'utf8')).toBe('{"old":1}');
+    });
+});
+
+describe('writeFileAtomic', () => {
+    let dir: string;
+
+    beforeEach(async () => {
+        dir = await mkdtemp(join(tmpdir(), 'ghostclauf-writeatomic-'));
+        renameControl.calls = 0;
+        renameControl.failWith = null;
+    });
+
+    afterEach(async () => {
+        await rm(dir, { recursive: true, force: true });
+    });
+
+    it('replaces the target without keeping a backup', async () => {
+        const target = join(dir, 'tokens.json');
+        await writeFileAtomic(target, 'first');
+        await writeFileAtomic(target, 'second');
+
+        expect(await readFile(target, 'utf8')).toBe('second');
+        expect(await readdir(dir)).toEqual(['tokens.json']);
+    });
+
+    it.runIf(process.platform !== 'win32')('applies the requested file mode', async () => {
+        const target = join(dir, 'tokens.json');
+        await writeFileAtomic(target, 'secret', 0o600);
+        expect((await stat(target)).mode & 0o777).toBe(0o600);
+    });
+
+    it('keeps the old contents and removes its temp file when the swap fails', async () => {
+        const target = join(dir, 'tokens.json');
+        await writeFile(target, 'original', 'utf8');
+        renameControl.failWith = () =>
+            Object.assign(new Error('EIO: i/o error, rename'), { code: 'EIO' });
+
+        await expect(writeFileAtomic(target, 'replacement')).rejects.toThrow(/EIO/);
+
+        expect(await readFile(target, 'utf8')).toBe('original');
+        expect(await readdir(dir)).toEqual(['tokens.json']);
     });
 });
