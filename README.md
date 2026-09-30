@@ -544,6 +544,8 @@ the configured token store. The bot token uses `TOKEN_STORE_PATH`; each
 broadcaster token uses its `tokenStorePath` in `config.yaml`. Thereafter tokens
 refresh automatically. On POSIX systems, token files are written with owner-only
 permissions (`0o600`); existing token files are tightened when they are written.
+Each write goes to a temp file that is renamed over the store, so a crash
+mid-refresh never leaves a truncated token file.
 For Docker bind mounts or shared volumes, configure host filesystem ownership
 and ACLs to restrict access as well.
 
@@ -566,6 +568,13 @@ docker compose run --rm --service-ports ghostclauf node dist/tools/authFlow.js -
 # 2) run
 docker compose up -d
 ```
+
+The OAuth callback listens on `127.0.0.1` unless `AUTH_LISTEN_HOST` names
+another IP address. Docker forwards published ports to the container's network
+interface rather than its loopback, so `docker-compose.yml` sets
+`AUTH_LISTEN_HOST=0.0.0.0` inside the container and publishes port `3000` on the
+host's loopback only (`127.0.0.1:3000:3000`). Open the authorization URL in a
+browser on the Docker host itself.
 
 **Running as a service:**
 

@@ -8,13 +8,14 @@ import { exchangeCode } from '@twurple/auth';
 import { loadFileConfig, loadSecrets } from '../core/config.js';
 import { BOT_SCOPES, BROADCASTER_SCOPES, writeTokenStore } from '../core/auth.js';
 import { closeServer } from '../core/httpServer.js';
-import { resolveOAuthCallback } from '../core/oauthRedirect.js';
+import { resolveOAuthCallback, resolveOAuthListenHost } from '../core/oauthRedirect.js';
 
 async function main(): Promise<void> {
     const file = loadFileConfig();
     const secrets = loadSecrets();
     const target = resolveAuthTarget(file, secrets, process.argv.slice(2));
     const { redirect, port } = resolveOAuthCallback(secrets.redirectUri);
+    const listenHost = resolveOAuthListenHost();
 
     const authorizeUrl = new URL('https://id.twitch.tv/oauth2/authorize');
     const state = randomBytes(32).toString('hex');
@@ -90,7 +91,7 @@ async function main(): Promise<void> {
             });
         }
 
-        server.listen(port, '127.0.0.1', () => {
+        server.listen(port, listenHost, () => {
             console.log(`\nGhostclauf — one-time ${target.label} authorization`);
             console.log(
                 `1. Make sure you are logged into Twitch as ${target.label} (${target.login}).`,
