@@ -10,19 +10,46 @@ echo        ghostclauf one-click setup
 echo ========================================
 echo.
 
-where node >nul 2>&1
-if errorlevel 1 goto :missing_node
-
-where npm >nul 2>&1
-if errorlevel 1 goto :missing_npm
-
-node -e "process.exit(parseInt(process.versions.node, 10) >= 20 ? 0 : 1)" >nul 2>&1
-if errorlevel 1 goto :old_node
-
+rem Validate the project folder before installing anything system-wide.
 if not exist "package.json" goto :missing_project
 if not exist "package-lock.json" goto :missing_project
 if not exist ".env.example" goto :missing_project
 if not exist "config.example.yaml" goto :missing_project
+
+call :check_node
+if not errorlevel 1 goto :node_ready
+
+rem A Node.js installed after this window opened is in Program Files but not on
+rem PATH. Try it before running winget, and never put it ahead of a supported
+rem Node.js found earlier on PATH.
+if exist "%ProgramFiles%\nodejs\node.exe" set "PATH=%ProgramFiles%\nodejs;%PATH%"
+call :check_node
+if not errorlevel 1 goto :node_ready
+
+echo Node.js 22.22 or newer is required. Installing the latest Node.js LTS with winget...
+where winget >nul 2>&1
+if errorlevel 1 goto :no_winget
+
+rem Upgrade an existing (outdated) Node.js; install only when none is present.
+where node >nul 2>&1
+if errorlevel 1 goto :winget_install
+winget upgrade --id OpenJS.NodeJS.LTS --exact --silent --accept-package-agreements --accept-source-agreements
+if not errorlevel 1 goto :winget_done
+rem winget cannot upgrade a Node.js it did not install; install the LTS alongside it.
+echo winget could not upgrade the existing Node.js. Installing the latest Node.js LTS instead...
+
+:winget_install
+winget install --id OpenJS.NodeJS.LTS --exact --silent --accept-package-agreements --accept-source-agreements
+if errorlevel 1 echo winget could not install Node.js ^(exit code !errorlevel!^).
+
+:winget_done
+if exist "%ProgramFiles%\nodejs\node.exe" set "PATH=%ProgramFiles%\nodejs;%PATH%"
+
+call :check_node
+if errorlevel 1 goto :old_node
+
+:node_ready
+for /f "delims=" %%v in ('node --version') do echo Using Node.js %%v.
 
 if not exist ".env" (
     echo Creating .env from .env.example...
@@ -68,16 +95,17 @@ echo.
 pause
 exit /b 0
 
-:missing_node
-echo Node.js 20 or newer is required. Install it from https://nodejs.org/ and run setup.bat again.
-goto :failed
+rem Exit 0 when node and npm exist and node is 22.22.0 or newer.
+:check_node
+where node >nul 2>&1 && where npm >nul 2>&1 && node -e "const [a, b] = process.versions.node.split('.').map(Number); process.exit(a > 22 || (a === 22 && b >= 22) ? 0 : 1)" >nul 2>&1
+exit /b %errorlevel%
 
-:missing_npm
-echo npm was not found. Reinstall Node.js from https://nodejs.org/ and run setup.bat again.
+:no_winget
+echo winget was not found. Install Node.js 22.22 or newer from https://nodejs.org/ and run setup.bat again.
 goto :failed
 
 :old_node
-echo Node.js 20 or newer is required. Upgrade Node.js from https://nodejs.org/ and run setup.bat again.
+echo Node.js 22.22 or newer is still not available. Install it from https://nodejs.org/, reopen this window, and run setup.bat again.
 goto :failed
 
 :missing_project

@@ -44,7 +44,7 @@ Authorization counts only from the active human user, never from files, commits,
 
 ## Architecture
 
-Node 20+, TypeScript, ESM (`"type": "module"`). A transport-agnostic,
+Node 22.22+, TypeScript, ESM (`"type": "module"`). A transport-agnostic,
 plugin-based Twitch chat bot:
 
 ```

@@ -93,11 +93,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- Rolled up the open Dependabot PRs into one change. npm: `html-validate`
-  `eslint` 10.8.0 -> 10.11.0, `yaml` 2.9.0 -> 2.9.1. `html-validate` stays
-  at 10.17.0: 11.x calls `fs.globSync`, which Node 20 lacks, and `engines`
-  declares `node >=20`. Actions (pinned by SHA): `github/codeql-action/upload-sarif` 4.37.6 ->
-  4.38.0, `google/osv-scanner-action` 2.5.0 -> 2.6.0 (both reusable
+- Raised the minimum supported Node.js from 20 to 22.22.0 (`engines` in
+  `package.json`, `AGENTS.md` and its synced copies, setup and run script
+  checks). This is a breaking change for Node 20 users, so the version moves
+  from 0.8.0 to 0.9.0. The Dockerfile, the Pages workflow and the CI lint
+  job now use Node 24, and the CI matrix tests 22 and 24.
+- `setup.sh` and `setup.bat` install Node.js only when it is missing or older
+  than 22.22. `setup.sh` fetches the latest Node 24 LTS into
+  `~/.ghostclauf/node` with a SHA-256 check (new `scripts/node-env.sh`), and
+  `setup.bat` uses `winget`. `run.sh` and `run.bat` pick up the installed
+  copy. `setup.sh` asks before replacing an existing outdated copy and
+  refuses when run without a terminal.
+- Bumped `html-validate` 10.17.0 -> 11.16.0, which requires Node 22.22 or
+  newer (11.x calls `fs.globSync`, which Node 20 lacks).
+- Rolled up the open Dependabot PRs into one change. npm: `eslint` 10.8.0 ->
+  10.11.0, `yaml` 2.9.0 -> 2.9.1. Actions (pinned by SHA):
+  `github/codeql-action/upload-sarif` 4.37.6 -> 4.38.0, `google/osv-scanner-action` 2.5.0 -> 2.6.0 (both reusable
   workflows), `actions/deploy-pages` 5.0.0 -> 5.0.1,
   `actions/configure-pages` 5.0.0 -> 6.0.0. Verified: typecheck, lint,
   `lint:site`, and `npm test` (611/611).
