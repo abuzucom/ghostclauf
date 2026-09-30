@@ -18,6 +18,7 @@ import subprocess
 import sys
 import unittest
 from pathlib import Path
+from types import ModuleType
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 HOOK_PATH = REPO_ROOT / "hooks" / "enforce_branch_name.py"
@@ -30,7 +31,7 @@ CONFORMING_BRANCH = "feat/session-start-branch-check"
 BLOCKING_EXIT_CODE = 2
 
 
-def _load_hook_module():
+def _load_hook_module() -> ModuleType:
     """Import the hook by path, since hooks/ is not an importable package."""
     spec = importlib.util.spec_from_file_location("enforce_branch_name", HOOK_PATH)
     module = importlib.util.module_from_spec(spec)
@@ -41,7 +42,7 @@ def _load_hook_module():
 hook = _load_hook_module()
 
 
-def run_hook(payload, branch: str) -> subprocess.CompletedProcess:
+def run_hook(payload: dict | None, branch: str) -> subprocess.CompletedProcess:
     """Run the hook as the harness does: JSON on stdin, branch from the env."""
     environment = dict(os.environ)
     environment["GITHUB_HEAD_REF"] = branch
@@ -77,7 +78,7 @@ def session_start_payload() -> dict:
 class CheckerContractTest(unittest.TestCase):
     """The rule the hook enforces, verified against the checker itself."""
 
-    def test_claude_prefix_is_rejected(self):
+    def test_claude_prefix_is_rejected(self) -> None:
         result = subprocess.run(
             [sys.executable, str(CHECKER_PATH), VIOLATING_BRANCH],
             capture_output=True,
@@ -87,7 +88,7 @@ class CheckerContractTest(unittest.TestCase):
         self.assertEqual(result.returncode, 1)
         self.assertIn(VIOLATING_BRANCH, result.stderr)
 
-    def test_conforming_prefixes_are_accepted(self):
+    def test_conforming_prefixes_are_accepted(self) -> None:
         for branch in ("feat/a-b", "fix/a-b", "chore/a-b", "docs/a-b", "test/a-b"):
             with self.subTest(branch=branch):
                 result = subprocess.run(
@@ -102,7 +103,7 @@ class CheckerContractTest(unittest.TestCase):
 class SessionStartTest(unittest.TestCase):
     """SessionStart informs; it never blocks, since Claude Code ignores its exit."""
 
-    def test_violation_injects_context_and_exits_zero(self):
+    def test_violation_injects_context_and_exits_zero(self) -> None:
         result = run_hook(session_start_payload(), VIOLATING_BRANCH)
         self.assertEqual(result.returncode, 0, result.stderr)
         output = json.loads(result.stdout)
@@ -113,22 +114,22 @@ class SessionStartTest(unittest.TestCase):
         self.assertIn("git branch -m", specific["additionalContext"])
         self.assertEqual(output["systemMessage"], specific["additionalContext"])
 
-    def test_conforming_branch_stays_silent(self):
+    def test_conforming_branch_stays_silent(self) -> None:
         result = run_hook(session_start_payload(), CONFORMING_BRANCH)
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(result.stdout.strip(), "")
 
-    def test_missing_event_name_defaults_to_session_start(self):
+    def test_missing_event_name_defaults_to_session_start(self) -> None:
         result = run_hook({"cwd": str(REPO_ROOT)}, VIOLATING_BRANCH)
         self.assertEqual(result.returncode, 0, result.stderr)
         output = json.loads(result.stdout)
         self.assertEqual(output["hookSpecificOutput"]["hookEventName"], "SessionStart")
 
-    def test_empty_stdin_exits_zero(self):
+    def test_empty_stdin_exits_zero(self) -> None:
         result = run_hook(None, CONFORMING_BRANCH)
         self.assertEqual(result.returncode, 0, result.stderr)
 
-    def test_malformed_stdin_exits_zero(self):
+    def test_malformed_stdin_exits_zero(self) -> None:
         result = subprocess.run(
             [sys.executable, str(HOOK_PATH)],
             input="not json",
@@ -143,50 +144,50 @@ class SessionStartTest(unittest.TestCase):
 class PreToolUseTest(unittest.TestCase):
     """PreToolUse is the blocking half: exit 2 stops the tool call."""
 
-    def test_commit_on_violating_branch_is_blocked(self):
+    def test_commit_on_violating_branch_is_blocked(self) -> None:
         result = run_hook(bash_payload('git commit -m "feat: x"'), VIOLATING_BRANCH)
         self.assertEqual(result.returncode, BLOCKING_EXIT_CODE)
         self.assertIn("git commit", result.stderr)
         self.assertIn(VIOLATING_BRANCH, result.stderr)
         self.assertIn("git branch -m", result.stderr)
 
-    def test_push_on_violating_branch_is_blocked(self):
+    def test_push_on_violating_branch_is_blocked(self) -> None:
         result = run_hook(bash_payload("git push -u origin HEAD"), VIOLATING_BRANCH)
         self.assertEqual(result.returncode, BLOCKING_EXIT_CODE)
         self.assertIn("git push", result.stderr)
 
-    def test_commit_on_conforming_branch_is_allowed(self):
+    def test_commit_on_conforming_branch_is_allowed(self) -> None:
         result = run_hook(bash_payload('git commit -m "feat: x"'), CONFORMING_BRANCH)
         self.assertEqual(result.returncode, 0, result.stderr)
 
-    def test_push_on_conforming_branch_is_allowed(self):
+    def test_push_on_conforming_branch_is_allowed(self) -> None:
         result = run_hook(bash_payload("git push -u origin HEAD"), CONFORMING_BRANCH)
         self.assertEqual(result.returncode, 0, result.stderr)
 
-    def test_rename_command_is_never_blocked(self):
+    def test_rename_command_is_never_blocked(self) -> None:
         result = run_hook(bash_payload("git branch -m feat/x"), VIOLATING_BRANCH)
         self.assertEqual(result.returncode, 0, result.stderr)
 
-    def test_read_only_git_command_is_allowed(self):
+    def test_read_only_git_command_is_allowed(self) -> None:
         for command in ("git status", "git log --oneline -5", "git branch --show-current"):
             with self.subTest(command=command):
                 result = run_hook(bash_payload(command), VIOLATING_BRANCH)
                 self.assertEqual(result.returncode, 0, result.stderr)
 
-    def test_non_git_command_is_allowed(self):
+    def test_non_git_command_is_allowed(self) -> None:
         result = run_hook(bash_payload("ls -la"), VIOLATING_BRANCH)
         self.assertEqual(result.returncode, 0, result.stderr)
 
-    def test_non_bash_tool_is_ignored(self):
+    def test_non_bash_tool_is_ignored(self) -> None:
         payload = {
             "hook_event_name": "PreToolUse",
             "tool_name": "Read",
-            "tool_input": {"file_path": "/tmp/x"},
+            "tool_input": {"file_path": "README.md"},
         }
         result = run_hook(payload, VIOLATING_BRANCH)
         self.assertEqual(result.returncode, 0, result.stderr)
 
-    def test_chained_command_containing_push_is_blocked(self):
+    def test_chained_command_containing_push_is_blocked(self) -> None:
         result = run_hook(bash_payload("make lint && git push"), VIOLATING_BRANCH)
         self.assertEqual(result.returncode, BLOCKING_EXIT_CODE)
 
@@ -194,11 +195,11 @@ class PreToolUseTest(unittest.TestCase):
 class BlockedCommandTest(unittest.TestCase):
     """Command matching, exercised directly for the cases subprocess runs skip."""
 
-    def test_git_write_commands_match(self):
+    def test_git_write_commands_match(self) -> None:
         self.assertEqual(hook.blocked_command("git commit --amend"), "git commit")
         self.assertEqual(hook.blocked_command("git   push --set-upstream"), "git push")
 
-    def test_unrelated_commands_do_not_match(self):
+    def test_unrelated_commands_do_not_match(self) -> None:
         for command in ("git status", "pytest", "commit", "push origin", ""):
             with self.subTest(command=command):
                 self.assertEqual(hook.blocked_command(command), "")
@@ -207,7 +208,7 @@ class BlockedCommandTest(unittest.TestCase):
 class FindViolationTest(unittest.TestCase):
     """A repo without the checker has no convention for the hook to enforce."""
 
-    def test_absent_checker_yields_no_violation(self):
+    def test_absent_checker_yields_no_violation(self) -> None:
         self.assertEqual(hook.find_violation(str(Path(__file__).parent)), "")
 
 
@@ -223,7 +224,7 @@ class SettingsWiringTest(unittest.TestCase):
             for entry in matcher.get("hooks", [])
         ]
 
-    def _assert_registers_both_events(self, path: Path):
+    def _assert_registers_both_events(self, path: Path) -> None:
         settings = json.loads(path.read_text(encoding="utf-8"))
         session_start = self._commands(settings, "SessionStart")
         pre_tool_use = self._commands(settings, "PreToolUse")
@@ -236,13 +237,13 @@ class SettingsWiringTest(unittest.TestCase):
             f"{path.name} does not register the hook for PreToolUse",
         )
 
-    def test_live_settings_register_both_events(self):
+    def test_live_settings_register_both_events(self) -> None:
         self._assert_registers_both_events(LIVE_SETTINGS)
 
-    def test_example_settings_register_both_events(self):
+    def test_example_settings_register_both_events(self) -> None:
         self._assert_registers_both_events(EXAMPLE_SETTINGS)
 
-    def test_pre_tool_use_entries_target_bash(self):
+    def test_pre_tool_use_entries_target_bash(self) -> None:
         for path in (LIVE_SETTINGS, EXAMPLE_SETTINGS):
             with self.subTest(path=path.name):
                 settings = json.loads(path.read_text(encoding="utf-8"))

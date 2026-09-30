@@ -97,6 +97,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `sync.py`'s `sync_copies` take `check_only` as keyword-only, wrote the
   em/en dash regex in `check_ascii.py` as ASCII escapes, and marked every
   script with a shebang executable.
+- Fixed Ruff findings in `hooks/enforce_branch_name.py` (pathlib instead of
+  `os.path`) and `tests/test_enforce_branch_name.py` (return annotations,
+  executable bit, and a non-temp fixture path for the non-Bash-tool case).
+  Hook behavior and every test assertion are unchanged.
 - Reduced GitHub Actions storage by limiting npm caching to Linux validation,
   removing the redundant Scorecard SARIF artifact, and lowering repository
   artifact and log retention from 90 days to 30 days.
