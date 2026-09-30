@@ -10,13 +10,15 @@ echo          ghostclauf
 echo ========================================
 echo.
 
+if exist "%ProgramFiles%\nodejs\node.exe" set "PATH=%ProgramFiles%\nodejs;%PATH%"
+
 where node >nul 2>&1
 if errorlevel 1 goto :missing_setup
 
 where npm >nul 2>&1
 if errorlevel 1 goto :missing_setup
 
-node -e "process.exit(parseInt(process.versions.node, 10) >= 20 ? 0 : 1)" >nul 2>&1
+node -e "const [a, b] = process.versions.node.split('.').map(Number); process.exit(a > 22 || (a === 22 && b >= 22) ? 0 : 1)" >nul 2>&1
 if errorlevel 1 goto :old_node
 
 if not exist ".env" goto :missing_setup
@@ -121,7 +123,7 @@ pause
 exit /b 1
 
 :old_node
-echo Node.js 20 or newer is required. Upgrade Node.js from https://nodejs.org/ and run setup.bat again.
+echo Node.js 22.22 or newer is required. Run setup.bat to install it.
 echo.
 pause
 exit /b 1

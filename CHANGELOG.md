@@ -93,6 +93,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Raised the minimum supported Node.js from 20 to 22.22.0 (`engines` in
+  `package.json`, `AGENTS.md` and its synced copies, setup and run script
+  checks). This is a breaking change for Node 20 users, so the version moves
+  from 0.8.0 to 0.9.0. The Dockerfile, the Pages workflow and the CI lint
+  job now use Node 24, and the CI matrix tests 22 and 24.
+- `setup.sh` and `setup.bat` install Node.js when it is missing or older than
+  22.22. `setup.sh` fetches the latest Node 24 LTS into `~/.ghostclauf/node`
+  with a SHA-256 check (new `scripts/node-env.sh`), and `setup.bat` uses
+  `winget`. `run.sh` and `run.bat` pick up the installed copy.
+- Bumped `html-validate` 10.17.0 -> 11.16.0, which requires Node 22.22 or
+  newer.
 - Added the `Lint` workflow (`.github/workflows/lint.yml`), which runs Ruff
   0.15.8 on `scripts/`, `hooks/` and `tests/`, ShellCheck on the `.sh`
   scripts, actionlint 1.7.12 on the workflows, and hadolint 2.15.1 on the

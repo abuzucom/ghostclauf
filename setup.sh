@@ -10,20 +10,19 @@ echo "       ghostclauf one-click setup"
 echo "========================================"
 echo ""
 
-if ! command -v node >/dev/null 2>&1; then
-    echo "Node.js 20 or newer is required. Install it from https://nodejs.org/ and run ./setup.sh again."
+if [ ! -f "scripts/node-env.sh" ]; then
+    echo "This script must be run from the ghostclauf project folder."
     exit 1
 fi
 
-if ! command -v npm >/dev/null 2>&1; then
-    echo "npm was not found. Reinstall Node.js from https://nodejs.org/ and run ./setup.sh again."
-    exit 1
-fi
+# shellcheck source=scripts/node-env.sh
+. ./scripts/node-env.sh
 
-if ! node -e "process.exit(parseInt(process.versions.node, 10) >= 20 ? 0 : 1)" >/dev/null 2>&1; then
-    echo "Node.js 20 or newer is required. Upgrade Node.js from https://nodejs.org/ and run ./setup.sh again."
+if ! ensure_node; then
+    echo "Could not install Node.js automatically. Install Node.js 22.22 or newer from https://nodejs.org/ and run ./setup.sh again."
     exit 1
 fi
+echo "Using Node.js $(node --version)."
 
 if [ ! -f "package.json" ] || [ ! -f "package-lock.json" ] || [ ! -f ".env.example" ] || [ ! -f "config.example.yaml" ]; then
     echo "This script must be run from the ghostclauf project folder."

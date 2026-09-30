@@ -9,13 +9,11 @@ echo "         ghostclauf"
 echo "========================================"
 echo ""
 
-if ! command -v node >/dev/null 2>&1 || ! command -v npm >/dev/null 2>&1; then
-    echo "Setup is incomplete. Run ./setup.sh first."
-    exit 1
-fi
+# shellcheck source=scripts/node-env.sh
+. ./scripts/node-env.sh
 
-if ! node -e "process.exit(parseInt(process.versions.node, 10) >= 20 ? 0 : 1)" >/dev/null 2>&1; then
-    echo "Node.js 20 or newer is required. Upgrade Node.js from https://nodejs.org/ and run ./setup.sh again."
+if ! node_is_supported; then
+    echo "Node.js 22.22 or newer is required. Run ./setup.sh to install it."
     exit 1
 fi
 
