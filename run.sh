@@ -56,7 +56,7 @@ if ! node dist/tools/checkTokens.js >"$TOKEN_CHECK_FILE" 2>&1; then
     exit 1
 fi
 
-if grep -q "^PLACEHOLDER LOGIN" "$TOKEN_CHECK_FILE" 2>/dev/null; then
+if grep -q "^PLACEHOLDER LOGIN" "$TOKEN_CHECK_FILE"; then
     echo ""
     echo "config.yaml still has placeholder Twitch logins from config.example.yaml."
     echo "Enter the real ones now - this is saved to config.yaml so you won't be asked again."

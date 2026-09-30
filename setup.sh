@@ -29,6 +29,11 @@ if [ ! -f ".env" ]; then
     cp .env.example .env
 fi
 
+if [ ! -r ".env" ]; then
+    echo ".env is not readable. Fix its permissions and run ./setup.sh again."
+    exit 1
+fi
+
 if [ ! -f "config.yaml" ]; then
     echo "Creating config.yaml from config.example.yaml..."
     cp config.example.yaml config.yaml
@@ -36,7 +41,9 @@ fi
 
 # Ensure data directory exists with restricted permissions (0700)
 mkdir -p data
-chmod 700 data 2>/dev/null || true
+if ! chmod 700 data; then
+    echo "Warning: could not restrict data/ to mode 700. It holds OAuth tokens, so run 'chmod 700 data' yourself."
+fi
 
 echo "Installing Node.js dependencies..."
 npm install
@@ -45,7 +52,7 @@ echo "Building ghostclauf..."
 npm run build
 
 NEEDS_CONFIG=0
-if grep -q "your-app-client-id" .env 2>/dev/null || grep -q "your-app-client-secret" .env 2>/dev/null; then
+if grep -q "your-app-client-id" .env || grep -q "your-app-client-secret" .env; then
     NEEDS_CONFIG=1
 fi
 
