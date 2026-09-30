@@ -28,12 +28,13 @@ rem Upgrade an existing (outdated) Node.js; install only when none is present.
 where node >nul 2>&1
 if errorlevel 1 goto :winget_install
 winget upgrade --id OpenJS.NodeJS.LTS --exact --silent --accept-package-agreements --accept-source-agreements
+if not errorlevel 1 goto :winget_done
 rem winget cannot upgrade a Node.js it did not install; install the LTS alongside it.
-if errorlevel 1 goto :winget_install
-goto :winget_done
+echo winget could not upgrade the existing Node.js. Installing the latest Node.js LTS instead...
 
 :winget_install
 winget install --id OpenJS.NodeJS.LTS --exact --silent --accept-package-agreements --accept-source-agreements
+if errorlevel 1 echo winget could not install Node.js ^(exit code %errorlevel%^).
 
 :winget_done
 if exist "%ProgramFiles%\nodejs\node.exe" set "PATH=%ProgramFiles%\nodejs;%PATH%"
