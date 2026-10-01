@@ -10,8 +10,10 @@ import { z } from 'zod';
 import { AtomicJsonFile } from '../../core/atomicFile.js';
 import type { Logger } from '../../core/types.js';
 import { applyAward } from './loyalty.js';
+import type { HideResult, ShowResult } from './loyalty.js';
 import type {
     BalanceDecision,
+    HiddenBy,
     LoyaltyData,
     LoyaltyScope,
     RedemptionRecord,
@@ -132,9 +134,19 @@ const RedemptionRecordSchema: z.ZodType<RedemptionRecord> = z.object({
     createdInBroadcasterId: z.string(),
 });
 
+/** Bounded like a scope's viewer map, and for the same reason. */
+const HiddenViewersSchema = z
+    .record(z.string(), z.unknown())
+    .refine((hidden) => Object.keys(hidden).length <= MAX_VIEWERS_PER_SCOPE, {
+        message: `cannot hide more than ${MAX_VIEWERS_PER_SCOPE} viewers`,
+    })
+    .pipe(z.record(z.string().min(1).max(MAX_CHATTER_ID_LENGTH), z.enum(['self', 'broadcaster'])));
+
 const DataSchemaV2 = z.object({
     version: z.literal(2),
     scopes: ScopeMapSchema,
+    // Defaulted so a v2 file written before !hidestats existed still loads.
+    hiddenViewers: HiddenViewersSchema.default({}),
     // Parse rows independently below so one malformed audit row cannot
     // quarantine otherwise valid balances.
     decisions: z.array(z.unknown()).default([]),
@@ -174,8 +186,18 @@ function emptyViewers(): Record<string, ViewerRecord> {
     return Object.create(null) as Record<string, ViewerRecord>;
 }
 
+function emptyHiddenViewers(): Record<string, HiddenBy> {
+    return Object.create(null) as Record<string, HiddenBy>;
+}
+
 function emptyData(): LoyaltyData {
-    return { version: 2, scopes: emptyScopes(), decisions: [], redemptions: [] };
+    return {
+        version: 2,
+        scopes: emptyScopes(),
+        decisions: [],
+        redemptions: [],
+        hiddenViewers: emptyHiddenViewers(),
+    };
 }
 
 function emptyScope(): LoyaltyScope {
@@ -197,7 +219,16 @@ function parseData(raw: string): { data: LoyaltyData; wasV1: boolean } {
         };
     }
     if (parsed.version === 1) {
-        return { data: { version: 2, scopes, decisions: [], redemptions: [] }, wasV1: true };
+        return {
+            data: {
+                version: 2,
+                scopes,
+                decisions: [],
+                redemptions: [],
+                hiddenViewers: emptyHiddenViewers(),
+            },
+            wasV1: true,
+        };
     }
     const decisions = parsed.decisions.flatMap((decision) => {
         const result = BalanceDecisionSchema.safeParse(decision);
@@ -213,6 +244,7 @@ function parseData(raw: string): { data: LoyaltyData; wasV1: boolean } {
             scopes,
             decisions,
             redemptions,
+            hiddenViewers: Object.assign(emptyHiddenViewers(), parsed.hiddenViewers),
         },
         wasV1: false,
     };
@@ -575,6 +607,43 @@ export class LoyaltyStore {
         target.undoneByChatterId = undoneBy.chatterId;
         await this.persist();
         return { ok: true, decision: target, balance: restored };
+    }
+
+    /** Who hid this viewer's name, or undefined when it is shown. */
+    hiddenBy(chatterId: string): HiddenBy | undefined {
+        return this.data.hiddenViewers[chatterId];
+    }
+
+    /** Chatter ids whose names leaderboards must replace with a placeholder. */
+    hiddenViewerIds(): ReadonlySet<string> {
+        return new Set(Object.keys(this.data.hiddenViewers));
+    }
+
+    /**
+     * Hide a viewer's name. A broadcaster hide locks it, and also upgrades an
+     * existing self hide to a lock; a self hide never weakens a lock.
+     */
+    async hide(chatterId: string, by: HiddenBy): Promise<HideResult> {
+        const hidden = this.data.hiddenViewers;
+        const current = hidden[chatterId];
+        if (current === 'broadcaster' || current === by) return 'already-hidden';
+        if (current === undefined) {
+            if (!isStorableKey(chatterId)) return 'full';
+            if (Object.keys(hidden).length >= MAX_VIEWERS_PER_SCOPE) return 'full';
+        }
+        hidden[chatterId] = by;
+        await this.persist();
+        return 'hidden';
+    }
+
+    /** Show a viewer's name again. Only a broadcaster can lift a broadcaster hide. */
+    async show(chatterId: string, by: HiddenBy): Promise<ShowResult> {
+        const current = this.data.hiddenViewers[chatterId];
+        if (current === undefined) return 'not-hidden';
+        if (current === 'broadcaster' && by === 'self') return 'locked';
+        delete this.data.hiddenViewers[chatterId];
+        await this.persist();
+        return 'shown';
     }
 
     private persist(): Promise<void> {

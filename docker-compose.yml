@@ -8,12 +8,17 @@ services:
         environment:
             # Token store lives on the named volume so it survives restarts.
             TOKEN_STORE_PATH: /data/tokens.json
+            # Docker forwards the published port to the container's network
+            # interface, so the one-time OAuth callback must listen on all
+            # container interfaces. The port mapping below keeps it host-local.
+            AUTH_LISTEN_HOST: 0.0.0.0
         ports:
-            # Used by the one-time auth flow. The bot's /healthz and /readyz
-            # endpoints reuse this port but bind loopback-only by default, so
-            # they are reachable via `docker exec` or a same-host healthcheck,
-            # not through this published mapping (see README).
-            - '3000:3000'
+            # Used by the one-time auth flow. Published on the host's loopback
+            # only, so the OAuth callback is never reachable from the network.
+            # The bot's /healthz and /readyz endpoints reuse this port but bind
+            # the container's loopback, so they are reachable via `docker exec`
+            # or an in-container healthcheck, not through this mapping.
+            - '127.0.0.1:3000:3000'
         volumes:
             - ./config.yaml:/app/config.yaml:ro
             - ghostclauf-data:/data

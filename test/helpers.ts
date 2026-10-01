@@ -61,7 +61,8 @@ export function makeHarness(
     ctx: BotContext;
     helix: HelixClient;
 } {
-    const registry = new CommandRegistry('!', testLogger);
+    const commandPrefix = '!';
+    const registry = new CommandRegistry(commandPrefix, testLogger);
     const bus = new EventBus(testLogger);
     const say = spySender();
     const helix = stubHelix(helixOverride);
@@ -74,6 +75,7 @@ export function makeHarness(
         sender: say,
         helix,
         broadcasters,
+        commandPrefix,
     });
     return { registry, bus, say, ctx, helix };
 }

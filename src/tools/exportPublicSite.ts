@@ -1,7 +1,8 @@
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
+import { z } from 'zod';
 import { loadFileConfig } from '../core/config.js';
-import { createPublicSnapshot } from '../publicSite/export.js';
+import { createPublicSnapshot, MAX_PUBLIC_LEADERBOARD_SIZE } from '../publicSite/export.js';
 
 const DEFAULT_FACTS_PATH = './data/funfacts.json';
 const DEFAULT_QUOTES_PATH = './data/quotes.json';
@@ -26,6 +27,24 @@ async function readOptionalJson(path: string): Promise<unknown> {
     }
 }
 
+const LeaderboardSizeSchema = z.number().int().min(1).max(MAX_PUBLIC_LEADERBOARD_SIZE).optional();
+
+/**
+ * The public leaderboard follows loyalty's !economy size. An invalid value
+ * stops the export rather than falling back, so a typo can never publish a
+ * different number of names than the operator reviewed.
+ */
+function resolveLeaderboardSize(configured: unknown): number | undefined {
+    const parsed = LeaderboardSizeSchema.safeParse(configured);
+    if (!parsed.success) {
+        throw new Error(
+            `loyalty.leaderboardSize must be an integer from 1 to ${MAX_PUBLIC_LEADERBOARD_SIZE}. ` +
+                'Fix config.yaml and run the export again.',
+        );
+    }
+    return parsed.data;
+}
+
 function resolveDataPath(config: Record<string, unknown>, fallback: string): string {
     return typeof config.dataPath === 'string' && config.dataPath.trim()
         ? config.dataPath
@@ -39,6 +58,7 @@ async function main(): Promise<void> {
     const quotesPath = resolveDataPath(pluginConfig.quotes ?? {}, DEFAULT_QUOTES_PATH);
     const loyaltyConfig = pluginConfig.loyalty ?? {};
     const loyaltyPath = resolveDataPath(loyaltyConfig, DEFAULT_LOYALTY_PATH);
+    const leaderboardSize = resolveLeaderboardSize(loyaltyConfig.leaderboardSize);
     const currencyName =
         typeof loyaltyConfig.currencyName === 'string'
             ? loyaltyConfig.currencyName
@@ -54,6 +74,7 @@ async function main(): Promise<void> {
         funFacts,
         quotes,
         loyalty,
+        leaderboardSize,
     });
     await mkdir(dirname(PUBLIC_SITE_DATA_PATH), { recursive: true });
     await writeFile(PUBLIC_SITE_DATA_PATH, `${JSON.stringify(snapshot, null, 2)}\n`, 'utf8');

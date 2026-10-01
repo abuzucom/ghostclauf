@@ -312,4 +312,94 @@ describe('loyalty admin commands', () => {
             );
         });
     });
+
+    describe('!hidestats / !showstats', () => {
+        async function hiddenBy(chatterId: string) {
+            const store = new LoyaltyStore(dataPath, testLogger);
+            await store.load();
+            return store.hiddenBy(chatterId);
+        }
+
+        it('lets a viewer hide and show their own name', async () => {
+            const { plugin, ctx, registry, say } = await setup();
+            await registry.handle(commandFrom('!hidestats', ['everyone'], '42'));
+            await plugin.dispose!(ctx);
+            expect(say).toHaveBeenCalledWith(
+                'Chatter, your name is now hidden on the leaderboards.',
+                'msg-1',
+                '1',
+            );
+            expect(await hiddenBy('42')).toBe('self');
+
+            const again = await setup();
+            await again.registry.handle(commandFrom('!showstats', ['everyone'], '42'));
+            await again.plugin.dispose!(again.ctx);
+            expect(await hiddenBy('42')).toBeUndefined();
+        });
+
+        it('lets the broadcaster hide another user by @login, locking it', async () => {
+            const { plugin, ctx, registry, say } = await setup();
+            await registry.handle(commandFrom('!hidestats @target', ['everyone', 'broadcaster']));
+            await registry.handle(commandFrom('!showstats', ['everyone'], TARGET_USER.id));
+            await plugin.dispose!(ctx);
+
+            expect(say).toHaveBeenCalledWith(
+                "Target's name is now hidden on the leaderboards.",
+                'msg-1',
+                '1',
+            );
+            expect(say).toHaveBeenCalledWith(
+                'Chatter, the broadcaster hid your name. Only the broadcaster can show it again.',
+                'msg-1',
+                '1',
+            );
+            expect(await hiddenBy(TARGET_USER.id)).toBe('broadcaster');
+        });
+
+        it('lets the broadcaster show a user again', async () => {
+            const { plugin, ctx, registry } = await setup();
+            await registry.handle(commandFrom('!hidestats @target', ['everyone', 'broadcaster']));
+            await registry.handle(commandFrom('!showstats @target', ['everyone', 'broadcaster']));
+            await plugin.dispose!(ctx);
+            expect(await hiddenBy(TARGET_USER.id)).toBeUndefined();
+        });
+
+        it.each(NON_BROADCASTER_ROLE_SETS)(
+            'ignores the @user argument from a %s and acts on themselves',
+            async (_label, roles) => {
+                const { plugin, ctx, registry } = await setup();
+                await registry.handle(commandFrom('!hidestats @target', roles, '42'));
+                await plugin.dispose!(ctx);
+                expect(await hiddenBy(TARGET_USER.id)).toBeUndefined();
+                expect(await hiddenBy('42')).toBe('self');
+            },
+        );
+
+        it('shows a hidden name as the placeholder in !economy', async () => {
+            await writeFile(
+                dataPath,
+                JSON.stringify({
+                    version: 2,
+                    scopes: {
+                        [SHARED_SCOPE_KEY]: {
+                            viewers: {
+                                '42': { displayName: 'Secret', balance: 30 },
+                                '43': { displayName: 'Open', balance: 20 },
+                            },
+                        },
+                    },
+                    decisions: [],
+                    redemptions: [],
+                    hiddenViewers: { '42': 'self' },
+                }),
+                'utf8',
+            );
+            const { registry, say } = await setup();
+            await registry.handle(commandFrom('!economy', ['everyone', 'broadcaster']));
+            const [sent] = say.mock.calls[0]!;
+            expect(sent as string).toContain('1. Hidden viewer (30)');
+            expect(sent as string).toContain('2. Open (20)');
+            expect(sent as string).not.toContain('Secret');
+        });
+    });
 });

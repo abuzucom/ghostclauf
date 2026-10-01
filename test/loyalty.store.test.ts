@@ -748,3 +748,116 @@ describe('LoyaltyStore', () => {
         }
     });
 });
+
+describe('LoyaltyStore hidden viewers', () => {
+    let dir: string;
+    let dataPath: string;
+
+    beforeEach(async () => {
+        dir = await mkdtemp(join(tmpdir(), 'ghostclauf-loyalty-hidden-'));
+        dataPath = join(dir, 'loyalty.json');
+    });
+
+    afterEach(async () => {
+        await rm(dir, { recursive: true, force: true });
+    });
+
+    async function makeStore(): Promise<LoyaltyStore> {
+        const store = new LoyaltyStore(dataPath, testLogger);
+        await store.load();
+        return store;
+    }
+
+    it('hides and shows a viewer who opted out themselves', async () => {
+        const store = await makeStore();
+        expect(await store.hide('10', 'self')).toBe('hidden');
+        expect(store.hiddenBy('10')).toBe('self');
+        expect(store.hiddenViewerIds().has('10')).toBe(true);
+
+        expect(await store.show('10', 'self')).toBe('shown');
+        expect(store.hiddenBy('10')).toBeUndefined();
+    });
+
+    it('reports a repeat hide as already hidden', async () => {
+        const store = await makeStore();
+        await store.hide('10', 'self');
+        expect(await store.hide('10', 'self')).toBe('already-hidden');
+    });
+
+    it('reports showing a visible viewer as not hidden', async () => {
+        const store = await makeStore();
+        expect(await store.show('10', 'self')).toBe('not-hidden');
+        expect(await store.show('10', 'broadcaster')).toBe('not-hidden');
+    });
+
+    it('locks a broadcaster hide against the viewer showing themselves', async () => {
+        const store = await makeStore();
+        await store.hide('10', 'broadcaster');
+
+        expect(await store.show('10', 'self')).toBe('locked');
+        expect(store.hiddenBy('10')).toBe('broadcaster');
+        expect(await store.hide('10', 'self')).toBe('already-hidden');
+        expect(store.hiddenBy('10')).toBe('broadcaster');
+
+        expect(await store.show('10', 'broadcaster')).toBe('shown');
+        expect(store.hiddenBy('10')).toBeUndefined();
+    });
+
+    it('upgrades a self hide to a broadcaster lock', async () => {
+        const store = await makeStore();
+        await store.hide('10', 'self');
+        expect(await store.hide('10', 'broadcaster')).toBe('hidden');
+        expect(await store.show('10', 'self')).toBe('locked');
+    });
+
+    it('persists hidden viewers across a reload', async () => {
+        const store = await makeStore();
+        await store.hide('10', 'broadcaster');
+        await store.hide('20', 'self');
+        await store.flush();
+
+        const reloaded = await makeStore();
+        expect(reloaded.hiddenBy('10')).toBe('broadcaster');
+        expect(reloaded.hiddenBy('20')).toBe('self');
+    });
+
+    it('loads a version 2 file written before hidden viewers existed', async () => {
+        await writeFile(
+            dataPath,
+            JSON.stringify({
+                version: 2,
+                scopes: { shared: { viewers: { '10': { displayName: 'Tank', balance: 5 } } } },
+                decisions: [],
+                redemptions: [],
+            }),
+            'utf8',
+        );
+        const store = await makeStore();
+        expect(store.getBalance(SHARED_SCOPE_KEY, '10')).toBe(5);
+        expect(store.hiddenViewerIds().size).toBe(0);
+    });
+
+    it('treats a file with a malformed hidden-viewer entry as corrupt', async () => {
+        await writeFile(
+            dataPath,
+            JSON.stringify({
+                version: 2,
+                scopes: {},
+                decisions: [],
+                redemptions: [],
+                hiddenViewers: { '10': 'everyone' },
+            }),
+            'utf8',
+        );
+        const store = await makeStore();
+        expect(store.hiddenBy('10')).toBeUndefined();
+        const files = await readdir(dir);
+        expect(files.some((name) => name.includes('.corrupt-'))).toBe(true);
+    });
+
+    it('never resolves a hidden-viewer key to an inherited object member', async () => {
+        const store = await makeStore();
+        expect(store.hiddenBy('constructor')).toBeUndefined();
+        expect(store.hiddenBy('__proto__')).toBeUndefined();
+    });
+});

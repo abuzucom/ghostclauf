@@ -162,15 +162,25 @@ export const ZERO_WIDTH_SPACE = '\u200B';
  * sent: chat strips leading whitespace, so " /ban" would otherwise slip past
  * a check on the raw first character and still reach chat as a command.
  *
+ * `commandPrefix` is the bot's own command prefix. The bot is a moderator, so
+ * an announcement starting with it would run a moderator command through the
+ * bot's echo of its own message.
+ *
  * Neutralizing runs before truncation so the added prefix cannot push the
  * result past the 500 code-point limit that `ctx.say` enforces.
  */
-export function formatForChat(text: string): string {
+export function formatForChat(text: string, commandPrefix?: string): string {
     const trimmed = text.trim();
-    const defused = COMMAND_SIGILS.includes(trimmed[0] ?? '')
+    const defused = startsWithCommand(trimmed, commandPrefix)
         ? `${ZERO_WIDTH_SPACE}${trimmed}`
         : trimmed;
     return truncateForChat(defused);
+}
+
+/** True when chat or the bot's own command registry would read `text` as a command. */
+function startsWithCommand(text: string, commandPrefix: string | undefined): boolean {
+    if (COMMAND_SIGILS.includes(text[0] ?? '')) return true;
+    return commandPrefix ? text.startsWith(commandPrefix) : false;
 }
 
 /** Build the announce plugin. No cooldown/state: each event fires once, driven by EventSub. */
@@ -200,7 +210,7 @@ export function createAnnouncePlugin(): Plugin {
             if (raid.enabled) {
                 ctx.on('raid', async (event) => {
                     await ctx.say(
-                        formatForChat(renderRaid(raid.template, event)),
+                        formatForChat(renderRaid(raid.template, event), ctx.commandPrefix),
                         undefined,
                         event.broadcasterId,
                     );
@@ -209,7 +219,10 @@ export function createAnnouncePlugin(): Plugin {
             if (subscribe.enabled) {
                 ctx.on('subscribe', async (event) => {
                     await ctx.say(
-                        formatForChat(renderSubscribe(subscribe.template, event)),
+                        formatForChat(
+                            renderSubscribe(subscribe.template, event),
+                            ctx.commandPrefix,
+                        ),
                         undefined,
                         event.broadcasterId,
                     );
@@ -219,7 +232,7 @@ export function createAnnouncePlugin(): Plugin {
                 ctx.on('cheer', async (event) => {
                     if (event.bits < minBits) return;
                     await ctx.say(
-                        formatForChat(renderCheer(cheer.template, event)),
+                        formatForChat(renderCheer(cheer.template, event), ctx.commandPrefix),
                         undefined,
                         event.broadcasterId,
                     );

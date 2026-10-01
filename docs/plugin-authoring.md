@@ -37,6 +37,13 @@ Command triggers do not include the configured prefix. Define `allow` precisely.
 Use `everyone` only when every chatter may run the command. A command handler
 receives parsed `args`, an `argString`, resolved roles, and the current channel.
 
+The bot account is a moderator, and the core drops the bot's own chat
+messages before they reach the command registry. When a reply echoes untrusted
+text, such as a cheer message, do not let it start with the command prefix:
+defuse a leading `ctx.commandPrefix`, `/`, or `.` the way `formatForChat` in
+`src/plugins/announce` does. `ctx.commandPrefix` is optional, so handle it
+being absent.
+
 Subscribe through `ctx.on` for normalized events such as `streamOnline`,
 `streamOffline`, `raid`, `subscribe`, and `cheer`. Treat `streamOffline` with
 `verified: false` as uncertain. Do not discard user state or apply penalties.

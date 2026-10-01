@@ -208,7 +208,7 @@ plugins:
             # replies; repeats inside the window are silently ignored.
             # Broadcasters and moderators are exempt. Set 0 to disable.
             cooldownSeconds: 10
-            # Rows shown by !economy.
+            # Rows shown by !economy and published on the public site (1-25).
             leaderboardSize: 5
             # Broadcaster-only balance overrides: !setESD @user <amount> sets a
             # balance exactly; !giveESD/!takeESD adjust it by amount. Each has a

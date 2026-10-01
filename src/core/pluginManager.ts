@@ -155,6 +155,7 @@ export class PluginManager {
             sender,
             helix,
             broadcasters,
+            commandPrefix: file.chat.commandPrefix,
         });
 
         try {

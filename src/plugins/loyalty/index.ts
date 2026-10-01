@@ -21,7 +21,9 @@ import {
     renderAdminUsage,
     renderAdminViewerCap,
     renderBalance,
+    renderHideResult,
     renderLeaderboard,
+    renderShowResult,
     renderUndoDone,
     renderUndoNone,
 } from './loyalty.js';
@@ -103,7 +105,11 @@ function registerLeaderboardCommand(ctx: BotContext, runtime: LoyaltyRuntime): v
             if (isThrottled(runtime, event)) return;
             const scopeKey = scopeKeyFor(runtime, event.broadcasterId);
             const viewers = runtime.store.leaderboardViewers(scopeKey);
-            const entries = buildLeaderboard(viewers, runtime.leaderboardSize);
+            const entries = buildLeaderboard(
+                viewers,
+                runtime.leaderboardSize,
+                runtime.store.hiddenViewerIds(),
+            );
             await reply(ctx, event, renderLeaderboard(runtime.currencyName, entries));
         },
     });
@@ -258,6 +264,58 @@ function registerUndoCommand(
 }
 
 /**
+ * Resolve whose name !hidestats/!showstats acts on. Only the broadcaster may
+ * name another user; anyone else's @user argument is ignored so the command
+ * always acts on the chatter themselves.
+ */
+async function resolveStatsTarget(
+    event: ChatCommandEvent,
+    ctx: BotContext,
+    usage: string,
+): Promise<{ id: string; displayName: string; forOther: boolean } | null> {
+    if (!event.roles.has('broadcaster') || event.args.length === 0) {
+        return { id: event.chatterId, displayName: event.chatterDisplayName, forOther: false };
+    }
+    const target = await resolveEsdTarget(event, ctx, usage);
+    return target ? { ...target, forOther: target.id !== event.chatterId } : null;
+}
+
+/**
+ * Register !hidestats and !showstats. A hidden name is replaced by a
+ * placeholder on the !economy leaderboard and the public site; rank and
+ * balance stay visible. A hide set by the broadcaster is locked, so only
+ * the broadcaster can show that name again.
+ */
+function registerStatsVisibilityCommands(ctx: BotContext, runtime: LoyaltyRuntime): void {
+    ctx.command({
+        trigger: 'hidestats',
+        allow: ['everyone'],
+        description: 'Hide your name on the leaderboards (broadcaster: !hidestats @user).',
+        handler: async (event, ctx) => {
+            if (isThrottled(runtime, event)) return;
+            const target = await resolveStatsTarget(event, ctx, '!hidestats @user');
+            if (!target) return;
+            const by = event.roles.has('broadcaster') ? 'broadcaster' : 'self';
+            const result = await runtime.store.hide(target.id, by);
+            await reply(ctx, event, renderHideResult(target.displayName, result, target.forOther));
+        },
+    });
+    ctx.command({
+        trigger: 'showstats',
+        allow: ['everyone'],
+        description: 'Show your name on the leaderboards again (broadcaster: !showstats @user).',
+        handler: async (event, ctx) => {
+            if (isThrottled(runtime, event)) return;
+            const target = await resolveStatsTarget(event, ctx, '!showstats @user');
+            if (!target) return;
+            const by = event.roles.has('broadcaster') ? 'broadcaster' : 'self';
+            const result = await runtime.store.show(target.id, by);
+            await reply(ctx, event, renderShowResult(target.displayName, result, target.forOther));
+        },
+    });
+}
+
+/**
  * Award one interval to chatters who were active while their channel was live.
  * Clear each channel's snapshot before scheduling its write. A later message is
  * therefore credited by the next interval instead of being awarded twice.
@@ -371,6 +429,7 @@ export function createLoyaltyPlugin(now: () => DateTime = () => DateTime.utc()):
 
             registerBalanceCommand(ctx, runtime);
             registerLeaderboardCommand(ctx, runtime);
+            registerStatsVisibilityCommands(ctx, runtime);
 
             // Broadcaster-only overrides are safe only when every configured
             // broadcaster belongs to the same trusted operator. A shared pool

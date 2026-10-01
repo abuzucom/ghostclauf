@@ -128,14 +128,59 @@ export function renderUndoNone(kind: EsdDecisionKind, displayName: string): stri
     return truncateForChat(`Nothing to undo: no applied !${kind}ESD found for ${displayName}.`);
 }
 
-/** Sort viewer records into a leaderboard, highest balance first, ties broken by name. */
+/** Shown in place of a name hidden with !hidestats, in chat and on the public site. */
+export const HIDDEN_NAME_PLACEHOLDER = 'Hidden viewer';
+
+/**
+ * Sort viewer records into a leaderboard, highest balance first, ties broken
+ * by the name shown. Names of `hiddenIds` are replaced before sorting, so the
+ * tie-break cannot reveal where a hidden name falls alphabetically.
+ */
 export function buildLeaderboard(
     viewers: Record<string, ViewerRecord>,
     limit: number,
+    hiddenIds: ReadonlySet<string> = new Set(),
 ): LeaderboardEntry[] {
-    return Object.values(viewers)
-        .filter((viewer) => viewer.balance > 0)
+    return Object.entries(viewers)
+        .filter(([, viewer]) => viewer.balance > 0)
+        .map(([chatterId, { displayName, balance }]) => ({
+            displayName: hiddenIds.has(chatterId) ? HIDDEN_NAME_PLACEHOLDER : displayName,
+            balance,
+        }))
         .sort((a, b) => b.balance - a.balance || a.displayName.localeCompare(b.displayName))
-        .slice(0, limit)
-        .map(({ displayName, balance }) => ({ displayName, balance }));
+        .slice(0, limit);
+}
+
+export type HideResult = 'hidden' | 'already-hidden' | 'full';
+export type ShowResult = 'shown' | 'locked' | 'not-hidden';
+
+/**
+ * Render a !hidestats reply. `forOther` is true when the broadcaster acted on
+ * someone else, so the reply names them in the third person.
+ */
+export function renderHideResult(
+    displayName: string,
+    result: HideResult,
+    forOther: boolean,
+): string {
+    if (result === 'full') return 'The hidden-name list is full. Ask an operator to prune it.';
+    const already = result === 'already-hidden' ? 'already ' : 'now ';
+    const subject = forOther ? `${displayName}'s name is` : `${displayName}, your name is`;
+    return truncateForChat(`${subject} ${already}hidden on the leaderboards.`);
+}
+
+/** Render a !showstats reply; a locked hide is explained to the viewer. */
+export function renderShowResult(
+    displayName: string,
+    result: ShowResult,
+    forOther: boolean,
+): string {
+    if (result === 'locked') {
+        return truncateForChat(
+            `${displayName}, the broadcaster hid your name. Only the broadcaster can show it again.`,
+        );
+    }
+    const subject = forOther ? `${displayName}'s name is` : `${displayName}, your name is`;
+    const state = result === 'shown' ? 'shown on the leaderboards again' : 'not hidden';
+    return truncateForChat(`${subject} ${state}.`);
 }
