@@ -64,7 +64,7 @@ if not exist "config.yaml" (
 )
 
 echo Installing Node.js dependencies...
-call npm install
+call npm ci
 if errorlevel 1 goto :failed
 
 echo Building ghostclauf...
