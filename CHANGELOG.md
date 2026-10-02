@@ -65,6 +65,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Resolved OpenSSF Scorecard supply chain and permissions findings: pinned
+  the `node:24-alpine` Docker base image to its multi-architecture digest in
+  both build and runtime stages, replaced unpinned `pip install` in the
+  `lint` workflow with `astral-sh/ruff-action` pinned by commit SHA, switched
+  `setup.sh` and `setup.bat` to `npm ci` to enforce lockfile integrity, and
+  scoped `security-events: write` permissions strictly to the scanner jobs
+  in `osv-scanner.yml`.
+
 - The Docker OAuth flow (`docker compose run --service-ports ... authFlow.js`)
   now receives the redirect. The callback listened on the container's loopback,
   which Docker's published port does not reach. Compose now publishes the port
