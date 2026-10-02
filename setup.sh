@@ -46,7 +46,7 @@ if ! chmod 700 data; then
 fi
 
 echo "Installing Node.js dependencies..."
-npm install
+npm ci
 
 echo "Building ghostclauf..."
 npm run build
