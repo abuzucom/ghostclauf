@@ -41,7 +41,7 @@
     "devDependencies": {
         "@eslint/js": "10.0.1",
         "@types/luxon": "3.7.3",
-        "@types/node": "26.2.0",
+        "@types/node": "26.6.3",
         "eslint": "10.11.0",
         "eslint-config-prettier": "10.1.8",
         "html-validate": "11.16.0",
