@@ -20,9 +20,17 @@ const DEFAULT_MAX_TOTAL_TIME = '60';
 
 function parseMaxTotalTime() {
     const explicit = process.argv.find((arg) => arg.startsWith('--max-total-time='));
-    if (explicit) return explicit.slice('--max-total-time='.length);
+    if (explicit) {
+        const value = explicit.slice('--max-total-time='.length);
+        if (/^\d+$/.test(value)) return value;
+        throw new Error(`--max-total-time requires a positive integer, got "${value}"`);
+    }
     const index = process.argv.indexOf('--max-total-time');
-    if (index !== -1 && process.argv[index + 1]) return process.argv[index + 1];
+    if (index !== -1 && process.argv[index + 1]) {
+        const value = process.argv[index + 1];
+        if (/^\d+$/.test(value)) return value;
+        throw new Error(`--max-total-time requires a positive integer, got "${value}"`);
+    }
     return DEFAULT_MAX_TOTAL_TIME;
 }
 
@@ -53,6 +61,8 @@ for (const target of targets) {
         { stdio: 'inherit', shell: false },
     );
     if (result.status !== 0 && result.status !== null) {
+        failures += 1;
+    } else if (result.signal || result.error) {
         failures += 1;
     }
 }
