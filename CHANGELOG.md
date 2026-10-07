@@ -9,6 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Added LLM pull request checkers from `abuzucom/euler` (code quality,
+  `QUALITY.md`) and `abuzucom/foucault` (security, `AUDIT.md` v3.3.14). Both
+  run after the AGENTS.md compliance workflow completes, post a fenced report
+  comment, and publish `quality-review` / `security-review` check runs that
+  fail on BLOCK or NEEDS-HUMAN verdicts. Both reviewers pin their upstream
+  revisions by full commit SHA, run default-branch code under `workflow_run`,
+  never execute pull request content, and skip fork pull requests without
+  secrets. Each review maps the `OLLAMA_API_KEY` repository secret to the
+  provider adapter.
 - Added `!hidestats` and `!showstats` to the `loyalty` plugin. A chatter hides
   or shows their own name on the leaderboards; the broadcaster hides or shows
   anyone with `@user`, and a name the broadcaster hides is locked so only the
