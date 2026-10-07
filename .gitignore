@@ -14,6 +14,9 @@ data/
 !site/data/
 !site/data/public.json
 
+# Fuzzer corpus is generated locally and cached in CI, not committed.
+corpus/
+
 # Editor / OS
 .DS_Store
 .vscode/

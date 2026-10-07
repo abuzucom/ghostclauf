@@ -1,0 +1,72 @@
+name: Fuzz
+
+on:
+    pull_request:
+        branches:
+            - main
+    push:
+        branches:
+            - main
+    schedule:
+        - cron: '0 4 * * 0'
+
+concurrency:
+    group: fuzz-${{ github.workflow }}-${{ github.ref }}
+    cancel-in-progress: true
+
+permissions:
+    contents: read
+    actions: write
+
+jobs:
+    fuzz:
+        name: Fuzz ${{ matrix.target }}
+        runs-on: ubuntu-latest
+        strategy:
+            fail-fast: false
+            matrix:
+                target:
+                    - config
+                    - commands
+                    - funfact
+                    - quotes
+                    - loyalty
+                    - streak
+                    - announce
+        steps:
+            - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+              with:
+                  persist-credentials: false
+
+            - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+              with:
+                  node-version: 24
+                  cache: npm
+                  cache-dependency-path: package-lock.json
+
+            - run: npm ci
+            - run: npm run build
+
+            - name: Ensure corpus directories exist
+              run: mkdir -p corpus/{config,commands,funfact,quotes,loyalty,streak,announce}
+
+            - name: Restore fuzz corpus
+              uses: actions/cache@13aacd865c20de90d75de3b17ebe84f7a17d57d2 # v4.0.0
+              with:
+                  path: corpus/${{ matrix.target }}
+                  key: fuzz-corpus-${{ matrix.target }}-${{ github.run_id }}
+                  restore-keys: |
+                      fuzz-corpus-${{ matrix.target }}-
+
+            - name: Run fuzz target
+              run: >
+                  node node_modules/@jazzer.js/core/dist/cli.js
+                  fuzz/${{ matrix.target }}.fuzz.js -i dist/
+                  corpus/${{ matrix.target }}
+                  -- -max_total_time=${{ github.event_name == 'schedule' && '600' || '60' }}
+
+            - name: Save fuzz corpus
+              uses: actions/cache@13aacd865c20de90d75de3b17ebe84f7a17d57d2 # v4.0.0
+              with:
+                  path: corpus/${{ matrix.target }}
+                  key: fuzz-corpus-${{ matrix.target }}-${{ github.run_id }}
