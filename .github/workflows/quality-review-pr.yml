@@ -18,6 +18,12 @@ name: quality-review-pr
         workflows: ['AGENTS.md compliance']
         types: [completed]
 
+# A second trigger workflow run for the same head waits here instead of
+# cancelling a paid review in progress.
+concurrency:
+    group: quality-review-${{ github.event.workflow_run.head_sha }}
+    cancel-in-progress: false
+
 # Each job declares only the permissions it uses.
 permissions:
     contents: read
@@ -49,7 +55,7 @@ jobs:
                       const pulls = await github.paginate(github.rest.pulls.list, { ...context.repo, state: 'open' });
                       const matches = pulls.filter((pull) => pull.head.sha === headSha);
                       if (matches.length !== 1) {
-                        core.setOutput('found', 'false');
+                        core.setFailed(`expected one pull request for workflow run head, found ${matches.length}`);
                         return;
                       }
                       const pull = matches[0];
