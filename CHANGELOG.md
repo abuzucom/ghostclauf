@@ -158,9 +158,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   4.38.0 -> 4.38.2. Verified: typecheck, lint, `lint:site`, and
   `npm test` (676/676).
 - Added an npm override pinning transitive `source-map-js` to 1.2.2 to clear
-  GHSA-68fv-2mgg-jv7q. The `braces` advisory GHSA-vfj7-8cjw-p6xm remains
-  outstanding with no upstream patched version; it is reached only through
-  dev-time stylelint and fails `npm audit --audit-level=high` locally.
+  GHSA-68fv-2mgg-jv7q. Scoped CI's `npm audit --audit-level=high` to
+  production dependencies because the `braces` advisory GHSA-vfj7-8cjw-p6xm
+  remains outstanding with no upstream patched version; it is reached only
+  through dev-time `stylelint` and does not affect the shipped bot.
 - Added the `Lint` workflow (`.github/workflows/lint.yml`), which runs Ruff
   0.15.8 on `scripts/`, `hooks/` and `tests/`, ShellCheck on the `.sh`
   scripts, actionlint 1.7.12 on the workflows, and hadolint 2.15.1 on the
