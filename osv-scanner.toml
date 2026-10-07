@@ -1,0 +1,9 @@
+# OSV-Scanner configuration for package-lock.json.
+# This file applies to the root package-lock.json only.
+
+# GHSA-vfj7-8cjw-p6xm affects `braces` <= 3.0.3. As of 2026-10-07 no patched
+# version has been released. The package is reached only through the dev-time
+# `stylelint` dependency chain and is not part of the shipped bot.
+[[IgnoredVulns]]
+id = "GHSA-vfj7-8cjw-p6xm"
+reason = "No upstream patched version exists; dev-only transitive dependency via stylelint, not shipped in production."
