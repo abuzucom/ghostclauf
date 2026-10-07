@@ -4,9 +4,20 @@
 
 import { createLogger } from '../dist/core/logger.js';
 
-// Fuzzer targets intentionally feed malformed input to libraries that emit
-// process warnings (yaml, zod). Suppress them so CI logs stay readable.
-process.emitWarning = () => {};
+// The config target intentionally feeds malformed YAML to the yaml parser,
+// which emits a `YAMLWarning` for every directive/tag error. Filter only
+// that warning family so deprecation, prototype pollution, and crash warnings
+// still surface.
+const originalEmitWarning = process.emitWarning;
+
+process.emitWarning = function emitWarningFiltered(warning, name, code) {
+    const warningName = typeof warning === 'string' ? name : warning?.name;
+    if (warningName === 'YAMLWarning') return;
+    if (typeof warning === 'string') {
+        return originalEmitWarning(warning, name, code);
+    }
+    return originalEmitWarning(warning);
+};
 
 /** Silent logger so fuzzing does not spam stdout. */
 export const fuzzLogger = createLogger('silent');
@@ -16,7 +27,7 @@ export function dataToString(data) {
     return Buffer.from(data).toString('utf8');
 }
 
-/** Decode fuzzer input as a trimmed token useful for command arguments. */
+/** Decode fuzzer input as the first whitespace-delimited token. */
 export function dataToToken(data) {
-    return dataToString(data).split(/\s+/)[0] ?? '';
+    return dataToString(data).split(/\s+/)[0];
 }

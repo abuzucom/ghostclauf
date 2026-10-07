@@ -33,6 +33,24 @@ export default tseslint.config(
         },
     },
     {
+        // Jazzer.js CLI does not directly execute TypeScript, so fuzz targets
+        // and their runner are plain JavaScript. Keep non-type-aware ESLint
+        // checks; disable type-aware parser options only.
+        files: ['fuzz/**/*.js', 'scripts/run-fuzz.js'],
+        ...tseslint.configs.disableTypeChecked,
+        languageOptions: {
+            globals: {
+                Buffer: 'readonly',
+                console: 'readonly',
+                process: 'readonly',
+            },
+        },
+        rules: {
+            ...tseslint.configs.disableTypeChecked.rules,
+            'no-console': 'off',
+        },
+    },
+    {
         // CLI entrypoints: console output is their interface (interactive
         // prompts, or - for checkTokens.ts - stdout that run.sh/run.bat
         // parse line by line), not application logging.
@@ -42,15 +60,6 @@ export default tseslint.config(
         },
     },
     {
-        ignores: [
-            'dist/',
-            'node_modules/',
-            'site/',
-            'test/fixtures/',
-            // Jazzer.js CLI does not directly execute TypeScript. Fuzz targets
-            // and the runner are plain JavaScript that import compiled dist/.
-            'fuzz/',
-            'scripts/run-fuzz.js',
-        ],
+        ignores: ['dist/', 'node_modules/', 'site/', 'test/fixtures/'],
     },
 );
