@@ -51,7 +51,7 @@ jobs:
               run: mkdir -p corpus/{config,commands,funfact,quotes,loyalty,streak,announce}
 
             - name: Restore fuzz corpus
-              uses: actions/cache@13aacd865c20de90d75de3b17ebe84f7a17d57d2 # v4.0.0
+              uses: actions/cache@1bd1e32a3bdc45362d1e726936510720a7c30a57 # v4.2.0
               with:
                   path: corpus/${{ matrix.target }}
                   key: fuzz-corpus-${{ matrix.target }}-${{ github.run_id }}
@@ -66,7 +66,7 @@ jobs:
                   -- -max_total_time=${{ github.event_name == 'schedule' && '600' || '60' }}
 
             - name: Save fuzz corpus
-              uses: actions/cache@13aacd865c20de90d75de3b17ebe84f7a17d57d2 # v4.0.0
+              uses: actions/cache@1bd1e32a3bdc45362d1e726936510720a7c30a57 # v4.2.0
               with:
                   path: corpus/${{ matrix.target }}
                   key: fuzz-corpus-${{ matrix.target }}-${{ github.run_id }}
