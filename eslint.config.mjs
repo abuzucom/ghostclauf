@@ -42,6 +42,15 @@ export default tseslint.config(
         },
     },
     {
-        ignores: ['dist/', 'node_modules/', 'site/', 'test/fixtures/'],
+        ignores: [
+            'dist/',
+            'node_modules/',
+            'site/',
+            'test/fixtures/',
+            // Jazzer.js CLI does not directly execute TypeScript. Fuzz targets
+            // and the runner are plain JavaScript that import compiled dist/.
+            'fuzz/',
+            'scripts/run-fuzz.js',
+        ],
     },
 );

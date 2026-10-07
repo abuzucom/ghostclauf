@@ -1,6 +1,6 @@
 {
     "extends": "./tsconfig.json",
-    "include": ["src", "test", "eslint.config.mjs"],
+    "include": ["src", "test", "fuzz", "scripts/run-fuzz.js", "eslint.config.mjs"],
     "exclude": ["dist", "node_modules"],
     "compilerOptions": {
         "allowJs": true

@@ -21,7 +21,9 @@
         "typecheck": "tsc -p tsconfig.json --noEmit",
         "lint": "eslint . && prettier --check .",
         "lint:fix": "eslint --fix . && prettier --write .",
-        "format": "prettier --write ."
+        "format": "prettier --write .",
+        "fuzz": "npm run build && node scripts/run-fuzz.js",
+        "fuzz:long": "npm run build && node scripts/run-fuzz.js --max-total-time=600"
     },
     "dependencies": {
         "@twurple/api": "8.1.4",
@@ -43,6 +45,7 @@
     },
     "devDependencies": {
         "@eslint/js": "10.0.1",
+        "@jazzer.js/core": "4.0.0",
         "@types/luxon": "3.7.3",
         "@types/node": "26.6.3",
         "eslint": "10.11.0",

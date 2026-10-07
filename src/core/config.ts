@@ -115,14 +115,19 @@ export function loadFileConfig(
                 `(or set CONFIG_PATH).`,
         );
     }
+    return parseFileConfig(raw);
+}
+
+/** Parse and validate a config YAML string (used by tests and fuzzing). */
+export function parseFileConfig(raw: string): FileConfig {
     const parsed = RawFileConfigSchema.safeParse(parseYaml(raw) ?? {});
     if (!parsed.success) {
-        throw new Error(`Invalid config "${path}":\n${formatIssues(parsed.error)}`);
+        throw new Error(`Invalid config:\n${formatIssues(parsed.error)}`);
     }
     const broadcasters = parsed.data.broadcasters ?? [parsed.data.broadcaster!];
     const firstBroadcaster = broadcasters[0];
     if (!firstBroadcaster) {
-        throw new Error(`Invalid config "${path}": at least one broadcaster is required`);
+        throw new Error('Invalid config: at least one broadcaster is required');
     }
     return {
         ...parsed.data,

@@ -35,6 +35,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the bot account to hold the new `moderator:manage:chat_messages` scope;
   `run.sh`/`run.bat` detect and fix a missing scope automatically, headless
   deployments need `npm run auth -- --bot` once after upgrading.
+- Added coverage-guided fuzz testing with Jazzer.js. Seven fuzz targets
+  exercise untrusted input parsing: `config` (YAML/zod config parsing),
+  `commands` (chat message command matching), `funfact`, `quotes`,
+  `loyalty`, `streak`, and `announce`. Added `npm run fuzz` (short run)
+  and `npm run fuzz:long` (10-minute run), plus a separate GitHub Actions
+  `Fuzz` workflow that runs a short fuzz on every PR/push to `main` and
+  a long fuzz weekly on Sundays at 04:00 UTC. Targets import compiled
+  code from `dist/` and run through a matrix job; each target's corpus
+  is cached to make incremental runs faster.
 - Synced `AGENTS.md` conventions with `abuzucom/agents` v1.11.0. Added
   `hooks/enforce_branch_name.py`, a Claude Code hook wired in
   `.claude/settings.json` (and documented as opt-in in
