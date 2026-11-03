@@ -33,7 +33,7 @@
         "luxon": "3.7.2",
         "pino": "10.3.1",
         "yaml": "2.9.1",
-        "zod": "4.6.5"
+        "zod": "4.6.6"
     },
     "overrides": {
         "brace-expansion": "5.0.12",
