@@ -105,7 +105,7 @@ implementation detail confined to `src/core/twitch.ts`.
 - ESM only: no `require`, use `.js` extensions in relative imports (NodeNext).
 - Config is split: secrets in `.env` (`.env.example` documents required
   vars), everything else in `config.yaml` (zod-validated in `src/core/config.ts`).
-- `@twurple/*` packages are pinned to `8.1.4` across `api`, `auth`, and
+- `@twurple/*` packages are pinned to `8.2.0` across `api`, `auth`, and
   `eventsub-ws`; keep them in lockstep.
 - A broken plugin is logged and skipped by `pluginManager`, never crashes
   the bot; preserve that isolation when touching plugin loading.
