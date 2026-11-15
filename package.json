@@ -46,7 +46,7 @@
     "devDependencies": {
         "@eslint/js": "10.0.1",
         "@jazzer.js/core": "4.0.0",
-        "@types/luxon": "3.7.3",
+        "@types/luxon": "3.7.6",
         "@types/node": "26.6.3",
         "eslint": "10.11.0",
         "eslint-config-prettier": "10.1.8",
