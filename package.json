@@ -53,7 +53,7 @@
         "html-validate": "11.16.2",
         "pino-pretty": "13.2.0",
         "prettier": "3.9.9",
-        "stylelint": "17.16.0",
+        "stylelint": "18.0.0",
         "stylelint-config-standard": "40.0.0",
         "tsx": "4.23.15",
         "typescript": "6.0.3",
